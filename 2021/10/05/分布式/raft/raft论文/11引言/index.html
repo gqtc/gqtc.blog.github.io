@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Chapter 1 Introduction     引言当前的数据中心系统和应用程序运行在高度动态的环境中。它们使用额外的服务器资源进行横向扩展，并根据需要进行扩展和收缩。服务器和网络的故障也很常见：每年约有2–4%的磁盘驱动器发生故障[103]，服务器也经常崩溃[22]，每天都有数十条网络链路发生问题[31]。 Today’s datacenter systems and applicatio">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-01引言">
+<meta property="og:url" content="http://example.com/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Chapter 1 Introduction     引言当前的数据中心系统和应用程序运行在高度动态的环境中。它们使用额外的服务器资源进行横向扩展，并根据需要进行扩展和收缩。服务器和网络的故障也很常见：每年约有2–4%的磁盘驱动器发生故障[103]，服务器也经常崩溃[22]，每天都有数十条网络链路发生问题[31]。 Today’s datacenter systems and applicatio">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-10-04T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T04:19:32.595Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-01引言 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-01引言
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-10-05 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-05T00:00:00+08:00">2021-10-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 12:19:32" itemprop="dateModified" datetime="2022-06-28T12:19:32+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="Chapter-1-Introduction-引言"><a href="#Chapter-1-Introduction-引言" class="headerlink" title="Chapter 1 Introduction     引言"></a>Chapter 1 Introduction     引言</h2><p>当前的数据中心系统和应用程序运行在高度动态的环境中。它们使用额外的服务器资源进行横向扩展，并根据需要进行扩展和收缩。服务器和网络的故障也很常见：每年约有2–4%的磁盘驱动器发生故障[103]，服务器也经常崩溃[22]，每天都有数十条网络链路发生问题[31]。</p>
+<p>Today’s datacenter systems and applications run in highly dynamic environments. They scale out by leveraging the resources of additional servers, and they grow and shrink according to demand. Server and network failures are also commonplace: about 2–4% of disk drives fail each year [103], servers crash about as often [22], and tens of network links fail every day in modern datacenters [31].</p>
+<span id="more"></span>
+<p>因此，系统正常运行期间必须能够处理节点的上线和下线。他们必须对变化做出反应，并在几秒内自动适应；系统的不可用对用户而言是不可接受的。这是当今系统的一大挑战；在这种环境中，故障处理、协调、服务发现和配置管理都很难处理。</p>
+<p>As a result, systems must deal with servers coming and going during normal operations. They must react to changes and adapt automatically within seconds; outages that are noticeable to humans are typically not acceptable. This is a major challenge in today’s systems; failure handling, coordination, service discovery, and configuration management are all difficult in such dynamic environments.</p>
+<p>好在分布式共识算法可以应对这些挑战。共识算法使得多个机器像一个协同的群体一样工作，允许若干机器的失败。在一个共识系统中，故障使用一种有原则的、行之有效的方式来处理的。由于共识系统是高度可用和可靠的，所以<font color=red>其他系统组件可以使用共识系统作为容错的基础组件</font>，所以，共识系统在构建可靠的大规模软件系统中起着关键作用。</p>
+<p>Fortunately, distributed consensus can help with these challenges. Consensus allows a collection of machines to work as a coherent group that can survive the failures of some of its members. Within a consensus group, failures are handled in a principled and proven way. Because consensus groups are highly available and reliable, other system components can use a consensus group as the foundation for their own fault tolerance. Thus, consensus plays a key role in building reliable large-scale software systems.</p>
+<p>当我们开始研究Raft时，共识的必要性越来越明显，但很多系统仍在努力解决共识可以解决的问题。一些大型系统仍然受到单个协调服务器作为单点故障的限制（如HDFS），其他包括使用临时共识算法的系统无法安全的处理失败（如MongoDB 和 Redis）。新系统则几乎没有现成的共识实现可供选择（ZooKeeper 是最受欢迎的），这使得系统构建者要么遵循上面的约束，要么自己实现。</p>
+<p>When we started this work, the need for consensus was becoming clear, but many systems still struggled with problems that consensus could solve. Some large-scale systems were still limited by a single coordination server as a single point of failure (e.g., HDFS [81, 2]). Many others included ad hoc replication algorithms that handled failures unsafely (e.g., MongoDB and Redis [44]). New systems had few options for readily available consensus implementations (ZooKeeper [38] was the most popular), forcing systems builders to conform to one or build their own.</p>
+<p>那些选择自己实现共识系统的人通常会求助于Paxos[48,49]。在过去20年中，Paxos主导了共识算法的讨论：共识的大多数实现都基于Paxos或受其影响，Paxos已成为教授学生共识系统的主要工具。</p>
+<p>Those choosing to implement consensus themselves usually turned to Paxos [48, 49]. Paxos had dominated the discussion of consensus algorithms over the last two decades: most implementations of consensus were based on Paxos or influenced by it, and Paxos had become the primary vehicle used to teach students about consensus.</p>
+<p>不幸的是，尽管有很多尝试使 Paxos 变得更加平易近人，但它还是很难理解。此外，它的架构需要大量的修改才能应用在实际系统中，并且基于 Paxos 构建的系统需要开发一些扩展，而这些扩展的详细信息尚未发布或有待商定。结果就是，系统构建者和学生都在Paxos 中挣扎。</p>
+<p>Unfortunately, Paxos is quite difficult to understand, in spite of numerous attempts to make it more approachable. Furthermore, its architecture requires complex changes to support practical systems, and building a complete system based on Paxos requires developing several extensions for which the details have not been published or agreed upon. As a result, both system builders and students struggle with Paxos.</p>
+<p>另外两种著名的共识算法是Viewstamped Replication[83,82,66]和ZooKeeper中使用的Zab算法[42]。尽管我们认为这两种算法在结构上都比 Paxos 更好，但都没有明确提出这一论点。它们的设计并非以简单或易于理解为主要目标。理解和实现这些算法的仍然很难。</p>
+<p>The two other well-known consensus algorithms are Viewstamped Replication [83, 82, 66] and Zab [42], the algorithm used in ZooKeeper. Although we believe both of these algorithms are incidentally better in structure that Paxos for building systems, neither has explicitly made this argument; they were not designed with simplicity or understandability as a primary goal. The burden of understanding and implementing these algorithms is still too high.</p>
+<p>这些共识算法都比较难理解和难实现。不幸的是，当使用经验证的算法实现共识的成本太高时，构建者就不得不做出艰难的决定，他们可能完全避免达成共识，牺牲系统的容错性或一致性，或者是开发自己的特殊算法，这通常会导致危险行为。另外，当解释和理解共识成本太高时，导致有的教师都不在教授它，有的学生也无法理解共识。共识与两阶段提交一样重要。理想情况下，应有尽可能多的学生学习（即使从根本上来说，学习共识更为困难）。</p>
+<p>Each of these consensus options was difficult to understand and difficult to implement. Unfortunately, when the cost of implementing consensus with proven algorithms was too high, systems builders were left with a tough decision. They could avoid consensus altogether, sacrificing the fault tolerance or consistency of their systems, or they could develop their own ad hoc algorithm, often leading to unsafe behavior. Moreover, when the cost of explaining and understanding consensus was too high, not all instructors attempted to teach it, and not all students succeeded in learning it. Consensus is as fundamental as two-phase commit; ideally, as many students should learn it (even though consensus is fundamentally more difficult).</p>
+<p>经过在Paxos中的一番挣扎之后，我们开始着手研究一种新的共识算法，以作为系统构建和教授的良好基础。我们的方法与众不同，因为我们的<font color=red>主要目标是可理解性</font>：我们可以为实际系统定义一个一致的算法，并以一种比 Paxos 更容易学习的方式来描述它吗？此外，我们希望该算法能够促进对系统构建者的直接的开发，这不仅对算法本身很重要，对于算法的原理也很重要。</p>
+<p>After struggling with Paxos ourselves, we set out to find a new consensus algorithm that could provide a better foundation for system building and education. Our approach was unusual in that our primary goal was understandability: could we define a consensus algorithm for practical systems and describe it in a way that is significantly easier to learn than Paxos? Furthermore, we wanted the algorithm to facilitate the development of intuitions that are essential for system builders. It was important not just for the algorithm to work, but for it to be obvious why it works.</p>
+<p>该算法还必须足够完整，以便解决构建实际系统方方面面的问题，并且必须能在实际部署中表现良好。核心算法不仅能够明确收到消息后的效果，还能描述会发生什么以及何时发生，这些对于系统构建者而言同样重要。类似地，它必须保证一致性，而且必须尽可能的保证可用性。它还必须能解决系统中达成共识之外的诸多问题，比如共识小组成员的变更。这在实际系统中是必须考虑的，如果将这一负担留给系统构建者，则可能会有风险。</p>
+<p>This algorithm also had to be complete enough to address all aspects of building a practical system, and it had to perform well enough for practical deployments. The core algorithm not only had to specify the effects of receiving a message but also describe what should happen and when; these are equally important for systems builders. Similarly, it had to guarantee consistency, and it also had to provide availability whenever possible. It also had to address the many aspects of a system that go beyond reaching consensus, such as changing the members of the consensus group. These are necessary in practice, and leaving this burden to systems builders would risk ad hoc, suboptimal, or even incorrect solutions.</p>
+<p>这项工作的结果就是称为Raft的共识算法。在设计Raft时，我们使用了特定的技术来提高可理解性，包括分解问题（将Raft分解为Leader选举、日志复制和安全性保证）和缩减状态空间（Raft降低了不确定性的程度以及服务器之间可能不一致的方式）。我们还解决了构建一个完整共识系统所需的所有问题。我们仔细考虑了每个设计选择，这不仅给我们实现它带来了好处，对于其他想实现Raft的构建者也一样。</p>
+<p>The result of this work is a consensus algorithm called Raft. In designing Raft we applied specific techniques to improve understandability, including decomposition (Raft separates leader election, log replication, and safety) and state space reduction (Raft reduces the degree of nondeterminism and the ways servers can be inconsistent with each other). We also addressed all of the issues needed to build a complete consensus-based system. We considered each design choice carefully, not just for the benefit of our own implementation but also for the many others we hope to enable.</p>
+<p>我们相信Raft要比Paxos以及其他共识算法都要优秀，不管对于教学而言，还是对于提供实现的基础算法而言都是这样。它要比其他算法更简单和更容易理解；它的描述足够完整，可以满足构建实际系统的需要；它有多个开源实现，并被多家公司使用；它的安全性已得到正式的明确和证明；而且它的效率跟其他算法也不相上下。</p>
+<p>We believe that Raft is superior to Paxos and other consensus algorithms, both for educational purposes and as a foundation for implementation. It is simpler and more understandable than other algorithms; it is described completely enough to meet the needs of a practical system; it has several open-source implementations and is used by several companies; its safety properties have been formally specified and proven; and its efficiency is comparable to other algorithms.</p>
+<p>本文的主要贡献如下：</p>
+<ul>
+<li>Raft共识算法的设计、实现和评估。Raft与现有的共识算法在很多方面都很相似，但是它是为可理解性而设计的。因此Raft有自己的特点，比如Raft使用了更强的领导者模式，这简化了对日志的管理，并使得Raft更容易理解。</li>
+<li>对于可理解性的评估：一项针对两所大学43个学生的研究表明，Raft比Paxos更容易理解：在学习了两种算法之后，其中33名学生对于Raft的问题的回到要比Paxos问题好很多。我们相信这是第一次基于教和学来评估共识算法的科学研究。</li>
+<li>Raft中Leader选举的设计、实现和评估。很多公式算法都没有规定特定的领导者选举算法，Raft中涉及了Leader选举的特定算法，其中包含随机时间策略。这只是在很多共识算法所必须的心跳机制上增加了少量机制，却简单且快速的解决了很多冲突。对Leader选举的评估调查了其行为和表现，可以得出这种简单的方法在各种实际环境中都是足够的结论。Raft通常会在集群中单向网络延迟时间的20倍以内的时间中选出Leader。</li>
+<li>Raft集群成员变更机制的设计和实现。Raft允许一次增加或删除一个集群节点；这种单次变更很简单的保证了安全性，因为变更期间新旧配置的Majority节点集合至少会有一个节点的重叠。更复杂的成员变更可以通过一系列单节点变更来实现。Raft允许集群在成员变更期间正常运行，成员变更算法只需要对基本算法进行少许的扩展就能实现。</li>
+<li>对于构建一个完整的共识系统所需的其他组件的深入讨论和实现，包括与Client的交互、日志压缩等。虽然Raft在这些方面的设计上并不是特别新颖，但是对于这些组件的完整描述对于理解和构建真正的系统而言都非常重要。我们已经构建了一个完整的基于共识的服务，以探索和解决其中涉及的设计决策。</li>
+<li>对于Raft算法安全性的证明以及证明的规范性。证明的规范性有助于仔细的推理算法，并澄清非正式描述中的各种细节。安全性证明有助于建立对Raft正确性的信心，而且有助于对Raft进行扩展时能澄清扩展对Raft安全性的影响。</li>
+</ul>
+<p>The primary contributions of this dissertation are as follows:</p>
+<ul>
+<li>The design, implementation, and evaluation of the Raft consensus algorithm. Raft is similar in many ways to existing consensus algorithms (most notably, Oki and Liskov’s Viewstamped Replication [83, 66]), but it is designed for understandability. This led to several novel features. For example, Raft uses a stronger form of leadership than other consensus algorithms. This simplifies the management of the replicated log and makes Raft easier to understand.</li>
+<li>The evaluation of Raft’s understandability. A user study with 43 students at two universities shows that Raft is significantly easier to understand than Paxos: after learning both algorithms, 33 of these students were able to answer questions about Raft better than questions about Paxos. We believe this is the first scientific study to evaluate consensus algorithms based on teaching and learning.</li>
+<li>The design, implementation, and evaluation of Raft’s leader election mechanism. While many consensus algorithms do not prescribe a particular leader election algorithm, Raft includes a specific algorithm involving randomized timers. This adds only a small amount of mechanism to the heartbeats already required for any consensus algorithm, while resolving conflicts simply and rapidly. The evaluation of leader election investigates its behavior and performance, concluding that this simple approach is sufficient in a wide variety of practical environments. It typically elects a leader in under 20 times the cluster’s one-way network latency.</li>
+<li>The design and implementation of Raft’s cluster membership change mechanism. Raft allows adding or removing a single server at a time; these operations preserve safety simply, since at least one server overlaps any majority during the change. More complex changes in membership are implemented as a series of single-server changes. Raft allows the cluster to continue operating normally during changes, and membership changes can be  implemented with only a few extensions to the basic consensus algorithm.</li>
+<li>A thorough discussion and implementation of the other components necessary for a complete consensus-based system, including client interaction and log compaction. Although we do not believe these aspects of Raft to be particularly novel, a complete description is important for understandability and to enable others to build real systems. We have implemented a complete consensus-based service to explore and address all of the design decisions involved.</li>
+<li>A proof of safety and formal specification for the Raft algorithm. The level of precision in the formal specification aids in reasoning carefully about the algorithm and clarifying details in the algorithm’s informal description. The proof of safety helps build confidence in Raft’s correctness. It also aids others who wish to extend Raft by clarifying the implications for safety of their extensions.</li>
+</ul>
+<p>我们已经实现了一个名为LogCabin的开源系统，其中实现了本文中的很多设计。LogCabin是我们验证Raft新想法的测试平台，也是验证我们理解构建完整实用系统的方法。在本文的第10章我们会更详细的描述LogCabin。</p>
+<p>We have implemented many of the designs in this dissertation in an open-source implementation of Raft called LogCabin [86]. LogCabin served as our test platform for new ideas in Raft and as a way to verify that we understood the issues of building a complete and practical system. The implementation is described in more detail in Chapter 10.</p>
+<p>本文的剩余部分介绍了复制状态机，并讨论了Paxos的优缺点（第2章）；介绍了Raft共识算法的核心算法、集群成员变更和日志压缩的扩展，以及Client如何与Raft交互（第3-6章）；评估了Raft的可理解性、正确性、领导人选举和日志复制性能（第7-10章）；并讨论了相关工作（第11章）。</p>
+<p>The remainder of this dissertation introduces the replicated state machine problem and discusses the strengths and weaknesses of Paxos (Chapter 2); presents the Raft consensus algorithm, its extensions for cluster membership changes and log compaction, and how clients interact with Raft (Chapters 3–6); evaluates Raft for understandability, correctness, and leader election and log replication performance (Chapters 7–10); and discusses related work (Chapter 11).</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" rel="prev" title="etcd_raft源码解析-03tracker包">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-03tracker包
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/" rel="next" title="etcd_raft源码解析-04raft包--storage">
+      etcd_raft源码解析-04raft包--storage <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Chapter-1-Introduction-%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">Chapter 1 Introduction     引言</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

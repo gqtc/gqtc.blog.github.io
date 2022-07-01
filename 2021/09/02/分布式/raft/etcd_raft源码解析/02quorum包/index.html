@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="quorum包中包含三个文件：majority.go, quorum.go joint.go。该包主要实现了基于当前配置的节点集合计算出集群最大CommitIndex和投票结果的功能：  majority.go：定义了MajorityConfig类型及其方法，它实际上是个节点ID形成的set，并在此基础上实现了CommittedIndex（计算Majority节点的最大提交索引）和VoteResu">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-02quorum包">
+<meta property="og:url" content="http://example.com/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="quorum包中包含三个文件：majority.go, quorum.go joint.go。该包主要实现了基于当前配置的节点集合计算出集群最大CommitIndex和投票结果的功能：  majority.go：定义了MajorityConfig类型及其方法，它实际上是个节点ID形成的set，并在此基础上实现了CommittedIndex（计算Majority节点的最大提交索引）和VoteResu">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-09-01T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:40:02.241Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-02quorum包 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-02quorum包
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-09-02 00:00:00" itemprop="dateCreated datePublished" datetime="2021-09-02T00:00:00+08:00">2021-09-02</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:40:02" itemprop="dateModified" datetime="2022-06-28T09:40:02+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>quorum</code>包中包含三个文件：<code>majority.go, quorum.go joint.go</code>。该包主要实现了基于当前配置的节点集合计算出集群最大<code>CommitIndex</code>和投票结果的功能：</p>
+<ul>
+<li><code>majority.go</code>：定义了<code>MajorityConfig</code>类型及其方法，它实际上是个<code>节点ID</code>形成的<code>set</code>，并在此基础上实现了<code>CommittedIndex</code>（计算<code>Majority</code>节点的最大提交索引）和<code>VoteResult</code>（计算<code>Majority</code>节点的投票结果）方法；</li>
+<li><code>quorum.go</code>：定义了<code>AckedIndexer</code>接口，该接口唯一的方法<code>AckedIndex</code>就是提供<code>节点ID</code>到日志<code>Index</code>的转换功能；</li>
+<li><code>joint.go</code>：在<code>MajorityConfig</code>的基础上定义了<code>JointConfig</code>类型，即联合共识（Joint Consensus）节点变更算法中<code>Cold,new</code>的配置。并在此基础上实现了<code>CommittedIndex</code>和<code>VoteResult</code>方法；<span id="more"></span></li>
+</ul>
+<h3 id="MajorityConfig"><a href="#MajorityConfig" class="headerlink" title="MajorityConfig"></a>MajorityConfig</h3><p><code>MajorityConfig</code>实际类型是<code>map[uint64]struct&#123;&#125;</code>，即由系统中所有<code>节点ID</code>形成的<code>set</code>。</p>
+<p>该类型主要实现了<code>CommittedIndex</code>和<code>VoteResult</code>方法。</p>
+<h4 id="CommittedIndex方法"><a href="#CommittedIndex方法" class="headerlink" title="CommittedIndex方法"></a>CommittedIndex方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c MajorityConfig)</span></span> CommittedIndex(l AckedIndexer) Index</span><br></pre></td></tr></table></figure>
+
+<p>该方法就是根据系统中所有节点反馈的<code>Index</code>，计算出最大<code>commitIndex</code>。当<code>Leader</code>收到<code>Follower</code>发来的<code>pb.MsgApp</code>消息的成功响应时就会调用本方法。</p>
+<p>如果某个<code>Index</code>在<code>Majority</code>节点上都已经<code>Append</code>成功了，则<code>Leader</code>就可以将其提交了，所以最大<code>commitIndex</code>，就是找出<code>Majority</code>节点上<code>Append</code>成功的<code>Index</code>的最大值。</p>
+<p>比如<code>8</code>节点的系统，如果节点反馈的<code>Append</code>成功的<code>Index</code>是<code>[1, 2, 2, 1, 2, 2, 1, 3]</code>，则计算得到的最大<code>commitIndex</code>就是<code>2</code>。因为<code>8</code>个节点中，有5个节点的<code>Index</code>是大于等于<code>2</code>的。</p>
+<p><code>CommittedIndex</code>的实现逻辑是：</p>
+<ul>
+<li>通过参数<code>l</code>的<code>AckedIndex</code>方法，将所有节点的<code>Index</code>记录到<code>srt</code>这个<code>Slice</code>中；</li>
+<li>对<code>srt</code>进行从小到大的排序，然后返回<code>srt[n - (n/2 + 1)]</code>的值；<code>n</code>表示节点数量；</li>
+<li>这里的基本思想就是：<ul>
+<li><code>srt</code>排序之后，<code>srt[n-1]</code>就是系统中只有1个节点认可的<code>Index</code>，<code>srt[n-2]</code>是有<code>2</code>个节点认可的<code>Index</code>，以此类推，<code>srt[n - (n/2 + 1)]</code>就是有<code>n/2+1</code>个节点认可的<code>Index</code>，<code>n/2+1</code>超过了半数，形成了<code>Majority</code>，并且是<code>srt</code>中满足条件的最大值；</li>
+<li>比如上面的例子，[1, 2, 2, 1, 2, 2, 1, 3]排序之后就是[1, 1, 1, 2, 2, 2, 2, 3]。从右往左看，最后一个元素3，只有一个节点认可，倒数第2个元素2，目前有2个节点认可，一直到倒数第5个元素2，表示有5个元素认可，所以结果是2；</li>
+</ul>
+</li>
+</ul>
+<p>这里有一些实现细节：</p>
+<ul>
+<li><p>当节点数<code>n</code>小于等于7的时候，<code>srt</code>使用栈上内存，否则使用堆上内存。这是为了性能考虑。这通过下面的方式实现：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">var</span> stk [<span class="number">7</span>]<span class="type">uint64</span></span><br><span class="line"><span class="keyword">var</span> srt []<span class="type">uint64</span></span><br><span class="line"><span class="keyword">if</span> <span class="built_in">len</span>(stk) &gt;= n &#123;</span><br><span class="line">	srt = stk[:n]</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">	srt = <span class="built_in">make</span>([]<span class="type">uint64</span>, n)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>对<code>srt</code>使用的排序算法，也是从<code>stdlib</code>中复制过来的插入排序，这也是为了让保证<code>srt</code>一直在栈上；</p>
+</li>
+</ul>
+<h4 id="VoteResult方法"><a href="#VoteResult方法" class="headerlink" title="VoteResult方法"></a>VoteResult方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> VoteResult <span class="type">uint8</span></span><br><span class="line"><span class="keyword">const</span> (</span><br><span class="line">	VotePending VoteResult = <span class="number">1</span> + <span class="literal">iota</span></span><br><span class="line">	VoteLost</span><br><span class="line">	VoteWon</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c MajorityConfig)</span></span> VoteResult(votes <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="type">bool</span>) VoteResult</span><br></pre></td></tr></table></figure>
+
+<p><code>VoteResult</code>方法的实现逻辑：</p>
+<ul>
+<li>参数<code>votes</code>记录了节点的投票情况，其中不包括没有投票的节点；</li>
+<li>轮训<code>votes</code>，对投票情况进行统计：<ul>
+<li>如果投”yes”的节点数，大于等于<code>n/2+1</code>，则投票结果是<code>VoteWon</code>；</li>
+<li>如果投”yes”的节点数，加上尚未投票的节点数，大于等于<code>n/2+1</code>，则投票结果是<code>VotePending</code>，表示尚未获得准确结果；</li>
+<li>其他情况，投票结果是<code>VoteLost</code>；</li>
+</ul>
+</li>
+</ul>
+<p><code>VoteResult</code>方法不一定只用来统计投票结果，它还可以判断系统中是否有<code>Majority</code>的节点都成为了某种状态，因为参数<code>votes</code>实际上是一个<code>节点ID</code>到<code>bool</code>的映射。</p>
+<hr>
+<h3 id="JointConfig"><a href="#JointConfig" class="headerlink" title="JointConfig"></a>JointConfig</h3><p><code>JointConfig</code>实际类型是<code>[2]MajorityConfig</code>，主要表示Joint Consensus配置变更算法中，<code>Cold,new</code>的配置。</p>
+<p>该类型主要实现了三个方法：<code>IDs, CommittedIndex</code>和<code>VoteResult</code>方法。</p>
+<h4 id="IDs方法"><a href="#IDs方法" class="headerlink" title="IDs方法"></a>IDs方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c JointConfig)</span></span> IDs() <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="keyword">struct</span>&#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>该方法，就是返回<code>c[0]</code>和<code>c[1]</code>中，<code>节点ID</code>的并集；</p>
+<h4 id="CommittedIndex方法-1"><a href="#CommittedIndex方法-1" class="headerlink" title="CommittedIndex方法"></a>CommittedIndex方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c JointConfig)</span></span> CommittedIndex(l AckedIndexer) Index</span><br></pre></td></tr></table></figure>
+
+<p>该方法通过调用<code>MajorityConfig.CommittedIndex</code>方法实现，实际上就是返回<code>c[0].CommittedIndex(l)</code>和<code>c[1].CommittedIndex(l)</code>中的较小值；</p>
+<h4 id="VoteResult方法-1"><a href="#VoteResult方法-1" class="headerlink" title="VoteResult方法"></a>VoteResult方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c JointConfig)</span></span> VoteResult(votes <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="type">bool</span>) VoteResult</span><br></pre></td></tr></table></figure>
+
+<p>该方法通过调用<code>MajorityConfig.VoteResult</code>方法实现，实际逻辑是：</p>
+<ul>
+<li>如果<code>c[0].VoteResult(votes)</code>和<code>c[1].VoteResult(votes)</code>的返回值相等，表示<code>Cold</code>和<code>Cnew</code>达成了一致，因此最终结果就是其中之一即可；</li>
+<li>如果其中有一个的返回结果是<code>VoteLost</code>，则最终结果就是<code>VoteLost</code>；</li>
+<li>其他情况，最终结果就是<code>VotePending</code></li>
+</ul>
+<h3 id="其他"><a href="#其他" class="headerlink" title="其他"></a>其他</h3><p><code>quorum.go</code>中定义了一些简单的类型和接口。他们包括：</p>
+<ul>
+<li><code>Index</code>类型，表示日志索引，实际类型就是<code>uint64</code>；</li>
+<li><code>AckedIndexer</code>接口，其唯一的方法就是<code>AckedIndex(voterID uint64) (idx Index, found bool)</code>，用于将<code>节点ID</code>转为日志<code>Index</code>；</li>
+<li><code>mapAckIndexer</code>类型，它实现了<code>AckedIndexer</code>接口，它的实际类型就是<code>map[uint64]Index</code>，它实现的<code>AckedIndex</code>方法就是在<code>map</code>中查询<code>ID</code>，返回得到的<code>Index</code>；</li>
+<li><code>VoteResult</code>类型，表示投票结果，实际类型是<code>uint8</code>，实际上就是个枚举，取值有：<code>VotePending、VoteLost</code>和<code>VoteWon</code>；</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/" rel="prev" title="etcd_raft源码解析-01概述">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-01概述
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" rel="next" title="etcd_raft源码解析-03tracker包">
+      etcd_raft源码解析-03tracker包 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#MajorityConfig"><span class="nav-number">1.</span> <span class="nav-text">MajorityConfig</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#CommittedIndex%E6%96%B9%E6%B3%95"><span class="nav-number">1.1.</span> <span class="nav-text">CommittedIndex方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#VoteResult%E6%96%B9%E6%B3%95"><span class="nav-number">1.2.</span> <span class="nav-text">VoteResult方法</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#JointConfig"><span class="nav-number">2.</span> <span class="nav-text">JointConfig</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#IDs%E6%96%B9%E6%B3%95"><span class="nav-number">2.1.</span> <span class="nav-text">IDs方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#CommittedIndex%E6%96%B9%E6%B3%95-1"><span class="nav-number">2.2.</span> <span class="nav-text">CommittedIndex方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#VoteResult%E6%96%B9%E6%B3%95-1"><span class="nav-number">2.3.</span> <span class="nav-text">VoteResult方法</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B6%E4%BB%96"><span class="nav-number">3.</span> <span class="nav-text">其他</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

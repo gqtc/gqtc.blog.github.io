@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="架构回顾如《概述》中所述，etcd&#x2F;raft将Raft所有算法逻辑实现为一个状态机，该状态机由输入，即消息来驱动，并输出Ready结构。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-07raft包--node和rawnode">
+<meta property="og:url" content="http://example.com/2021/12/01/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/07raft%E5%8C%85--node%E5%92%8Crawnode/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="架构回顾如《概述》中所述，etcd&#x2F;raft将Raft所有算法逻辑实现为一个状态机，该状态机由输入，即消息来驱动，并输出Ready结构。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/01整体框架/v2-ef297c4a45c3d20daff24e49b79b5e41_720w.jpg">
+<meta property="article:published_time" content="2021-11-30T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:38:53.452Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/01整体框架/v2-ef297c4a45c3d20daff24e49b79b5e41_720w.jpg">
+
+<link rel="canonical" href="http://example.com/2021/12/01/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/07raft%E5%8C%85--node%E5%92%8Crawnode/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-07raft包--node和rawnode | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/01/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/07raft%E5%8C%85--node%E5%92%8Crawnode/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-07raft包--node和rawnode
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-01 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-01T00:00:00+08:00">2021-12-01</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:38:53" itemprop="dateModified" datetime="2022-06-28T09:38:53+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/01/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/07raft%E5%8C%85--node%E5%92%8Crawnode/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/01/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/07raft%E5%8C%85--node%E5%92%8Crawnode/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="架构回顾"><a href="#架构回顾" class="headerlink" title="架构回顾"></a>架构回顾</h3><p>如《概述》中所述，<code>etcd/raft</code>将Raft所有算法逻辑实现为一个状态机，该状态机由输入，即消息来驱动，并输出<code>Ready</code>结构。</p>
+<span id="more"></span>
+<img src="/img/01整体框架/v2-ef297c4a45c3d20daff24e49b79b5e41_720w.jpg" alt="img" style="zoom: 40%;" />
+
+<p>上面的架构图中，<code>node</code> 模块提供了如下功能：</p>
+<ul>
+<li>提供<code>raft状态机</code>和外界交互的接口，供外部应用，即<code>Etcd</code>向<code>raft状态机</code>提交请求。比如外部<code>Client</code>发起的请求，经过<code>etcd</code>的处理后，就是通过<code>node.Propose</code>接口向<code>raft状态机</code>提交一个提案，这个接口就是将外部请求转换成<code>raft状态机</code>认识的提案消息，并通过 Channel 传递给驱动<code>raft状态机</code>运转的 Coroutine；</li>
+<li>提供驱动<code>raft状态机</code>运转的 Coroutine，其负责监听所有消息 Channel，一旦收到消息就会调用<code>raft状态机</code>处理消息的接口 <code>raft.Step</code> ，并接收<code>raft状态机</code>输出的 <code>Ready</code> 结构，将其通过 Channel 发给外部<code>etcd</code>的 Coroutine 处理；</li>
+</ul>
+<p><code>raft</code>包中的<code>node.go</code>和<code>rawnde.go</code>，实现了上面架构中的<code>node</code>模块的功能，提供<code>raft状态机</code>的对外接口和驱动 Coroutine；</p>
+<h3 id="Node"><a href="#Node" class="headerlink" title="Node"></a>Node</h3><p><code>node.go</code>中首先定义了<code>Node</code>接口，其中定义了<code>node</code>模块应该实现的所有函数接口，这些接口实际上就是提供给外部使用的驱动<code>raft状态机</code>运转的对外接口。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Node <span class="keyword">interface</span> &#123;</span><br><span class="line">	<span class="comment">//该接口用于递增raft状态机内部的逻辑时钟，即Raft中的定时器。逻辑时钟以tick为单位，</span></span><br><span class="line">    <span class="comment">//目前Raft中的定时器主要是选举超时和心跳超时两种。</span></span><br><span class="line">	Tick()</span><br><span class="line"></span><br><span class="line">	<span class="comment">//该接口用于将节点由Follower转为Candidate角色，并开始选举流程（该接口绕过了选举超时时间）；</span></span><br><span class="line">	Campaign(ctx context.Context) <span class="type">error</span></span><br><span class="line">	</span><br><span class="line">	<span class="comment">//该接口用于向raft状态机发起提案消息，追加新的日志条目。</span></span><br><span class="line">    <span class="comment">//注意proposals可能会默默的丢掉，调用者自己负责重试；</span></span><br><span class="line">	Propose(ctx context.Context, data []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//该接口用于触发配置变更。配置变更proposal和其他proposal一样，也有可能被默默丢掉；特别是</span></span><br><span class="line">	<span class="comment">//当Leader发现当前日志中有尚未完成提交的配置变更条目时，对于新的配置变更proposal，直接丢掉；</span></span><br><span class="line">	<span class="comment">//该接口接收pb.ConfChange(已废弃) 或 pb.ConfChangeV2 消息。后者就是joint consensus方法</span></span><br><span class="line">	<span class="comment">//对应的消息，允许一次变更多个成员。使用这种消息的前提是集群中所有节点的RAFT版本都认识V2的API；</span></span><br><span class="line">	ProposeConfChange(ctx context.Context, cc pb.ConfChangeI) <span class="type">error</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//该接口通过特定消息驱动raft状态机运转；</span></span><br><span class="line">	Step(ctx context.Context, msg pb.Message) <span class="type">error</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//该接口返回一个channel，通过该channel可以接收Ready结构。Ready就是当前状态的集合；</span></span><br><span class="line">	<span class="comment">//使用Node的Client在检索Ready中的状态后，需要调用Advance接口。</span></span><br><span class="line">	<span class="comment">//注意：在上一个Ready中的已提交日志和快照完成应用之前，不能应用下一个Ready中的已提交日志和快照；</span></span><br><span class="line">	Ready() &lt;-<span class="keyword">chan</span> Ready</span><br><span class="line"></span><br><span class="line">	<span class="comment">//该接口用于Client通知Node，其已经完成了上一个Ready的保存，可以接收下一个Ready了；</span></span><br><span class="line">	<span class="comment">//应用程序在将上一个Ready中的日志条目应用之后，应该调用本接口；</span></span><br><span class="line">	<span class="comment">//然而，作为一种优化手段，应用程序可以在应用命令期间调用该接口。比如上一个Ready中包含了一个快照，</span></span><br><span class="line">	<span class="comment">//应用快照需要耗费很长时间，为了能在不阻塞Raft进程的情况下继续接收Ready，他可以在应用快照完成之前调用本</span></span><br><span class="line">	<span class="comment">//接口；</span></span><br><span class="line">	Advance()</span><br><span class="line"></span><br><span class="line">	<span class="comment">//在调用ProposeConfChange接口触发配置变更后，Client可以调用本接口应用配置变更。当Client在Ready的</span></span><br><span class="line">	<span class="comment">//Ready.CommittedEntries中看到配置变更条目时，它就必须调用本接口。如果应用程序决定放弃本次配置变更，</span></span><br><span class="line">	<span class="comment">//即将其当做noop，则无需调用本接口；</span></span><br><span class="line">	<span class="comment">//本接口返回一个不透明的*pb.ConfState结构，表示当前的节点配置，该结构必须记录到快照中；</span></span><br><span class="line">	ApplyConfChange(cc pb.ConfChangeI) *pb.ConfState</span><br><span class="line"></span><br><span class="line">	<span class="comment">//Client调用本接口，驱动Leader将领导权转移到transferee节点；</span></span><br><span class="line">	TransferLeadership(ctx context.Context, lead, transferee <span class="type">uint64</span>)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Client调用本接口发起一个读请求。raft状态机处理读请求后，结果封装到ready结构。结果中包含了</span></span><br><span class="line">    <span class="comment">// 一个readIndex，只要etcd状态机应用日志条目超过了readIndex，则此时处理该读请求就可以满足</span></span><br><span class="line">    <span class="comment">// 线性一致性，从而可以安全的返回给外部了。注意：读请求也可能会丢失，所以需要Client进行重发；</span></span><br><span class="line">	ReadIndex(ctx context.Context, rctx []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//该接口返回raft状态机的当前状态，包括Term值，当前节点的角色、日志复制的进度，集群的节点配置等等；</span></span><br><span class="line">	Status() Status</span><br><span class="line"></span><br><span class="line">	<span class="comment">//本接口通知上次发送给某节点的消息不可达；</span></span><br><span class="line">	ReportUnreachable(id <span class="type">uint64</span>)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 该接口用于外部应用向Raft中的Leader报告snapshot的发送情况。参数id表示接收snapshot的Follower的ID，</span></span><br><span class="line">    <span class="comment">// SnapshotStatus表示snapshot的发送结果，可以是发送完成：SnapshotFinish，或者是</span></span><br><span class="line">    <span class="comment">// 发送失败：SnapshotFailure。只要snapshot在Leader向Follower传输过程中发生了错误，就需要调用该</span></span><br><span class="line">    <span class="comment">// 接口告知Leader。原因是：当Leader向Follower发送snapshot时，它就不会向其同步任何日志条目了，直到</span></span><br><span class="line">    <span class="comment">// Follower应用了该snapshot，并发回了响应消息为止。因此当传输发生了问题，Leader需要知道该问题才能</span></span><br><span class="line">    <span class="comment">// 采取后续的动作，否则Follower就卡主了。</span></span><br><span class="line">	ReportSnapshot(id <span class="type">uint64</span>, status SnapshotStatus)</span><br><span class="line"></span><br><span class="line">	<span class="comment">//调用本接口，通知Node停止raft状态机的运转；</span></span><br><span class="line">	Stop()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>node.go</code>中接着定义了实现了<code>Node</code>接口的<code>node</code>结构：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// node is the canonical implementation of the Node interface</span></span><br><span class="line"><span class="keyword">type</span> node <span class="keyword">struct</span> &#123;</span><br><span class="line">	propc      <span class="keyword">chan</span> msgWithResult</span><br><span class="line">	recvc      <span class="keyword">chan</span> pb.Message</span><br><span class="line">	confc      <span class="keyword">chan</span> pb.ConfChangeV2</span><br><span class="line">	confstatec <span class="keyword">chan</span> pb.ConfState</span><br><span class="line">	readyc     <span class="keyword">chan</span> Ready</span><br><span class="line">	advancec   <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">	tickc      <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">	done       <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">	stop       <span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">	status     <span class="keyword">chan</span> <span class="keyword">chan</span> Status</span><br><span class="line">	rn *RawNode</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Tick()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Campaign(ctx context.Context) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Propose(ctx context.Context, data []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Step(ctx context.Context, m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ProposeConfChange(ctx context.Context, cc pb.ConfChangeI) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Ready() &lt;-<span class="keyword">chan</span> Ready</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Advance()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ApplyConfChange(cc pb.ConfChangeI) *pb.ConfState</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Status() Status</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ReportUnreachable(id <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ReportSnapshot(id <span class="type">uint64</span>, status SnapshotStatus)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> TransferLeadership(ctx context.Context, lead, transferee <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ReadIndex(ctx context.Context, rctx []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Stop()</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br></pre></td></tr></table></figure>
+
+<p>从结构定义就可以看出，<code>node</code>结构大部分成员都是Channel。除了实现了<code>Node</code>接口的方法之外，<code>node</code>结构还实现了一个驱动<code>raft状态机</code>运转的 Coroutine，<code>node.run</code>方法就是该Coroutine的入口函数。</p>
+<p><code>node</code>结构实现的<code>Node</code>接口，本质上就是向对应的Channel发送消息，最终在<code>node.run</code>中接收各个Channel上的消息，然后调用相应的方法，驱动状态机的运转。这就实现了消息处理的串行化。</p>
+<hr>
+<h3 id="Rawnode"><a href="#Rawnode" class="headerlink" title="Rawnode"></a>Rawnode</h3><p><code>node.run</code>方法中，收到各个Channel上的消息后，需要驱动<code>raft状态机</code>的转动，这是通过调用<code>rawnode.go</code>中实现的<code>Rawnode</code>方法实现的，<code>node</code>结构中包含一个指向<code>Rawnode</code>的指针<code>rn</code>。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> raft <span class="keyword">struct</span> &#123;</span><br><span class="line">	id <span class="type">uint64</span></span><br><span class="line"></span><br><span class="line">	Term <span class="type">uint64</span></span><br><span class="line">	Vote <span class="type">uint64</span></span><br><span class="line"></span><br><span class="line">	readStates []ReadState</span><br><span class="line"></span><br><span class="line">	<span class="comment">// the log</span></span><br><span class="line">	raftLog *raftLog</span><br><span class="line"></span><br><span class="line">	maxMsgSize         <span class="type">uint64</span></span><br><span class="line">	maxUncommittedSize <span class="type">uint64</span></span><br><span class="line">	<span class="comment">// TODO(tbg): rename to trk.</span></span><br><span class="line">	prs tracker.ProgressTracker</span><br><span class="line"></span><br><span class="line">	state StateType</span><br><span class="line"></span><br><span class="line">	<span class="comment">// isLearner is true if the local raft node is a learner.</span></span><br><span class="line">	isLearner <span class="type">bool</span></span><br><span class="line"></span><br><span class="line">	msgs []pb.Message</span><br><span class="line"></span><br><span class="line">	<span class="comment">// the leader id</span></span><br><span class="line">	lead <span class="type">uint64</span></span><br><span class="line">	<span class="comment">// leadTransferee is id of the leader transfer target when its value is not zero.</span></span><br><span class="line">	<span class="comment">// Follow the procedure defined in raft thesis 3.10.</span></span><br><span class="line">	leadTransferee <span class="type">uint64</span></span><br><span class="line">	<span class="comment">// Only one conf change may be pending (in the log, but not yet</span></span><br><span class="line">	<span class="comment">// applied) at a time. This is enforced via pendingConfIndex, which</span></span><br><span class="line">	<span class="comment">// is set to a value &gt;= the log index of the latest pending</span></span><br><span class="line">	<span class="comment">// configuration change (if any). Config changes are only allowed to</span></span><br><span class="line">	<span class="comment">// be proposed if the leader&#x27;s applied index is greater than this</span></span><br><span class="line">	<span class="comment">// value.</span></span><br><span class="line">	pendingConfIndex <span class="type">uint64</span></span><br><span class="line">	<span class="comment">// an estimate of the size of the uncommitted tail of the Raft log. Used to</span></span><br><span class="line">	<span class="comment">// prevent unbounded log growth. Only maintained by the leader. Reset on</span></span><br><span class="line">	<span class="comment">// term changes.</span></span><br><span class="line">	uncommittedSize <span class="type">uint64</span></span><br><span class="line"></span><br><span class="line">	readOnly *readOnly</span><br><span class="line"></span><br><span class="line">	<span class="comment">// number of ticks since it reached last electionTimeout when it is leader</span></span><br><span class="line">	<span class="comment">// or candidate.</span></span><br><span class="line">	<span class="comment">// number of ticks since it reached last electionTimeout or received a</span></span><br><span class="line">	<span class="comment">// valid message from current leader when it is a follower.</span></span><br><span class="line">	electionElapsed <span class="type">int</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// number of ticks since it reached last heartbeatTimeout.</span></span><br><span class="line">	<span class="comment">// only leader keeps heartbeatElapsed.</span></span><br><span class="line">	heartbeatElapsed <span class="type">int</span></span><br><span class="line"></span><br><span class="line">	checkQuorum <span class="type">bool</span></span><br><span class="line">	preVote     <span class="type">bool</span></span><br><span class="line"></span><br><span class="line">	heartbeatTimeout <span class="type">int</span></span><br><span class="line">	electionTimeout  <span class="type">int</span></span><br><span class="line">	<span class="comment">// randomizedElectionTimeout is a random number between</span></span><br><span class="line">	<span class="comment">// [electiontimeout, 2 * electiontimeout - 1]. It gets reset</span></span><br><span class="line">	<span class="comment">// when raft changes its state to follower or candidate.</span></span><br><span class="line">	randomizedElectionTimeout <span class="type">int</span></span><br><span class="line">	disableProposalForwarding <span class="type">bool</span></span><br><span class="line"></span><br><span class="line">	tick <span class="function"><span class="keyword">func</span><span class="params">()</span></span></span><br><span class="line">	step stepFunc</span><br><span class="line"></span><br><span class="line">	logger Logger</span><br><span class="line"></span><br><span class="line">	<span class="comment">// pendingReadIndexMessages is used to store messages of type MsgReadIndex</span></span><br><span class="line">	<span class="comment">// that can&#x27;t be answered as new leader didn&#x27;t committed any log in</span></span><br><span class="line">	<span class="comment">// current term. Those will be handled as fast as first log is committed in</span></span><br><span class="line">	<span class="comment">// current term.</span></span><br><span class="line">	pendingReadIndexMessages []pb.Message</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> StateType <span class="type">uint64</span></span><br><span class="line"><span class="keyword">const</span> (</span><br><span class="line">	StateFollower StateType = <span class="literal">iota</span></span><br><span class="line">	StateCandidate</span><br><span class="line">	StateLeader</span><br><span class="line">	StatePreCandidate</span><br><span class="line">	numStates</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> SoftState <span class="keyword">struct</span> &#123;</span><br><span class="line">	Lead      <span class="type">uint64</span> <span class="comment">// must use atomic operations to access; keep 64-bit aligned.</span></span><br><span class="line">	RaftState StateType</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> HardState <span class="keyword">struct</span> &#123;</span><br><span class="line">	Term   <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,1,opt,name=term&quot; json:&quot;term&quot;`</span></span><br><span class="line">	Vote   <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,2,opt,name=vote&quot; json:&quot;vote&quot;`</span></span><br><span class="line">	Commit <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,3,opt,name=commit&quot; json:&quot;commit&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> RawNode <span class="keyword">struct</span> &#123;</span><br><span class="line">	raft       *raft</span><br><span class="line">	prevSoftSt *SoftState</span><br><span class="line">	prevHardSt pb.HardState</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Tick()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Campaign() <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Propose(data []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> ProposeConfChange(cc pb.ConfChangeI) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> ApplyConfChange(cc pb.ConfChangeI) *pb.ConfState</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Ready() Ready</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> HasReady() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Advance(rd Ready)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Status() Status</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> BasicStatus() BasicStatus</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> WithProgress(visitor <span class="function"><span class="keyword">func</span><span class="params">(id <span class="type">uint64</span>, typ ProgressType, pr tracker.Progress)</span></span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> ReportUnreachable(id <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> ReportSnapshot(id <span class="type">uint64</span>, status SnapshotStatus)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> TransferLeader(transferee <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> ReadIndex(rctx []<span class="type">byte</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>RawNode</code>结构中包含了指向<code>raft</code>结构的指针，所谓<code>raft状态机</code>，在代码中的体现就是<code>raft</code>结构及其定义的各种方法。</p>
+<p>除了包含<code>raft</code>，<code>RawNode</code>中还包含了当前<code>raft状态机</code>的一些状态，包括：</p>
+<ul>
+<li>无需持久化保存的<code>SoftState</code>，记录了当前集群的<code>Leader</code>的ID，以及当前节点的角色；</li>
+<li>需要持久化保存的<code>pb.HardState</code>。记录了节点的<code>Term</code>值，给哪个节点的投票，以及<code>commitIndex</code>；</li>
+</ul>
+<p><code>node.run</code>方法中收到各种消息后，一般就是调用相应的<code>RawNode</code>方法，而<code>RawNode</code>方法则是直接调用<code>raft</code>的方法。<code>RawNode</code>是非线程安全的<code>Node</code>，其中的大部分方法都与<code>Node</code>是重名的。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/11/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/06raft%E5%8C%85--log/" rel="prev" title="etcd_raft源码解析-06raft包--log">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-06raft包--log
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/" rel="next" title="【转载】单节点变更的问题和工程实践">
+      【转载】单节点变更的问题和工程实践 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9E%B6%E6%9E%84%E5%9B%9E%E9%A1%BE"><span class="nav-number">1.</span> <span class="nav-text">架构回顾</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Node"><span class="nav-number">2.</span> <span class="nav-text">Node</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Rawnode"><span class="nav-number">3.</span> <span class="nav-text">Rawnode</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

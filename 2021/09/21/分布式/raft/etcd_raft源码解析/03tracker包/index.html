@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="tracker包主要实现了节点日志追加和节点配置相关的底层逻辑。其中主要实现了三个数据结构：  Inflights结构：实现节点日志追加的流量控制； Progress结构：记录节点追加日志的“进度”； ProgressTracker结构：实现配置变更和日志追加的主要数据结构；   Inflights结构tracker包中的Inflights结构用于Leader对某个Follower发起的pb.Ms">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-03tracker包">
+<meta property="og:url" content="http://example.com/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="tracker包主要实现了节点日志追加和节点配置相关的底层逻辑。其中主要实现了三个数据结构：  Inflights结构：实现节点日志追加的流量控制； Progress结构：记录节点追加日志的“进度”； ProgressTracker结构：实现配置变更和日志追加的主要数据结构；   Inflights结构tracker包中的Inflights结构用于Leader对某个Follower发起的pb.Ms">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-09-20T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:40:06.564Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-03tracker包 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-03tracker包
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-09-21 00:00:00" itemprop="dateCreated datePublished" datetime="2021-09-21T00:00:00+08:00">2021-09-21</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:40:06" itemprop="dateModified" datetime="2022-06-28T09:40:06+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>tracker</code>包主要实现了节点日志追加和节点配置相关的底层逻辑。其中主要实现了三个数据结构：</p>
+<ul>
+<li><code>Inflights</code>结构：实现节点日志追加的流量控制；</li>
+<li><code>Progress</code>结构：记录节点追加日志的“进度”；</li>
+<li><code>ProgressTracker</code>结构：实现配置变更和日志追加的主要数据结构；</li>
+</ul>
+<hr>
+<h3 id="Inflights结构"><a href="#Inflights结构" class="headerlink" title="Inflights结构"></a>Inflights结构</h3><p><code>tracker</code>包中的<code>Inflights</code>结构用于<code>Leader</code>对某个<code>Follower</code>发起的<code>pb.MsgApp</code>（日志追加消息）做流量控制。其中记录了所有已发出，但未收到回复的日志条目索引信息，该结构主要针对的是<code>Progress</code>处于<code>StateReplicate</code>状态的节点。</p>
+<ul>
+<li><code>Leader</code>在发送<code>pb.MsgApp</code>消息之前，必须调用<code>Inflights.Full</code>方法，判断是否可以继续发送消息；</li>
+<li>发送<code>pb.MsgApp</code>消息时必须调用<code>Inflights.Add</code>方法记录最后一条日志条目的Index；收到<code>pb.MsgAppResp</code>响应消息后调用<code>Inflights.FreeLE</code>接口更新记录信息。<span id="more"></span></li>
+</ul>
+<h4 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Inflights <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// start就是buffer这个循环队列中首元素的索引</span></span><br><span class="line">	start <span class="type">int</span></span><br><span class="line">	<span class="comment">// count表示buffer中元素的个数</span></span><br><span class="line">	count <span class="type">int</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// size表示buffer能包含的元素最大个数，它与len(buffer)有关系，但不完全相同</span></span><br><span class="line">	size <span class="type">int</span></span><br><span class="line">    <span class="comment">//buffer被当做一个循环队列。buffer中的元素，记录的是发出的每个MsgApp消息中最后一条AppendEntry的索引。</span></span><br><span class="line">	buffer []<span class="type">uint64</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>Inflights</code>中比较有迷惑性的就是size成员：</p>
+<ul>
+<li>它在创建<code>Inflights</code>时指定，之后就再也不能更改；</li>
+<li>如果创建时，<code>size &gt; len(buffer)</code>，则随着消息的发送，<code>buffer</code>就需要扩容，这就需要调用<code>grow</code>方法，而该方法保证<code>len(buffer)</code>的最大值就是<code>size</code>。</li>
+<li>如果创建时，<code>size &lt; len(buffer)</code>，则<code>buffer</code>中<code>size</code>之外的空间根本就用不到；</li>
+</ul>
+<hr>
+<h4 id="函数和方法"><a href="#函数和方法" class="headerlink" title="函数和方法"></a>函数和方法</h4><h5 id="NewInflights"><a href="#NewInflights" class="headerlink" title="NewInflights"></a>NewInflights</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewInflights</span><span class="params">(size <span class="type">int</span>)</span></span> *Inflights</span><br></pre></td></tr></table></figure>
+
+<p>创建新的<code>Inflights</code>，只指定了其中的<code>size</code>属性；</p>
+<hr>
+<h5 id="Clone"><a href="#Clone" class="headerlink" title="Clone"></a>Clone</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> Clone() *Inflights</span><br></pre></td></tr></table></figure>
+
+<p>根据<code>in</code>，复制一个完全相同的新<code>Inflights</code>，新<code>Inflights</code>与<code>in</code>不会有共享内存的情况。</p>
+<p><font color=red>注：</font>这里复制<code>buffer</code>时，使用的是这种技巧：<code>ins.buffer = append([]uint64(nil), in.buffer...)</code></p>
+<hr>
+<h5 id="Add"><a href="#Add" class="headerlink" title="Add"></a>Add</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> Add(inflight <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>Leader</code>向<code>Follower</code>发送<code>pb.MsgApp</code>消息时，在<code>raft.maybeSendAppend</code>方法中，如果该<code>Follower</code>对应的<code>Progress</code>状态是<code>StateReplicate</code>，则会调用该接口。</p>
+<p>调用时的参数是<code>Leader</code>要发送的日志中，最后一个日志条目的<code>Index</code>。该方法的逻辑是：</p>
+<ul>
+<li>该接口内部调用<code>Inflights.Full()</code>如果返回<code>true</code>，则直接<code>panic</code>；</li>
+<li>要插入的位置<code>next</code>就是<code>start+count</code>，如果<code>next</code>超过了<code>size</code>，则将<code>next -= size</code>，最后将<code>count++</code>;</li>
+<li>如果<code>next</code>大于等于<code>len(in.buffer)</code>，则需要调用<code>grow</code>进行扩容；</li>
+</ul>
+<hr>
+<h5 id="grow"><a href="#grow" class="headerlink" title="grow"></a>grow</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> grow()</span><br></pre></td></tr></table></figure>
+
+<p>对<code>buffer</code>进行扩容。但是保证<code>len(buffer)</code>小于等于<code>size</code>。</p>
+<hr>
+<h5 id="FreeLE和FreeFirstOne"><a href="#FreeLE和FreeFirstOne" class="headerlink" title="FreeLE和FreeFirstOne"></a>FreeLE和FreeFirstOne</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> FreeLE(to <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> FreeFirstOne()</span><br></pre></td></tr></table></figure>
+
+<p>在<code>stepLeader</code>回调函数中，<code>Leader</code>收到<code>Follower</code>对于<code>pb.MsgApp</code>的成功响应消息，即<code>pb.MsgAppResp</code>消息后，并且当前该<code>Follower</code>节点对应的<code>Progress</code>状态是<code>traceker.StateReplicate</code>时，调用<code>Inflights.FreeLE</code>方法，参数是消息中的 Index属性；</p>
+<p><code>FreeLE</code>中的<code>LE</code>表示<code>Less Equal</code>。该接口就是当收到<code>MsgApp</code>对于<code>AppendEntry</code>索引为<code>to</code>的回复时，调用该接口，将<code>buffer</code>中，所有小于等于<code>to</code>的元素清除（这里不会对实际元素做任何改动，只是修改<code>start</code>），并且调整<code>start</code>, <code>count</code>。</p>
+<p><code>FreeFirstOne</code>就是调用<code>FreeLE</code>，将<code>start</code>元素排除。在<code>stepLeader</code>回调函数中，Leader收到Follower对于心跳消息的回复，即<code>pb.MsgHeartbeatResp</code>消息后，如果该Follower对应的<code>Progress</code>状态是<code>traceker.StateReplicate</code>，并且该节点对应的<code>Inflights.Full</code>为true，则调用该方法，释放一个<code>slot</code>；<font color=red>奇怪的点</font>，这个写法可以追溯到<code>commit: 4a64373</code>，即首次添加<code>Inflights</code>时就存在了；</p>
+<hr>
+<h5 id="Full"><a href="#Full" class="headerlink" title="Full"></a>Full</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> Full() <span class="type">bool</span></span><br></pre></td></tr></table></figure>
+
+<p>根据<code>count</code>是否等于<code>size</code>，判断<code>Inflights</code>是否已满，不许再发新消息了；</p>
+<p>在<code>raft.maybeSendAppend</code>方法，即<code>Leader</code>向<code>Follower</code>发送<code>pb.MsgApp</code>消息时调用，如果该方法返回<code>true</code>，则不会发送<code>pb.MsgApp</code>消息；</p>
+<hr>
+<h5 id="Count"><a href="#Count" class="headerlink" title="Count"></a>Count</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> Count() <span class="type">int</span></span><br></pre></td></tr></table></figure>
+
+<p>返回<code>count</code>，即当前<code>buffer</code>中记录的<code>MsgApp</code>消息个数；</p>
+<hr>
+<h5 id="reset"><a href="#reset" class="headerlink" title="reset"></a>reset</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(in *Inflights)</span></span> reset()</span><br></pre></td></tr></table></figure>
+
+<p>将<code>count</code>和<code>start</code>重置为<code>0</code>。</p>
+<hr>
+<h4 id="附注"><a href="#附注" class="headerlink" title="附注"></a>附注</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">	smallSizeIn := &amp;Inflights&#123;</span><br><span class="line">		size: <span class="number">5</span>,</span><br><span class="line">		count: <span class="number">0</span>,</span><br><span class="line">		start: <span class="number">0</span>,</span><br><span class="line">		buffer: <span class="built_in">make</span>([]<span class="type">uint64</span>, <span class="number">10</span>),</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i &lt; <span class="number">5</span>; i++ &#123;</span><br><span class="line">		smallSizeIn.Add(<span class="type">uint64</span>(i))</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	smallSizeIn.FreeLE(<span class="number">3</span>)</span><br><span class="line"></span><br><span class="line">	smallSizeIn.Add(<span class="number">6</span>)</span><br><span class="line">	smallSizeIn.Add(<span class="number">7</span>)</span><br><span class="line">	</span><br><span class="line"><span class="comment">//此时smallSizeIn是 &amp;&#123;start:4 count:3 size:5 buffer:[6 7 2 3 4 0 0 0 0 0]&#125;</span></span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="Progress结构"><a href="#Progress结构" class="headerlink" title="Progress结构"></a>Progress结构</h3><p><code>tracker</code>包中的<code>Progress</code>结构记录了节点追加日志的“进度”，集群中的每个节点（<code>Leader</code>，<code>Follower</code>，<code>Learner</code>）都有对应的<code>Progress</code>结构。<code>Leader</code>会根据<code>Progress</code>里的信息来决定每次同步给<code>Follower</code>（包括<code>Learner</code>）的日志项。<code>Progresss</code>本身也可以看做是一个状态机，他有三种状态：</p>
+<ul>
+<li><code>StateProbe</code>：这表示该<code>Follower</code>的<code>lastIndex</code>尚不明确，需要探测。<code>Follower</code>对应的<code>Progress</code>处于这种状态时，针对该<code>Follower</code>，<code>Leader</code>只能允许一个<code>pb.MsgApp</code>消息处于”Inflight”状态（已发送但尚未收到回复的状态），收到<code>pb.MsgApp</code>的响应消息后根据其返回信息确定下一次要发的<code>pb.MsgApp</code>消息；</li>
+<li><code>StateReplicate</code>：这种状态下，<code>Leader</code>会批量的（<code>pipeline</code>方式）发送<code>pb.MsgApp</code>消息给<code>Follower</code>；这样就能尽快的将日志复制到<code>Follower</code>中；</li>
+<li><code>StateSnapshot</code>：这种状态下，<code>Leader</code>会发送<code>snpashot</code>给<code>Follower</code>；</li>
+</ul>
+<h4 id="数据结构-1"><a href="#数据结构-1" class="headerlink" title="数据结构"></a>数据结构</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Progress <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">//Match表示已经复制到Follower的日志最大索引；</span></span><br><span class="line">	<span class="comment">//Next表示下一次要Append到Follower的日志起始索引，StateProbe状态下Next一般等于Match + 1；</span></span><br><span class="line">    <span class="comment">//StateReplicate状态下Next可能会大于Match+1，因为StateReplicate状态下可以有多个pb.MsgApp消息处于</span></span><br><span class="line">    <span class="comment">//&quot;Inflight&quot;状态;</span></span><br><span class="line">	Match, Next <span class="type">uint64</span></span><br><span class="line">	</span><br><span class="line">	<span class="comment">//Progress当前状态</span></span><br><span class="line">	State StateType</span><br><span class="line"></span><br><span class="line">	<span class="comment">// PendingSnapshot用于StateSnapshot状态，表示Snapshot中最后日志条目的索引</span></span><br><span class="line">	PendingSnapshot <span class="type">uint64</span></span><br><span class="line">	</span><br><span class="line">    <span class="comment">//节点加入集群时在Changer.initProgress初始化节点对应的Progress结构时，该属性被置为了true；</span></span><br><span class="line">    <span class="comment">//Leader如果能从Follower处收到pb.MsgAppResp或pb.MsgHeartbeatResp响应消息时，该属性会被置为true；</span></span><br><span class="line">    <span class="comment">//Leader每隔一段时间就会进行CheckQuorum检查，即检查这段时间内集群中是否Majority的节点的</span></span><br><span class="line">    <span class="comment">//RecentActive为true（即当前Leader发出的消息是能得到响应的），在CheckQuorum流程的最后，会把所有节点的</span></span><br><span class="line">    <span class="comment">//Progress.RecentActive置为false，以便为下次CheckQuorum做准备；</span></span><br><span class="line">	RecentActive <span class="type">bool</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//该字段用于StateProbe状态。表示是否已经发送了AppendEntry消息，并且尚未收到回复;</span></span><br><span class="line">    <span class="comment">//ProbeSent为true的情况下就不能继续发送AppendEntry消息</span></span><br><span class="line">	ProbeSent <span class="type">bool</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//用于流量控制</span></span><br><span class="line">	Inflights *Inflights</span><br><span class="line"></span><br><span class="line">	<span class="comment">// 表示Follower是否是Learner</span></span><br><span class="line">	IsLearner <span class="type">bool</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h4 id="函数和方法-1"><a href="#函数和方法-1" class="headerlink" title="函数和方法"></a>函数和方法</h4><h5 id="ResetState"><a href="#ResetState" class="headerlink" title="ResetState"></a>ResetState</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> ResetState(state StateType) </span><br></pre></td></tr></table></figure>
+
+<p><code>Progress</code>进行状态转换时（即<code>Progress.BecomeProbe</code>、<code>Progress.BecomeReplicate</code>、<code>Progress.BecomeSnapshot</code>方法中）调用本方法。该函数设置<code>State</code>属性，同时重置<code>ProbeSent、PendingSnapshot</code>和<code>Inflights</code>为<code>0</code>或者<code>false</code>；</p>
+<hr>
+<h5 id="ProbeAcked"><a href="#ProbeAcked" class="headerlink" title="ProbeAcked"></a>ProbeAcked</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> ProbeAcked()</span><br></pre></td></tr></table></figure>
+
+<p>当<code>Leader</code>自身追加日志时，或者<code>Leader</code>收到<code>Follower</code>对于<code>pb.MsgApp</code>消息的成功回复时，就会调用调用本方法。该函数将<code>ProbeSent</code>置为<code>false</code>；</p>
+<hr>
+<h5 id="BecomeProbe"><a href="#BecomeProbe" class="headerlink" title="BecomeProbe"></a>BecomeProbe</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> BecomeProbe()</span><br></pre></td></tr></table></figure>
+
+<p>状态转移到<code>StateProbe</code>，并设置<code>Next</code>属性。该函数的逻辑是：</p>
+<ul>
+<li>调用<code>Progress.ResetState</code>重置状态；</li>
+<li>如果当前状态为<code>StateSnapshot</code>，则将<code>Next</code>置为<code>max(pr.Match+1, pendingSnapshot+1)</code>；</li>
+<li>否则，将<code>Next</code>置为<code>Match+1</code>；</li>
+</ul>
+<p>该方法的调用时机是：</p>
+<ul>
+<li>在<code>stepLeader</code>函数中，<code>Leader</code>收到<code>Follower</code>关于<code>pb.MsgApp</code>消息的失败回复，并且该失败回复不是过期消息（即<code>Progress.MaybeDecrTo</code>返回<code>true</code>），并且当前状态是<code>StateReplicate</code>，则调用该方法将状态转为<code>StateProbe</code>；</li>
+<li>在<code>stepLeader</code>函数中，<code>Leader</code>收到<code>Follower</code>关于<code>pb.MsgApp</code>消息的成功回复后，如果该<code>Follower</code>对应的<code>Progress</code>当前状态为<code>StateSnapshot</code>，则先调用本方法将状态转为<code>StateProbe</code>，然后调用<code>Progress.BecomeReplicate</code>方法将状态转为<code>StateReplicate</code>；</li>
+<li>在<code>stepLeader</code>函数中，<code>Leader</code>如果收到<code>pb.MsgUnreachable</code>消息，并且该<code>Follower</code>对应的<code>Progress</code>当前状态为<code>StateReplicate</code>，则调用该方法将状态转为<code>StateProbe</code>；<font color=red><code>pb.MsgUnreachable</code>消息</font>表示<code>Leader</code>向<code>Follower</code>发送日志条目或snapshot时出现了问题，外部模块会调用<code>node.ReportUnreachable</code>通知<code>etcd/raft</code>，在<code>stepLeader</code>回调函数中，收到该消息后，如果<code>Follower</code>对应的<code>Progress</code>正处于<code>StateReplicate</code>状态，则调用<code>Progress.BecomeProbe</code>转为<code>StateProbe</code>状态；</li>
+<li>在<code>stepLeader</code>函数中，<code>Leader</code>如果收到<code>pb.MsgSnapStatus</code>消息，即快照在网络上的发送结果，不管快照是否发送成功，都会调用该方法将状态转为<code>StateProbe</code>；</li>
+</ul>
+<hr>
+<h5 id="BecomeReplicate"><a href="#BecomeReplicate" class="headerlink" title="BecomeReplicate"></a>BecomeReplicate</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> BecomeReplicate()</span><br></pre></td></tr></table></figure>
+
+<p>状态转移到<code>StateReplicate</code>，设置<code>Next</code>为<code>Match+1</code>。该函数的调用时机是：</p>
+<ul>
+<li>在<code>raft.becomeLeader</code>方法中，即<code>Follower</code>转为<code>Leader</code>之时，对于自身对应的<code>Progress</code>结构会调用本方法，即<code>Leader</code>本身都是处于<code>StateReplicate</code>的；</li>
+<li>在<code>stepLeader</code>函数中，<code>Leader</code>收到<code>Follower</code>关于<code>pb.MsgApp</code>消息的成功回复后，如果该<code>Follower</code>对应的<code>Progress</code>当前状态为<code>StateProbe</code>，则调用本方法；</li>
+<li>在<code>stepLeader</code>函数中，<code>Leader</code>收到<code>Follower</code>关于<code>pb.MsgApp</code>消息的成功回复后，如果该<code>Follower</code>对应的<code>Progress</code>当前状态为<code>StateSnapshot</code>，则先调用<code>Progress.BecomeProbe</code>方法将状态转为<code>StateProbe</code>，然后调用本方法将状态转为<code>StateReplicate</code>；</li>
+</ul>
+<hr>
+<h5 id="BecomeSnapshot"><a href="#BecomeSnapshot" class="headerlink" title="BecomeSnapshot"></a>BecomeSnapshot</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> BecomeSnapshot(snapshoti <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>状态转移到<code>StateSnapshot</code>，并且将<code>PendingSnapshot</code>设置为<code>snapshoti</code>，即<code>snapshot</code>最后日志条目的索引。</p>
+<p>该函数的调用时机是：</p>
+<ul>
+<li><code>Leader</code>在向<code>Follower</code>追加日志条目时，即在<code>raft.maybeSendAppend</code>方法中，需要根据<code>Follower</code>对应的<code>Progress.Next</code>，调用<code>r.raftLog.term(pr.Next - 1)</code>获取<code>preLogTerm</code>，调用<code>r.raftLog.entries(pr.Next, r.maxMsgSize)</code>获取日志条目。如果<code>raftLog.term</code>或<code>raftLog.entries</code>方法返回的err不为<code>nil</code>，说明<code>pr.Next-1</code>对应的日志条目在本地日志中已经找不到了，已经压缩到快照中去了，所以此时会调用<code>Progress.BecomeSnapshot</code>转为<code>StateSnapshot</code>状态，并向<code>Follower</code>发送<code>snapshot</code>；</li>
+</ul>
+<hr>
+<h5 id="MaybeUpdate"><a href="#MaybeUpdate" class="headerlink" title="MaybeUpdate"></a>MaybeUpdate</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> MaybeUpdate(n <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>该方法尝试更新<code>Progress.Match</code>和<code>Progress.Next</code>；</p>
+<p>当<code>Leader</code>收到<code>Follower</code>关于<code>pb.MsgApp</code>消息的成功回复时，或者<code>Leader</code>自己追加完本地日志时调用该函数：</p>
+<ul>
+<li><code>Leader</code>收到<code>Follower</code>对于<code>pb.MsgApp</code>消息的成功回复时，参数<code>n</code>就表示<code>Follower</code>追加日志成功后的<code>lastIndex</code>，</li>
+<li><code>Leader</code>追加本地日志时，<code>n</code>表示追加日志后最新的<code>lastIndex</code>；</li>
+</ul>
+<p>正常情况下，<code>Progress.Match</code>小于<code>n</code>，因此将<code>Progress.Match</code>更新为<code>n</code>，调用<code>ProbeAcked</code>将<code>ProbeSent</code>置为<code>false</code>；然后将<code>Progress.Next</code>更新为<code>max(Progress.Next, n+1)</code>（如果处于<code>StateReplicate</code>状态，因有多个<code>pb.MsgApp</code>消息处于”Inflight”状态，所以一般<code>n</code>要小于<code>Progress.Next</code>），并返回<code>true</code>。如果<code>n</code>小于等于<code>Progress.Match</code>，说明这是过期消息，返回<code>false</code>；</p>
+<hr>
+<h5 id="OptimisticUpdate"><a href="#OptimisticUpdate" class="headerlink" title="OptimisticUpdate"></a>OptimisticUpdate</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> OptimisticUpdate(n <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>该函数直接将<code>Progress.Next</code>置为<code>n+1</code>。</p>
+<p>在<code>raft.maybeSendAppend</code>方法中，<code>Leader</code>向<code>Follower</code>发送<code>pb.MsgApp</code>消息时，如果<code>Follower</code>对应的<code>Progress</code>处于<code>StateReplicate</code>状态，调用该方法。其中的参数<code>n</code>为此次要发送的<code>pb.MsgApp</code>消息中最后一条日志条目的Index，后续在未收到<code>pb.MsgApp</code>消息的响应时，也能根据<code>Progress.Next</code>继续发送新的<code>pb.MsgApp</code>消息。所以，处于<code>StateReplicate</code>状态时，Index在<code>(Progress.Match, Progress.Next)</code>之前的日志都处于”Inflight”状态。</p>
+<hr>
+<h5 id="MaybeDecrTo"><a href="#MaybeDecrTo" class="headerlink" title="MaybeDecrTo"></a>MaybeDecrTo</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> MaybeDecrTo(rejected, matchHint <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>当<code>Leader</code>收到<code>Follower</code>对于<code>pb.MsgApp</code>消息的失败回复时，调动该函数，用于设置<code>Progress.Next</code>。</p>
+<ul>
+<li><code>rejected</code>表示<code>Follower</code>对于哪条日志的失败回复，实际上就是<code>pb.MsgApp</code>消息中的<code>preLogIndex</code>字段，<code>matchHint</code>是<code>Leader</code>在<code>pb.MsgApp</code>消息的失败回复中的<code>RejectHint</code>基础上，调用<code>raftLog.findConflictByTerm</code>根据自己的日志匹配出的下一次要发送的日志条目的<code>preIndex</code>，它用于设置<code>Next</code>。</li>
+<li>该函数返回<code>false</code>，表示<code>rejected</code>是过期消息，<code>Leader</code>不会继续处理；返回<code>true</code>，则<code>Leader</code>会尝试继续发送<code>pb.MsgApp</code>消息；</li>
+</ul>
+<p>该函数的逻辑：</p>
+<ul>
+<li>如果当前状态为<code>StateReplicate</code>，如果<code>rejected</code>小于等于<code>Match</code>，说明是过期消息，直接返回<code>false</code>；如果不是过期消息，则将<code>Next</code>置为<code>Match+1</code>。这里根据注释，实际上用<code>matchHint</code>，而非<code>Match</code>应该更好。最后返回<code>true</code>；</li>
+<li>剩下的逻辑表示状态为<code>StateProbe</code>，如果<code>rejected</code>不是<code>Next-1</code>，说明是过期消息，直接返回<code>false</code>；如果不是过期消息，则将<code>Next</code>置为<code>max(min(rejected, matchHint+1), 1)</code>，将<code>ProbeSent</code>置为<code>false</code>，返回<code>true</code>；</li>
+</ul>
+<hr>
+<h5 id="IsPaused"><a href="#IsPaused" class="headerlink" title="IsPaused"></a>IsPaused</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> IsPaused() <span class="type">bool</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>Leader</code>在向<code>Follower</code>追加日志条目时，即在<code>raft.maybeSendAppend</code>方法中调用该方法，判断是否需要暂停向<code>Follower</code>发送<code>pb.MsgApp</code>消息：</p>
+<ul>
+<li>如果状态为<code>StateProbe</code>，则返回<code>Progress.ProbeSent</code>的值；</li>
+<li>如果状态为<code>StateReplicate</code>，则返回<code>Inflights.Full()</code>的值；</li>
+<li>如果状态为<code>StateSnapshot</code>，则直接返回<code>true</code>；</li>
+</ul>
+<hr>
+<h3 id="ProgressTracker结构"><a href="#ProgressTracker结构" class="headerlink" title="ProgressTracker结构"></a>ProgressTracker结构</h3><p><code>tracker</code>包中的<code>tracker.go</code>主要实现了支撑配置变更和日志追加的底层结构<code>Config</code>和<code>ProgressTracker</code>。</p>
+<h4 id="Config结构"><a href="#Config结构" class="headerlink" title="Config结构"></a>Config结构</h4><p><code>Config</code>表示系统中节点配置相关的属性，它的定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Config <span class="keyword">struct</span> &#123;</span><br><span class="line">    <span class="comment">//表示系统当前的Voters节点集合。为了适配Joint Consensus配置变更算法，所以这里使用</span></span><br><span class="line">    <span class="comment">//quorum.JointConfig表示系统中的Voters节点; JointConfig实际类型是[2]MajorityConfig，即表示Cold,new; </span></span><br><span class="line">    <span class="comment">//这里的节点主要是指系统中有投票权的节点，不包含Learner;</span></span><br><span class="line">	Voters quorum.JointConfig</span><br><span class="line">    </span><br><span class="line">    <span class="comment">//AutoLeave为true，表示配置变更时，Cold,new配置会自动过渡到Cnew配置；</span></span><br><span class="line">    <span class="comment">//为false的话，则需要手动介入才会由Cold,new过渡到Cnew;</span></span><br><span class="line">	AutoLeave <span class="type">bool</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment">//Learners是系统中Learner节点的ID形成的集合；</span></span><br><span class="line">    <span class="comment">//不变式：Learners ∩ Voters == ∅.</span></span><br><span class="line">	Learners <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">//LearnersNext用于临时存放Voters中降级为Learner的节点ID；</span></span><br><span class="line">    <span class="comment">//在节点配置变更时，在Joint Consensus过程中，被降级的Voter不能直接加入到Learners中，</span></span><br><span class="line">    <span class="comment">//否则就会破坏不变式：Learners ∩ Voters == ∅. 比如开始时的配置是：</span></span><br><span class="line">	<span class="comment">//   voters:   &#123;1 2 3&#125;,     learners: &#123;&#125;</span></span><br><span class="line">	<span class="comment">//现在要把节点3降级，进入到joint configuration状态, 所以，配置是：</span></span><br><span class="line">	<span class="comment">//   voters:   &#123;1 2&#125; &amp; &#123;1 2 3&#125;,   learners: &#123;&#125;,    next_learners: &#123;3&#125;</span></span><br><span class="line">	<span class="comment">//最后再过渡到最终状态：</span></span><br><span class="line">	<span class="comment">//   voters:   &#123;1 2&#125;,    learners: &#123;3&#125;,    next_learners: &#123;&#125;</span></span><br><span class="line">	LearnersNext <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="keyword">struct</span>&#123;&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h4 id="ProgressTracker结构-1"><a href="#ProgressTracker结构-1" class="headerlink" title="ProgressTracker结构"></a>ProgressTracker结构</h4><p><code>ProgressTracker</code>结构是实现配置变更和日志追加的主要数据结构。其中包含：</p>
+<ul>
+<li>集群中所有的节点配置，即<code>Config</code>结构；</li>
+<li>每个节点的日志追加进度，即所有节点的<code>Progress</code>结构；</li>
+<li>记录选举时的投票结果，即<code>Votes</code>这个<code>map</code>；</li>
+</ul>
+<p>它的定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ProgressTracker <span class="keyword">struct</span> &#123;</span><br><span class="line">    Config</span><br><span class="line"></span><br><span class="line">    <span class="comment">//ProgressMap是progress.go中定义的类型：type ProgressMap map[uint64]*Progress.</span></span><br><span class="line">    <span class="comment">//该map以节点ID为key，以*Progress为value，即表示每个节点的Append情况；</span></span><br><span class="line">	Progress ProgressMap</span><br><span class="line"></span><br><span class="line">    <span class="comment">//该map以节点ID为key，表示每个节点的投票情况</span></span><br><span class="line">	Votes <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="type">bool</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//用于设置Progress中的Inflights.size</span></span><br><span class="line">	MaxInflight <span class="type">int</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h4 id="函数和方法-2"><a href="#函数和方法-2" class="headerlink" title="函数和方法"></a>函数和方法</h4><h5 id="MakeProgressTracker函数"><a href="#MakeProgressTracker函数" class="headerlink" title="MakeProgressTracker函数"></a>MakeProgressTracker函数</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">MakeProgressTracker</span><span class="params">(maxInflight <span class="type">int</span>)</span></span> ProgressTracker </span><br></pre></td></tr></table></figure>
+
+<p>创建一个新的<code>ProgressTracker</code>。</p>
+<p>实现中，在创建<code>ProgressTracker.Config.Voters</code>时，该数组仅仅包含一个元素<code>Voters[0]</code>，而<code>Voters[1]</code>为<code>nil</code>；</p>
+<hr>
+<h5 id="IsSingleton方法"><a href="#IsSingleton方法" class="headerlink" title="IsSingleton方法"></a>IsSingleton方法</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> IsSingleton() <span class="type">bool</span></span><br></pre></td></tr></table></figure>
+
+<p>判断当前系统是否为单节点系统，即仅仅包含<code>Leader</code>自身。</p>
+<p>该方法返回<code>len(p.Voters[0]) == 1 &amp;&amp; len(p.Voters[1]) == 0</code> 的结果；</p>
+<hr>
+<h5 id="matchAckIndexer类型"><a href="#matchAckIndexer类型" class="headerlink" title="matchAckIndexer类型"></a>matchAckIndexer类型</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> matchAckIndexer <span class="keyword">map</span>[<span class="type">uint64</span>]*Progress</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> _ quorum.AckedIndexer = matchAckIndexer(<span class="literal">nil</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// AckedIndex implements IndexLookuper.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l matchAckIndexer)</span></span> AckedIndex(id <span class="type">uint64</span>) (quorum.Index, <span class="type">bool</span>) &#123;</span><br><span class="line">	pr, ok := l[id]</span><br><span class="line">	<span class="keyword">if</span> !ok &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>, <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> quorum.Index(pr.Match), <span class="literal">true</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>matchAckIndexer</code>实际类型是<code>map[uint64]*Progress</code>，定义该类型主要是为了适配<code>quorum.AckedIndexer</code>接口。</p>
+<p>该类型实现了<code>AckedIndexer</code>接口的<code>AckedIndex</code>方法，该方法返回特定节点的<code>Progress.Match</code>，即该节点已经<code>Append</code>成功的最大日志Index；</p>
+<p>该类型是<code>tracker</code>包的私有类型，定义该类型主要是为了方便调用<code>JointConfig</code>的<code>CommittedIndex</code>方法；</p>
+<hr>
+<h5 id="Committed方法"><a href="#Committed方法" class="headerlink" title="Committed方法"></a>Committed方法</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> Committed() <span class="type">uint64</span></span><br></pre></td></tr></table></figure>
+
+<p><code>Leader</code>调用该函数得到集群当前Majority节点的最大<code>CommitIndex</code>。该方法就是调用<code>JointConfig.CommittedIndex</code>方法，得到<code>Voters</code>中，<code>Majority</code>节点都已<code>Append</code>成功（即<code>Progress.Match</code>）的索引最大值；</p>
+<hr>
+<h5 id="Visit方法"><a href="#Visit方法" class="headerlink" title="Visit方法"></a>Visit方法</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> Visit(f <span class="function"><span class="keyword">func</span><span class="params">(id <span class="type">uint64</span>, pr *Progress)</span></span>)</span><br></pre></td></tr></table></figure>
+
+<p>该方法就是先将<code>p.Progress</code>按照<code>节点ID</code>从小到大的顺序进行排序，然后依次在每个元素上调用函数<code>f</code>。</p>
+<p>实现中，为了性能优化，使用了<code>MajorityConfig.CommittedIndex</code>方法中，栈上分配<code>Slice</code>以及插入排序的方法；</p>
+<hr>
+<h5 id="QuorumActive方法"><a href="#QuorumActive方法" class="headerlink" title="QuorumActive方法"></a>QuorumActive方法</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> QuorumActive() <span class="type">bool</span></span><br></pre></td></tr></table></figure>
+
+<p>该函数判断<code>p.Progress</code>中，是否有<code>Majority</code>个节点都是<code>RecentActive</code>的；</p>
+<p>该方法通过调用<code>p.Visit</code>方法，以及<code>JointConfig.VoteResult</code>方法实现。所以<code>JointConfig.VoteResult</code>方法不止用于统计选票。</p>
+<p>该方法是<code>Leader</code>进行<code>CheckQuorum</code>检查的核心函数，主要用于判断<code>Leader</code>一段时间内向所有<code>Follower</code>发出的消息是否得到了响应，如果有超过Majority的节点都响应了，则当前<code>Leader</code>继续维持其领导地位，否则说明该<code>Leader</code>被分区隔离了，该<code>Leader</code>会主动降级为<code>Follower</code>，具体可以参考《15CheckQuorum和心跳消息》。</p>
+<hr>
+<h5 id="VoterNodes方法"><a href="#VoterNodes方法" class="headerlink" title="VoterNodes方法"></a>VoterNodes方法</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> VoterNodes() []<span class="type">uint64</span></span><br></pre></td></tr></table></figure>
+
+<p>该方法，按照从小到大的顺序，返回<code>p.Voters</code>中的<code>节点ID</code>形成的<code>Slice</code>；</p>
+<hr>
+<h5 id="LearnerNodes方法"><a href="#LearnerNodes方法" class="headerlink" title="LearnerNodes方法"></a>LearnerNodes方法</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> LearnerNodes() []<span class="type">uint64</span></span><br></pre></td></tr></table></figure>
+
+<p>该方法，按照从小到大的顺序，返回<code>p.Learners</code>中的<code>节点ID</code>形成的<code>Slice</code>；</p>
+<hr>
+<h5 id="选票相关ResetVotes-RecordVote-TallyVotes"><a href="#选票相关ResetVotes-RecordVote-TallyVotes" class="headerlink" title="选票相关ResetVotes, RecordVote, TallyVotes"></a>选票相关ResetVotes, RecordVote, TallyVotes</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> ResetVotes()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> RecordVote(id <span class="type">uint64</span>, v <span class="type">bool</span>)</span><br><span class="line"><span class="number">67</span> <span class="function"><span class="keyword">func</span> <span class="params">(p *ProgressTracker)</span></span> TallyVotes() (granted <span class="type">int</span>, rejected <span class="type">int</span>, _ quorum.VoteResult)</span><br></pre></td></tr></table></figure>
+
+<p><code>ResetVotes</code>方法用于重置<code>p.Votes</code>，以便接下来的选票统计和唱票；</p>
+<p><code>RecordVote</code>方法用于将节点的投票结果记录到<code>p.Votes</code>中；</p>
+<p><code>TallyVotes</code>通过调用<code>p.Voters.VoteResult</code>方法，返回投票结果，同时返回投票中的<code>granted</code>和<code>rejected</code>数量；</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/" rel="prev" title="etcd_raft源码解析-02quorum包">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-02quorum包
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/" rel="next" title="raft大论文翻译-01引言">
+      raft大论文翻译-01引言 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Inflights%E7%BB%93%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">Inflights结构</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">1.1.</span> <span class="nav-text">数据结构</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%92%8C%E6%96%B9%E6%B3%95"><span class="nav-number">1.2.</span> <span class="nav-text">函数和方法</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#NewInflights"><span class="nav-number">1.2.1.</span> <span class="nav-text">NewInflights</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Clone"><span class="nav-number">1.2.2.</span> <span class="nav-text">Clone</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Add"><span class="nav-number">1.2.3.</span> <span class="nav-text">Add</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#grow"><span class="nav-number">1.2.4.</span> <span class="nav-text">grow</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#FreeLE%E5%92%8CFreeFirstOne"><span class="nav-number">1.2.5.</span> <span class="nav-text">FreeLE和FreeFirstOne</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Full"><span class="nav-number">1.2.6.</span> <span class="nav-text">Full</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Count"><span class="nav-number">1.2.7.</span> <span class="nav-text">Count</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#reset"><span class="nav-number">1.2.8.</span> <span class="nav-text">reset</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%99%84%E6%B3%A8"><span class="nav-number">1.3.</span> <span class="nav-text">附注</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Progress%E7%BB%93%E6%9E%84"><span class="nav-number">2.</span> <span class="nav-text">Progress结构</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84-1"><span class="nav-number">2.1.</span> <span class="nav-text">数据结构</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%92%8C%E6%96%B9%E6%B3%95-1"><span class="nav-number">2.2.</span> <span class="nav-text">函数和方法</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#ResetState"><span class="nav-number">2.2.1.</span> <span class="nav-text">ResetState</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#ProbeAcked"><span class="nav-number">2.2.2.</span> <span class="nav-text">ProbeAcked</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#BecomeProbe"><span class="nav-number">2.2.3.</span> <span class="nav-text">BecomeProbe</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#BecomeReplicate"><span class="nav-number">2.2.4.</span> <span class="nav-text">BecomeReplicate</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#BecomeSnapshot"><span class="nav-number">2.2.5.</span> <span class="nav-text">BecomeSnapshot</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#MaybeUpdate"><span class="nav-number">2.2.6.</span> <span class="nav-text">MaybeUpdate</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#OptimisticUpdate"><span class="nav-number">2.2.7.</span> <span class="nav-text">OptimisticUpdate</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#MaybeDecrTo"><span class="nav-number">2.2.8.</span> <span class="nav-text">MaybeDecrTo</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#IsPaused"><span class="nav-number">2.2.9.</span> <span class="nav-text">IsPaused</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ProgressTracker%E7%BB%93%E6%9E%84"><span class="nav-number">3.</span> <span class="nav-text">ProgressTracker结构</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Config%E7%BB%93%E6%9E%84"><span class="nav-number">3.1.</span> <span class="nav-text">Config结构</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ProgressTracker%E7%BB%93%E6%9E%84-1"><span class="nav-number">3.2.</span> <span class="nav-text">ProgressTracker结构</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E5%92%8C%E6%96%B9%E6%B3%95-2"><span class="nav-number">3.3.</span> <span class="nav-text">函数和方法</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#MakeProgressTracker%E5%87%BD%E6%95%B0"><span class="nav-number">3.3.1.</span> <span class="nav-text">MakeProgressTracker函数</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#IsSingleton%E6%96%B9%E6%B3%95"><span class="nav-number">3.3.2.</span> <span class="nav-text">IsSingleton方法</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#matchAckIndexer%E7%B1%BB%E5%9E%8B"><span class="nav-number">3.3.3.</span> <span class="nav-text">matchAckIndexer类型</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Committed%E6%96%B9%E6%B3%95"><span class="nav-number">3.3.4.</span> <span class="nav-text">Committed方法</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Visit%E6%96%B9%E6%B3%95"><span class="nav-number">3.3.5.</span> <span class="nav-text">Visit方法</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#QuorumActive%E6%96%B9%E6%B3%95"><span class="nav-number">3.3.6.</span> <span class="nav-text">QuorumActive方法</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#VoterNodes%E6%96%B9%E6%B3%95"><span class="nav-number">3.3.7.</span> <span class="nav-text">VoterNodes方法</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#LearnerNodes%E6%96%B9%E6%B3%95"><span class="nav-number">3.3.8.</span> <span class="nav-text">LearnerNodes方法</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E9%80%89%E7%A5%A8%E7%9B%B8%E5%85%B3ResetVotes-RecordVote-TallyVotes"><span class="nav-number">3.3.9.</span> <span class="nav-text">选票相关ResetVotes, RecordVote, TallyVotes</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

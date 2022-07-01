@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="raft包中的storage.go定义了表示持久化状态的Storage接口，以及该接口的一个实现MemoryStorage。 定义Storage接口，主要是为了让使用raft库的应用程序实现该接口，以便raft可以通过调用Storage的方法获取NVS中的持久化snapshot和日志条目等信息。Storage接口的定义如下：">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-04raft包--storage">
+<meta property="og:url" content="http://example.com/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="raft包中的storage.go定义了表示持久化状态的Storage接口，以及该接口的一个实现MemoryStorage。 定义Storage接口，主要是为了让使用raft库的应用程序实现该接口，以便raft可以通过调用Storage的方法获取NVS中的持久化snapshot和日志条目等信息。Storage接口的定义如下：">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/06storage/1.png">
+<meta property="article:published_time" content="2021-10-06T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:40:10.948Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/06storage/1.png">
+
+<link rel="canonical" href="http://example.com/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-04raft包--storage | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-04raft包--storage
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-10-07 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-07T00:00:00+08:00">2021-10-07</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:40:10" itemprop="dateModified" datetime="2022-06-28T09:40:10+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>raft</code>包中的<code>storage.go</code>定义了表示持久化状态的<code>Storage</code>接口，以及该接口的一个实现<code>MemoryStorage</code>。</p>
+<p>定义<code>Storage</code>接口，主要是为了让使用<code>raft</code>库的应用程序实现该接口，以便<code>raft</code>可以通过调用<code>Storage</code>的方法获取<code>NVS</code>中的持久化snapshot和日志条目等信息。<code>Storage</code>接口的定义如下：</p>
+<span id="more"></span>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//下面的HardState和ConfState，定义在raft/v3/raftpb中</span></span><br><span class="line"><span class="comment">//HardState表示保存在NVS中的持久化状态，与论文中的描述一致，即包含：Term，投票节点ID以及提交日志的最大index</span></span><br><span class="line">type HardState <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">	Term   uint64 `protobuf:<span class="string">&quot;varint,1,opt,name=term&quot;</span> json:<span class="string">&quot;term&quot;</span>`</span><br><span class="line">	Vote   uint64 `protobuf:<span class="string">&quot;varint,2,opt,name=vote&quot;</span> json:<span class="string">&quot;vote&quot;</span>`</span><br><span class="line">	Commit uint64 `protobuf:<span class="string">&quot;varint,3,opt,name=commit&quot;</span> json:<span class="string">&quot;commit&quot;</span>`</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//ConfState表示NVS中保存的节点配置</span></span><br><span class="line">type ConfState <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">	<span class="comment">//表示Cnew中的voter</span></span><br><span class="line">	Voters []uint64 `protobuf:<span class="string">&quot;varint,1,rep,name=voters&quot;</span> json:<span class="string">&quot;voters,omitempty&quot;</span>`</span><br><span class="line">	<span class="comment">//表示Cnew中的learner</span></span><br><span class="line">	Learners []uint64 `protobuf:<span class="string">&quot;varint,2,rep,name=learners&quot;</span> json:<span class="string">&quot;learners,omitempty&quot;</span>`</span><br><span class="line"></span><br><span class="line">	<span class="comment">//表示Cold中的voter，如果当前没有处于joint consensus状态，则VotersOutgoing为空</span></span><br><span class="line">	VotersOutgoing []uint64 `protobuf:<span class="string">&quot;varint,3,rep,name=voters_outgoing,json=votersOutgoing&quot;</span> json:<span class="string">&quot;voters_outgoing,omitempty&quot;</span>`</span><br><span class="line"></span><br><span class="line">	<span class="comment">//表示在joint consensus过程中，Cold中被降级为learner的voter，</span></span><br><span class="line">	LearnersNext []uint64 `protobuf:<span class="string">&quot;varint,4,rep,name=learners_next,json=learnersNext&quot;</span> json:<span class="string">&quot;learners_next,omitempty&quot;</span>`</span><br><span class="line"></span><br><span class="line">	<span class="comment">//为true，表示当前正处于joint consensus过程，并且Raft会自动过渡到joint consensus的第二阶段</span></span><br><span class="line">	AutoLeave <span class="type">bool</span> `protobuf:<span class="string">&quot;varint,5,opt,name=auto_leave,json=autoLeave&quot;</span> json:<span class="string">&quot;auto_leave&quot;</span>`</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">type Storage interface &#123;</span><br><span class="line">    <span class="comment">//该方法返回NVS中的HardState和ConfState信息</span></span><br><span class="line">	InitialState() (pb.HardState, pb.ConfState, error)</span><br><span class="line"></span><br><span class="line">    <span class="comment">//调用该方法，获取索引范围在[lo,hi)中的日志条目。maxSize限制了返回日志条目的总大小，</span></span><br><span class="line">    <span class="comment">//本方法在[lo,hi)符合条件的基础上，至少会返回一条日志（即使一条日志的大小超过了maxSize）。</span></span><br><span class="line">	Entries(lo, hi, maxSize uint64) ([]pb.Entry, error)</span><br><span class="line"></span><br><span class="line">    <span class="comment">//该方法返回索引为i的日志的Term。i必须在[FirstIndex()-1, LastIndex()]范围内</span></span><br><span class="line">    <span class="comment">//之所以保留索引FirstIndex()-1的日志term信息，是为了AppendEntry时匹配日志，但其日志内容已不复存在了。</span></span><br><span class="line">	Term(i uint64) (uint64, error)</span><br><span class="line"></span><br><span class="line">    <span class="comment">//该方法返回NVS中最后一条日志条目的索引值</span></span><br><span class="line">	LastIndex() (uint64, error)</span><br><span class="line">    <span class="comment">//该方法返回NVS中第一条日志条目的索引值。该索引之前的日志已经被合入到Snapshot中了;</span></span><br><span class="line">	FirstIndex() (uint64, error)</span><br><span class="line"></span><br><span class="line">    <span class="comment">//该方法返回最新的Snapshot。如果当前Snapshot暂时不可得，则返回ErrSnapshotTemporarilyUnavailable错误；</span></span><br><span class="line">    <span class="comment">//因此raft状态机可以知道当前Storage正在准备Snapshot，从而过段时间再重试；</span></span><br><span class="line">	Snapshot() (pb.Snapshot, error)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>根据<code>Storage</code>的方法，可知<code>NVS</code>中保存了持久化状态<code>HardState</code>，节点配置状态<code>ConfState</code>，以及日志项。而日志项又包括<code>Snapshot</code>和日志条目。</p>
+<hr>
+<h3 id="MemoryStorage结构"><a href="#MemoryStorage结构" class="headerlink" title="MemoryStorage结构"></a>MemoryStorage结构</h3><p><code>MemoryStorage</code>是<code>Storage</code>接口的一种实现，实际上它的信息都保存在内存中。从代码中看来<code>etcdserver</code>和<code>raftexample</code>都是直接用的该结构来提供<code>log</code>的查询功能。</p>
+<p><code>MemoryStorage</code>的定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//下面的Snapshot、SnapshotMetadata和Entry都定义在raft/v3/raftpb中</span></span><br><span class="line"><span class="keyword">type</span> Snapshot <span class="keyword">struct</span> &#123;</span><br><span class="line">    <span class="comment">//snapshot的内容</span></span><br><span class="line">	Data     []<span class="type">byte</span>           <span class="string">`protobuf:&quot;bytes,1,opt,name=data&quot; json:&quot;data,omitempty&quot;`</span></span><br><span class="line">	<span class="comment">//元数据，包括快照中最后的节点配置，snapshot包含的最后日志条目index和term</span></span><br><span class="line">    Metadata SnapshotMetadata <span class="string">`protobuf:&quot;bytes,2,opt,name=metadata&quot; json:&quot;metadata&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> SnapshotMetadata <span class="keyword">struct</span> &#123;</span><br><span class="line">	ConfState ConfState <span class="string">`protobuf:&quot;bytes,1,opt,name=conf_state,json=confState&quot; json:&quot;conf_state&quot;`</span></span><br><span class="line">	Index     <span class="type">uint64</span>    <span class="string">`protobuf:&quot;varint,2,opt,name=index&quot; json:&quot;index&quot;`</span></span><br><span class="line">	Term      <span class="type">uint64</span>    <span class="string">`protobuf:&quot;varint,3,opt,name=term&quot; json:&quot;term&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> Entry <span class="keyword">struct</span> &#123;</span><br><span class="line">	Term  <span class="type">uint64</span>    <span class="string">`protobuf:&quot;varint,2,opt,name=Term&quot; json:&quot;Term&quot;`</span></span><br><span class="line">	Index <span class="type">uint64</span>    <span class="string">`protobuf:&quot;varint,3,opt,name=Index&quot; json:&quot;Index&quot;`</span></span><br><span class="line">	Type  EntryType <span class="string">`protobuf:&quot;varint,1,opt,name=Type,enum=raftpb.EntryType&quot; json:&quot;Type&quot;`</span></span><br><span class="line">	Data  []<span class="type">byte</span>    <span class="string">`protobuf:&quot;bytes,4,opt,name=Data&quot; json:&quot;Data,omitempty&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> MemoryStorage <span class="keyword">struct</span> &#123;</span><br><span class="line">	sync.Mutex</span><br><span class="line"></span><br><span class="line">	hardState pb.HardState</span><br><span class="line">	snapshot  pb.Snapshot</span><br><span class="line"></span><br><span class="line">    <span class="comment">//ents[1:]表示尚未合入到snapshot中的日志条目；</span></span><br><span class="line">	ents []pb.Entry</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>根据<code>MemoryStorage</code>的定义，可以总结出<code>snapshot</code>和<code>ents</code>的一般结构（<font color=red>有例外</font>）如下：</p>
+<img src="/img/06storage/1.png" style="zoom:20%;" />
+
+<p>其中，<code>ents[0]</code>中只包含了<code>Term</code>和<code>Index</code>信息，<font color=red>一般情况下</font>对应的是<code>snapshot</code>中包含的最后日志条目的<code>Index</code>和<code>Term</code>，即<code>snapshot.Metadata.Index</code>和<code>snapshot.Metadata.Term</code>（<font color=red>也有例外情况下<code>ents[0] &lt; snapshot.Metadata.Index</code>的情况</font>），注释中称之为<code>dummy entry</code>。</p>
+<p>根据示例代码，可以得到<code>MemoryStorage.snapshot</code>来源：</p>
+<ul>
+<li><p>外部模块收到<code>Ready</code>结构后，如果其中包含了从<code>Leader</code>节点发来的<code>snapshot</code>，则以<code>Ready.snapshot</code>为参数，调用<code>MemoryStorage.ApplySnapshot</code>方法，替换掉现有的<code>MemoryStorage.snapshot</code>，并将所有日志条目<code>MemoryStorage.ents</code>清空，只保留<code>ents[0]</code>的信息，设置<code>ents[0]</code>的<code>Index</code>和<code>Term</code>分别为最新的<code>snapshot.Metadata.Index</code>和<code>snapshot.Metadata.Term</code>；</p>
+</li>
+<li><p>外部模块在满足一定的条件后，会调用<code>MemoryStorage.CreateSnapshot</code>方法主动创建<code>MemoryStorage.snapshot</code>，然后外部模块将<code>snapshot</code>保存到<code>NVS</code>中，然后会调用<code>MemoryStorage.Compact</code>来摒弃一些<code>MemoryStorage.ents</code>中的日志条目，即<code>compactlndex</code>之前的日志。但是调用该方法的参数<code>compactlndex</code>并不一定等于调用<code>CreateSnapshot</code>时传递的<code>Metadata.Index</code>，其值有可能比当前的新<code>snapshot.Metadata.Index</code>要小，即保留一些已经压缩到<code>snapshot</code>中的日志条目。根据注释，这里是为了照顾一些比较慢的Follower，以便不发送非必要的<code>snapshot</code>，节省带宽。<font color=red>注意</font>：这就表示<code>ents[0].Index</code>并不总是等于<code>snapshot.Metadata.Index</code>，其值可能更小。</p>
+</li>
+</ul>
+<p><code>MemoryStorage.ents</code>的来源：外部模块收到<code>Ready</code>结构，将其中的<code>Entries</code>，调用<code>MemoryStorage.Append</code>，追加到<code>MemoryStorage.ents</code>中。</p>
+<hr>
+<h3 id="方法和函数"><a href="#方法和函数" class="headerlink" title="方法和函数"></a>方法和函数</h3><h4 id="NewMemoryStorage"><a href="#NewMemoryStorage" class="headerlink" title="NewMemoryStorage"></a>NewMemoryStorage</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewMemoryStorage</span><span class="params">()</span></span> *MemoryStorage</span><br></pre></td></tr></table></figure>
+
+<p><code>NewMemoryStorage</code>函数创建并返回一个空的<code>MemoryStorage</code>结构。该函数内部只初始化了<code>ents</code>成员，将其初始化为只包含一个元素，即<code>ents[0]</code>，其中的<code>Index</code>和<code>Term</code>都是默认值<code>0</code>.</p>
+<hr>
+<h4 id="FirstIndex和LastIndex"><a href="#FirstIndex和LastIndex" class="headerlink" title="FirstIndex和LastIndex"></a>FirstIndex和LastIndex</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> FirstIndex() (<span class="type">uint64</span>, <span class="type">error</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> LastIndex() (<span class="type">uint64</span>, <span class="type">error</span>)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> firstIndex() <span class="type">uint64</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> lastIndex() <span class="type">uint64</span></span><br></pre></td></tr></table></figure>
+
+<p>在<code>ents</code>中，<code>ents[0]</code>中保存的<code>Index</code>，对应的是最小日志条目的<code>Index-1</code>，从<code>ents[1]</code>开始才是保存的真正的日志条目。所以，<code>ents[i]</code>日志项，其日志的<code>Index</code>是<code>i+ents[0].Index</code>。所以，有下面的<font color=red>等式</font>成立，下面的<code>offset</code>指的就是<code>ents[0].Index</code>：</p>
+<ul>
+<li><code>ents[i].Index == i + offset</code>;</li>
+<li><code>ents[i-offset].Index == i</code>;</li>
+</ul>
+<p><code>firstIndex</code>和<code>lastIndex</code>，返回<code>ents</code>中，实际保存的日志条目，第一条和最后一条的<code>Index</code>，所以<code>firstIndex</code>实际上返回的是<code>ents[0].Index + 1</code>，而<code>lastIndex</code>返回的是<code>ms.ents[0].Index + uint64(len(ms.ents)) - 1</code>。</p>
+<p><code>FirstIndex</code>和<code>LastIndex</code>，就是在加锁的基础上，对<code>firstIndex</code>和<code>lastIndex</code>的简单封装。</p>
+<p>eg:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">ents := []pb.Entry&#123;&#123;Index: <span class="number">3</span>, Term: <span class="number">3</span>&#125;, &#123;Index: <span class="number">4</span>, Term: <span class="number">4</span>&#125;, &#123;Index: <span class="number">5</span>, Term: <span class="number">5</span>&#125;&#125;</span><br><span class="line">s := &amp;MemoryStorage&#123;ents: ents&#125;</span><br><span class="line"><span class="comment">//s.FirstIndex() is 4</span></span><br><span class="line"><span class="comment">//s.LastIndex() is 5</span></span><br></pre></td></tr></table></figure>
+
+<hr>
+<h4 id="ApplySnapshot方法"><a href="#ApplySnapshot方法" class="headerlink" title="ApplySnapshot方法"></a>ApplySnapshot方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> ApplySnapshot(snap pb.Snapshot) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>外部模块收到<code>Ready</code>结构后，如果其中包含了从Leader节点发来的<code>snapshot</code>，则以<code>Ready.snapshot</code>为参数，调用<code>ApplySnapshot</code>方法，替换掉现有的<code>MemoryStorage.snapshot</code>，并将所有日志条目<code>MemoryStorage.ents</code>清空，只保留<code>ents[0]</code>的信息，设置<code>ents[0]</code>的<code>Index</code>和<code>Term</code>分别为最新的<code>snap.Metadata.Index</code>和<code>snap.Metadata.Term</code>；</p>
+<p>该方法在替换<code>MemoryStorage.snapshot</code>之前，需<font color=red>要保证新的<code>snapshot.Metadata.Index</code>必须大于旧的<code>snapshot.Metadata.Index</code></font>，否则就表示新<code>snapshot</code>不能完全覆盖旧<code>snapshot</code>，这种情况下直接报错返回；</p>
+<hr>
+<h4 id="CreateSnapshot"><a href="#CreateSnapshot" class="headerlink" title="CreateSnapshot"></a>CreateSnapshot</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> CreateSnapshot(i <span class="type">uint64</span>, cs *pb.ConfState, data []<span class="type">byte</span>) (pb.Snapshot, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p>外部模块在满足一定的条件后，会调用<code>MemoryStorage.CreateSnapshot</code>方法主动创建<code>MemoryStorage.snapshot</code>。</p>
+<ul>
+<li><p>该方法的参数<code>i</code>表示新<code>snapshot</code>的<code>Metadata.Index</code>；参数<code>data</code>表示新<code>snapshot</code>的二进制数据（也就是说新<code>snapshot</code>的数据来源于外部模块，实际上就是当前系统状态的快照）；参数<code>cs</code>表示当前的集群成员配置；</p>
+</li>
+<li><p>该方法会检查<code>i</code>是否在 <code>(ms.snapshot.Metadata.Index, lastIndex ]</code>范围内，然后设置新的<code>snapshot</code>，下面的<code>offset</code>就是<code>原ms.ents[0].Index</code>：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">ms.snapshot.Metadata.Index = i</span><br><span class="line">ms.snapshot.Metadata.Term = ms.ents[i-offset].Term</span><br><span class="line"><span class="keyword">if</span> cs != <span class="literal">nil</span> &#123;</span><br><span class="line">	ms.snapshot.Metadata.ConfState = *cs</span><br><span class="line">&#125;</span><br><span class="line">ms.snapshot.Data = data</span><br></pre></td></tr></table></figure></li>
+</ul>
+<p><font color=red>注意</font>，本方法并没有对<code>ms.ents</code>做任何改动；</p>
+<hr>
+<h4 id="Compact方法"><a href="#Compact方法" class="headerlink" title="Compact方法"></a>Compact方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> Compact(compactIndex <span class="type">uint64</span>) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>外部模块调用<code>CreateSnapshot</code>设置新的<code>snapshot</code>后，将<code>snapshot</code>保存到<code>NVS</code>中，然后会调用<code>MemoryStorage.Compact</code>来摒弃一些<code>MemoryStorage.ents</code>中的日志条目，即<code>Index</code>为<code>compactIndex</code>及其之前的的日志条目。</p>
+<p><font color=red>但是</font>调用该方法的参数<code>compactlndex</code>并不一定等于调用<code>CreateSnapshot</code>时传递的<code>Metadata.Index</code>，其值有可能比当前的新<code>snapshot.Metadata.Index</code>要小，即保留一些已经压缩到<code>snapshot</code>中的日志条目。根据注释，这里是为了照顾一些比较慢的Follower，以便不发送非必要的<code>snapshot</code>，节省带宽。<font color=red>注意</font>：这就表示<code>ents[0].Index</code>并不总是等于<code>snapshot.Metadata.Index</code>，其值可能更小。</p>
+<p>该方法会检查参数<code>compactlndex</code>，查看其是否在<code>(ents[0].Index, lastlndex]</code>范围内，然后设置新的<code>MemoryStorage.ents</code>，并且<font color=red>设置<code>MemoryStorage.ents[0].Index</code>为<code>compactlndex</code>，丢掉原<code>ents[compactIndex - offset]</code>及其之前的部分</font>；</p>
+<hr>
+<h4 id="Entries方法"><a href="#Entries方法" class="headerlink" title="Entries方法"></a>Entries方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> Entries(lo, hi, maxSize <span class="type">uint64</span>) ([]pb.Entry, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>Entries</code>方法返回的是<code>ents</code>中，<code>Index</code>在<code>[lo, hi)</code>范围内日志条目，同时保证返回的日志条目的总字节数小于<code>maxSize</code>，但是该方法至少会返回一个条目。注意，<code>Index</code>为<code>i</code>，对应的<code>ents</code>元素是<code>ents[i-offset]</code>，这里<code>offset</code>是<code>ents[0].Index</code>。<code>lo</code>和<code>hi</code>的约束条件如下：</p>
+<ul>
+<li><code>lo</code>如果小于等于<code>offset</code>，表示<code>lo</code>对应的日志项已经合入到<code>snapshot</code>中了，因此返回<code>ErrCompacted</code>错误，表示对应的日志项已经合入到<code>snapshot</code>中了；</li>
+<li><code>hi</code>如果大于<code>lastIndex() + 1</code>，则直接<code>Panic</code>；</li>
+<li>如果当前<code>ents</code>长度为1，即只包含<code>ents[0]</code>，则返回<code>ErrUnavailable</code>错误，表示请求的日志上不可得；</li>
+</ul>
+<hr>
+<h4 id="Term方法"><a href="#Term方法" class="headerlink" title="Term方法"></a>Term方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> Term(i <span class="type">uint64</span>) (<span class="type">uint64</span>, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p>该方法返回<code>Index</code>为<code>i</code>的日志条目的<code>Term</code>。注意，<code>Index</code>为<code>i</code>，对应的是<code>ents[i-offset]</code>，其中<code>offset</code>是<code>ents[0].Index</code>。<code>i</code>需要满足的约束条件是：</p>
+<ul>
+<li>如果<code>i</code>小于<code>offset</code>，则返回<code>ErrCompacted</code>错误，表示对应的日志项已经合入到<code>snapshot</code>中了；</li>
+<li>如果<code>i-offset</code>大于等于<code>len(ms.ents)</code>，则返回<code>ErrUnavailable</code>错误，表示请求的日志上不可得；</li>
+</ul>
+<hr>
+<h4 id="Append方法"><a href="#Append方法" class="headerlink" title="Append方法"></a>Append方法</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> Append(entries []pb.Entry) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>外部模块收到<code>Ready</code>结构，将其中的<code>Entries</code>，调用<code>MemoryStorage.Append</code>方法，追加到<code>MemoryStorage.ents</code>中。</p>
+<p>该方法将<code>entries</code>的内容附加到<code>ms.ents</code>中。<code>entries</code>的内容有可能与<code>ms.ents</code>有重叠的部分，附加时需要用<code>entries</code>的内容覆盖掉重叠部分，并且保证最后<code>ms.ents</code>中的日志连续性。函数的逻辑如下，注意<code>entries</code>中没有<code>dummy entry</code>，每个元素都对应真正的日志条目：</p>
+<ul>
+<li>如果<code>entries</code>最后一条日志的<code>Index</code>，小于<code>ms.firstIndex()</code>，说明没有任何可附加的新日志，直接返回<code>nil</code>；</li>
+<li>如果<code>ms.firstIndex()</code>大于<code>entries</code>第一条日志的<code>Index</code>，则需要将<code>entries</code>中，前<code>ms.firstIndex()-entries[0].Index</code>个日志条目删除；排除之后，可以保证<code>entries[0].Index</code> 大于等于 <code>ms.firstIndex()</code>；</li>
+<li>经过上面的步骤之后，根据<code>entries[0].Index - ms.ents[0].Index</code>的值的大小决定附加的策略。以下称该值为<code>offset</code>：<ul>
+<li>如果<code>offset</code>小于<code>len(ms.ents)</code>，说明<code>entries</code>和<code>ms.ents</code>有重叠的部分，所以先保留<code>ms.ents[:offset]</code>原有部分，然后将<code>entries</code>内容直接追加到<code>ms.ents</code>后面，即用<code>entries</code>的内容覆盖掉重叠部分；</li>
+<li>如果<code>offset</code>等于<code>len(ms.ents)</code>，说明<code>entries</code>的内容可以与<code>ms.ents</code>无缝衔接，因此直接将<code>entries</code>附加到<code>ms.ents</code>后面即可；</li>
+<li>如果<code>offset</code>大于<code>len(ms.ents)</code>，说明<code>entries</code>的内容与<code>ms.ents</code>之间有“空隙”，这种情况下直接<code>Panic</code>；</li>
+</ul>
+</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/" rel="prev" title="raft大论文翻译-01引言">
+      <i class="fa fa-chevron-left"></i> raft大论文翻译-01引言
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/" rel="next" title="raft大论文翻译-02RAFT共识,状态机,动机">
+      raft大论文翻译-02RAFT共识,状态机,动机 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#MemoryStorage%E7%BB%93%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">MemoryStorage结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E5%92%8C%E5%87%BD%E6%95%B0"><span class="nav-number">2.</span> <span class="nav-text">方法和函数</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#NewMemoryStorage"><span class="nav-number">2.1.</span> <span class="nav-text">NewMemoryStorage</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#FirstIndex%E5%92%8CLastIndex"><span class="nav-number">2.2.</span> <span class="nav-text">FirstIndex和LastIndex</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ApplySnapshot%E6%96%B9%E6%B3%95"><span class="nav-number">2.3.</span> <span class="nav-text">ApplySnapshot方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#CreateSnapshot"><span class="nav-number">2.4.</span> <span class="nav-text">CreateSnapshot</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Compact%E6%96%B9%E6%B3%95"><span class="nav-number">2.5.</span> <span class="nav-text">Compact方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Entries%E6%96%B9%E6%B3%95"><span class="nav-number">2.6.</span> <span class="nav-text">Entries方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Term%E6%96%B9%E6%B3%95"><span class="nav-number">2.7.</span> <span class="nav-text">Term方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Append%E6%96%B9%E6%B3%95"><span class="nav-number">2.8.</span> <span class="nav-text">Append方法</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

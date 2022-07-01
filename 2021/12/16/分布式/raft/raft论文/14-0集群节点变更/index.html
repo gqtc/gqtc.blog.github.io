@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="4 Cluster membership changes    集群节点变更到现在为止我们都是假设集群配置（集群中参与共识算法的节点集合）是保持不变的。但是实际场景中，经常需要更改配置，比如需要替换坏掉的节点，或者增加复制的程度。可以手动通过下面的方法进行修改：  将这个集群下线，更新配置文件，然后重启集群。但是这种方法使得更改期间集群不可用；  新节点通过配置旧节点的地址的方式替代旧节点。但是管">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-04-1集群节点变更">
+<meta property="og:url" content="http://example.com/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="4 Cluster membership changes    集群节点变更到现在为止我们都是假设集群配置（集群中参与共识算法的节点集合）是保持不变的。但是实际场景中，经常需要更改配置，比如需要替换坏掉的节点，或者增加复制的程度。可以手动通过下面的方法进行修改：  将这个集群下线，更新配置文件，然后重启集群。但是这种方法使得更改期间集群不可用；  新节点通过配置旧节点的地址的方式替代旧节点。但是管">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210817184116440.png">
+<meta property="og:image" content="http://example.com/img/14RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220418083647795.png">
+<meta property="og:image" content="http://example.com/img/14RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220419081632386.png">
+<meta property="og:image" content="http://example.com/img/03RAFT成员变更(博士论文)/image-20210814100758120.png">
+<meta property="og:image" content="http://example.com/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210814104827516.png">
+<meta property="og:image" content="http://example.com/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210814122205814.png">
+<meta property="og:image" content="http://example.com/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210816081740316.png">
+<meta property="og:image" content="http://example.com/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210830200406801.png">
+<meta property="article:published_time" content="2021-12-15T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T05:36:57.689Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210817184116440.png">
+
+<link rel="canonical" href="http://example.com/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-04-1集群节点变更 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-04-1集群节点变更
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-16 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-16T00:00:00+08:00">2021-12-16</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:36:57" itemprop="dateModified" datetime="2022-06-28T13:36:57+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="4-Cluster-membership-changes-集群节点变更"><a href="#4-Cluster-membership-changes-集群节点变更" class="headerlink" title="4 Cluster membership changes    集群节点变更"></a>4 Cluster membership changes    集群节点变更</h2><p>到现在为止我们都是假设集群配置（集群中参与共识算法的节点集合）是保持不变的。但是实际场景中，经常需要更改配置，比如需要替换坏掉的节点，或者增加复制的程度。可以手动通过下面的方法进行修改：</p>
+<ul>
+<li><p>将这个集群下线，更新配置文件，然后重启集群。但是这种方法使得更改期间集群不可用；</p>
+</li>
+<li><p>新节点通过配置旧节点的地址的方式替代旧节点。但是管理员需要保证旧节点不会再次出现，否则系统直接丧失了安全性的保证。</p>
+<span id="more"></span>
+<p>Up until now we have assumed that the cluster configuration (the set of servers participating in the consensus algorithm) is fixed. In practice, it will occasionally be necessary to change the configuration, for example to replace servers when they fail or to change the degree of replication. This could be done manually, using one of two approaches:</p>
+</li>
+<li><p>Configuration changes could be done by taking the entire cluster off-line, updating configuration files, and then restarting the cluster. However, this would leave the cluster unavailable during the changeover.</p>
+</li>
+<li><p>Alternatively, a new server could replace a cluster member by acquiring its network address. However, the administrator must guarantee that the replaced server will never come back up, or else the system would lose its safety properties (for example, there would be an extra vote).</p>
+</li>
+</ul>
+<p>上面两种方法都有很大的缺点，更确切的说一旦有手动的步骤，则都会有出错的可能。</p>
+<p>为了避免该问题，我们开发了自动变更机制，并将其整合到Raft共识算法中。Raft允许在变更期间继续处理客户端的请求，而且仅需对现有的机制做很少的更改。下图总结了用于执行配置变更的RPC。</p>
+<p>Both of these approaches to membership changes have significant downsides, and if there are any manual steps, they risk operator error.</p>
+<p>In order to avoid these issues, we decided to automate configuration changes and incorporate them into the Raft consensus algorithm. Raft allows the cluster to continue operating normally during changes, and membership changes can be implemented with only a few extensions to the basic consensus algorithm. Figure 4.1 summarizes the RPCs used to change cluster membership, whose elements are described in the remainder of this chapter.</p>
+<p><img src="/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210817184116440.png" alt="image-20210817184116440"></p>
+<p><em>AddServer RPC，管理端通过该RPC向集群中添加节点：</em></p>
+<ul>
+<li><em>参数：新增节点的地址；</em></li>
+<li><em>结果：</em><ul>
+<li><em>status：添加成功则返回OK；</em></li>
+<li><em>leaderHint：Leader的地址；</em></li>
+</ul>
+</li>
+<li><em>实现：</em><ul>
+<li><em>如果收到该RPC的节点不是Leader，则返回NOT_LEADER错误；</em></li>
+<li><em>通过固定的轮数，使得新增节点的日志追上当前Leader。如果新节点在选举超时时间内没有进展，或者其最后一轮的时间超过了选举超时时间，则返回TIMEOUT错误；</em></li>
+<li><em>等待之前的日志被提交；</em></li>
+<li><em>将新配置添加到日志中，并复制其他节点中（包括新节点），如果Majority节点复制成功，则将其commit；</em></li>
+<li><em>回复OK；</em></li>
+</ul>
+</li>
+</ul>
+<p><em>RemoveServer RPC，管理端通过该RPC从集群中移除节点：</em></p>
+<ul>
+<li><em>参数：移除节点的地址；</em></li>
+<li><em>结果：</em><ul>
+<li><em>status：移除成功则返回OK；</em></li>
+<li><em>leaderHint：Leader的地址；</em></li>
+</ul>
+</li>
+<li><em>实现：</em><ul>
+<li><em>如果收到该RPC的节点不是Leader，则返回NOT_LEADER错误；</em></li>
+<li><em>等待之前的日志被提交；</em></li>
+<li><em>将新配置添加到日志中，并复制其他节点中（不包括移除节点），如果Majority节点复制成功，则将其commit；</em></li>
+<li><em>回复OK；</em></li>
+</ul>
+</li>
+</ul>
+<h3 id="4-1-Safety-安全"><a href="#4-1-Safety-安全" class="headerlink" title="4.1 Safety     安全"></a>4.1 Safety     安全</h3><p><font color=red>配置变更的首要挑战就是维护安全性。为了保证安全性，在配置变更（成员变更）期间不能在同一个Term内选举出两个Leader。</font>如果一次配置变更增加&#x2F;删除多个节点，则从旧配置直接切换到新配置就是不安全的；集群中所有节点不可能同时自动切换到新配置，所以在变更期间，集群有可能分裂为两个不相交的Majority集合（见下图4.2）。</p>
+<p><img src="/img/14RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220418083647795.png" alt="image-20220418083647795"></p>
+<p><em>图4.2：从一个配置直接切换到另一个配置是不安全的，因为不同的节点会在不同的时间进行切换。比如上图中，3节点的集群扩展为5节点的集群就会有问题。总会有一个时间点，<font color=red>同一个Term内可能会选出两个不同的Leader来，一个是由旧配置（Cold）下的过半节点选出，一个是由新配置（Cnew）下的过半节点选出。</font></em></p>
+<p>Preserving safety is the first challenge for configuration changes. For the mechanism to be safe, there must be no point during the transition where it is possible for two leaders to be elected for the same term. If a single configuration change adds or removes many servers, switching the cluster directly from the old configuration to the new configuration can be unsafe; it isn’t possible to atomically switch all of the servers at once, so the cluster can potentially split into two independent majorities during the transition (see Figure 4.2).</p>
+<p>大多数成员变更算法都需要引入额外的机制来处理上面的问题。我们最初设计Raft时也是这么做的，不过之后我们又想到了一种简单的方法，<font color=red>即不允许执行会导致不相交Majority节点集合的配置变更。所以，Raft限制了允许的配置变更类型：集群中一次只能添加或删除一个节点。</font>更复杂的成员变更可以通过一系列的单节点变更来实现。本章的大部分内容都是描述这种单节点变更算法，这种算法比比我们最初的方法更容易理解。为了完整性，4.3节也描述了最初的方法，这种方法为了能应对任意的节点变更引入了额外的复杂性。我们在LogCabin中实现了这种复杂的方法，在撰写本文时，LogCabin仍然使用的是该方法。</p>
+<p>Most membership change algorithms introduce additional mechanism to deal with such problems. This is what we did for Raft initially, but we later discovered a simpler approach, which is to disallow membership changes that could result in disjoint majorities. Thus, Raft restricts the types of changes that are allowed: only one server can be added or removed from the cluster at a time. More complex changes in membership are implemented as a series of single-server changes. Most of this chapter describes the single-server approach, which is easier to understand than our original approach. For completeness, Section 4.3 describes the original approach, which incurs additional complexity to handle arbitrary configuration changes. We implemented the more complex approach in LogCabin prior to discovering the simpler single-server change approach; it still uses the more complex approach at the time of this writing.</p>
+<p>如图4.3，向集群中添加一个节点或是删除一个节点，那旧集群配置的任一Majority节点集合，与新集群配置的任一Majority节点集合肯定有交集。这种集合的相交，防止了集群被分裂成两个独立的Majority节点集合；根据3.6.3节的安全论证，它保证了论证中“投票者”的存在。因此，当进行单节点变更时，直接切换到新配置是安全的。Raft根据这种相交的特性，使用很少的额外机制，保证了集群成员变更的安全性。</p>
+<p><img src="/img/14RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220419081632386.png" alt="image-20220419081632386"></p>
+<p><em>图4.3：分别列出了奇数个节点和偶数个节点的集群中添加&#x2F;删除一个节点的场景。<font color=red>在所有的单节点变更场景中，旧Majority和新Majority都会有交集。</font>比如(b)中，Cold中的Majority集合必须包含3个节点中的2个节点，在Cnew中的Majority集合必须包含3个节点，其中肯定有2个来自于Cold中的配置</em></p>
+<p>When adding a single server to a cluster or removing a single server from a cluster, any majority of the old cluster overlaps with any majority of the new cluster; see Figure 4.3. This overlap prevents the cluster from splitting into two independent majorities; in terms of the safety argument of Section 3.6.3, it guarantees the existence of “the voter”. Thus, when adding or removing just a single server, it is safe to switch directly to the new configuration. Raft exploits this property to change cluster membership safely using little additional mechanism.</p>
+<p>在复制的日志中，使用特殊条目来保存集群配置，并进行节点间的交互。这就有效利用了Raft中的现有机制来复制和保存配置信息。这也使得进行配置变更时继续处理Client的请求成为了可能（即允许这两种条目同时在Pipeline中进行复制）。</p>
+<p>Cluster configurations are stored and communicated using special entries in the replicated log. This leverages the existing mechanisms in Raft to replicate and persist configuration information. It also allows the cluster to continue to service client requests while configuration changes are in progress, by imposing ordering between configuration changes and client requests (while allowing both to be replicated concurrently in a pipeline and&#x2F;or in batches).</p>
+<p>当Leader收到请求需要在当前配置（Cold）中增加或删除一个节点时，它会把新配置（Cnew）作为一个日志条目，使用常规的Raft日志复制机制，将其复制到其他节点上。<font color=red>其他节点只要收到该条目，将该条目追加到本地日志后，就认为新配置生效了：Cnew条目只会复制到Cnew的节点中，使用Cnew中的Majority节点来决定Cnew的提交。这就表示节点无需等到Cnew条目提交后才是用新配置，它们直接使用日志中能找到的最新配置。</font></p>
+<p>When the leader receives a request to add or remove a server from its current configuration (Cold), it appends the new configuration (Cnew) as an entry in its log and replicates that entry using the normal Raft mechanism. The new configuration takes effect on each server as soon as it is added to that server’s log: the Cnew entry is replicated to the Cnew servers, and a majority of the new configuration is used to determine the Cnew entry’s commitment. This means that servers do not wait for configuration entries to be committed, and each server always uses the latest configuration found in its log.</p>
+<p>一旦Cnew条目提交后，就认为本次配置变更完成了。从此刻起，Leader就知道Cnew节点中的过半节点已经采用了Cnew的配置。而且可以明确Cnew之外的节点不可能形成Majority集合了，从而Cnew之外的节点就无法选出Leader了。Cnew条目的提交可以让下面的操作得以继续：</p>
+<ol>
+<li>Leader可以确认配置变更已经完成；</li>
+<li>如果配置变更是移除了某个节点，则该节点可以下线了；</li>
+<li><font color=red>可以开始新的配置变更了。如果在此之前进行新的配置变更，</font>则重叠的配置变更可能会导致类似图4.2那样的危险场景(考虑<code>abc -&gt; abcd -&gt; abcde</code>的过程，如果原<code>abc</code>中<code>c</code>为Leader，现在加入<code>d</code>，新配置<code>abcd</code>只复制给了<code>c</code>和<code>d</code>，尚未提交时，又来了新的配置变更，增加<code>e</code>，最新配置<code>abcde</code>复制到了<code>c</code>、<code>d</code>和<code>e</code>，那现在<code>ab</code>使用最老的配置，<code>cde</code>使用最新的配置，一单分区就出现了脑裂)。</li>
+</ol>
+<p>The configuration change is complete once the Cnew entry is committed. At this point, the leader knows that a majority of the Cnew servers have adopted Cnew. It also knows that any servers that have not moved to Cnew can no longer form a majority of the cluster, and servers without Cnew cannot be elected leader. Commitment of Cnew allows three things to continue:</p>
+<ol>
+<li>The leader can acknowledge the successful completion of the configuration change.</li>
+<li>If the configuration change removed a server, that server can be shut down.</li>
+<li>Further configuration changes can be started. Before this point, overlapped configuration changes could degrade to unsafe situations like the one in Figure 4.2.</li>
+</ol>
+<p><font color=red>Note:</font> 按照之前的描述，节点直接使用日志中最新的配置，而不用等到配置提交后才使用。这可以使得Leader在当前配置未提交时，不会开始新的配置变更，从而避免了配置变更并行的场景（上述的第三点）。只有当Cold中的Majority节点都已经转为Cnew配置后，开始进行新的配置变更才是安全的。如果节点等到Cnew日志提交后才使用Cnew的配置，<font color=red>那Leader是无法感知是否有Majority的节点已经使用Cnew配置了。</font>这就需要Leader去获取其他节点的CommitIndex，其他节点也需要将CommitIndex进行持久化，这两种机制都不是Raft所需的。因此，当节点将Cnew日志追加到日志表中，回复了AppendEntries RPC之后，节点就可以采用Cnew配置了，Leader收到Majority节点关于Cnew日志的AppendEntries RPC的成功回复，就可以将Cnew提交，进而开始下一次的配置变更了。不过，这种机制可能会使得配置日志被删除（当Leader发生变更时），所以节点必须能回退到日志中上一个配置。</p>
+<p>As stated above, servers always use the latest configuration in their logs, regardless of whether that configuration entry has been committed. This allows leaders to easily avoid overlapping configuration changes (the third item above), by not beginning a new change until the previous change’s entry has committed. It is only safe to start another membership change once a majority of the old cluster has moved to operating under the rules of Cnew. If servers adopted Cnew only when they learned that Cnew was committed, Raft leaders would have a difficult time knowing when a majority of the old cluster had adopted it. They would need to track which servers know of the entry’s commitment, and the servers would need to persist their commit index to disk; neither of these mechanisms is required in Raft. Instead, each server adopts Cnew as soon as that entry exists in its log, and the leader knows it’s safe to allow further configuration changes as soon as the Cnew entry has been committed. Unfortunately, this decision does imply that a log entry for a configuration change can be removed (if leadership changes); in this case, a server must be prepared to fall back to the previous configuration in its log.</p>
+<p><font color=red>Note:</font> 在Raft中，使用调用者（RPC发起者）的配置来实现共识，而非被调用者（RPC接收者）的配置。比如对于投票和日志复制而言：</p>
+<ul>
+<li>收到RequestVote RPC的节点a，在满足条件的基础上，可以投票给它不认识的节点b（即a节点本地日志中最新配置中之外的节点）。比如，Cold为[a, b, c]三个节点，leader为a，Cnew为[a, b, c, d]，即新增d节点。如果配置变更时a已经将Cnew复制给了a, b, d，而c节点没有收到，此时Cnew也能生效。但接着节点a崩溃了，此时新节点d成为Candidate，它需要b，c的投票，如果c因为其配置中不包含d而拒绝投票的话，d就无法成为leader，降低了集群的可用性。</li>
+<li>节点a收到了节点b发来的AppendEntries RPC，即使a不认识节点b，它也会接受该RPC。还是继续上面的例子，新节点d成为新Leader后开始发送AppendEntries RPC，如果c不接受该RPC，则d收到的AppendEntries RPC回复永远无法成为Majority（此时Cnew配置为[a, b, c, d]，a崩溃了，则Majority只能是[b, c, d]），导致集群不可用。</li>
+</ul>
+<p>因此，节点收到RPC后，无需查询当前的配置信息。</p>
+<p>In Raft, it is the caller’s configuration that is used in reaching consensus, both for voting and for log replication:</p>
+<ul>
+<li>A server accepts AppendEntries requests from a leader that is not part of the server’s latest configuration. Otherwise, a new server could never be added to the cluster (it would never accept any log entries preceding the configuration entry that adds the server).</li>
+<li>A server also grants its vote to a candidate that is not part of the server’s latest configuration (if the candidate has a sufficiently up-to-date log and a current term). This vote may occasionally be needed to keep the cluster available. For example, consider adding a fourth server to a three-server cluster. If one server were to fail, the new server’s vote would be needed to form a majority and elect a leader.</li>
+</ul>
+<p>Thus, servers process incoming RPC requests without consulting their current configurations.</p>
+<hr>
+<h3 id="4-2-Availability-可用性"><a href="#4-2-Availability-可用性" class="headerlink" title="4.2 Availability     可用性"></a>4.2 Availability     可用性</h3><p>配置变更对于集群可用性，有以下几点影响：</p>
+<ul>
+<li>新加入集群的节点的日志需要追上Leader（4.2.1）；</li>
+<li>Leader被移出怎么办（4.2.2）；</li>
+<li>被移出的节点会影响新集群的Leader（4.2.3）；</li>
+</ul>
+<p>4.2.4节论证为什么我们的配置变更算法足以保证配置变更期间的可用性。</p>
+<p>Cluster membership changes introduce several issues in preserving the cluster’s availability. Section 4.2.1 discusses catching up new servers before they’re added to the cluster, so that they do not stall commitment of new log entries; Section 4.2.2 addresses how to phase out an existing leader if it is removed from the cluster; and Section 4.2.3 describes how to prevent removed servers from disrupting the leader of the new cluster. Finally, Section 4.2.4 closes with an argument for why the resulting membership change algorithm is sufficient to preserve availability during any membership change.</p>
+<h4 id="4-2-1-Catching-up-new-servers-新节点的日志追赶"><a href="#4-2-1-Catching-up-new-servers-新节点的日志追赶" class="headerlink" title="4.2.1 Catching up new servers     新节点的日志追赶"></a>4.2.1 Catching up new servers     新节点的日志追赶</h4><p>新节点加入集群时，它本身肯定无任何日志，如果它直接成为集群的一员，那他的日志需要很长一段时间才能追上Leader，这段时间内，集群很容易处于不可用的状态。比如，三节点的集群（a, b, c）可以在不损失可用性的情况下，允许一个节点的崩溃。但是如果第四个节点（d）加入到集群中，并且其不包含任何日志，并且原来的节点c崩溃了，则d的日志在追上Leader之前，集群是无法提交任何的新日志的（下图4.4(a)）。另一个例子是：三节点集群（a, b, c），如果现在相继成功加入了三个新节点（d，e，f），并且这三个节点都不包含任何日志，但是因为新集群的Majority至少需要4个节点，在（d，e，f）中任一节点的日志追上Leader之前，集群是不可用的（下图4.4(b)）。</p>
+<p>When a server is added to the cluster, it typically will not store any log entries. If it is added to the cluster in this state, its log could take quite a while to catch up to the leader’s, and during this time, the cluster is more vulnerable to unavailability. For example, a three-server cluster can normally tolerate one failure with no loss in availability. However, if a fourth server with an empty log is added to the same cluster and one of the original three servers fails, the cluster will be temporarily unable to commit new entries (see Figure 4.4(a)). Another availability issue can occur if many new servers are added to a cluster in quick succession, where the new servers are needed to form a majority of the cluster (see Figure 4.4(b)). In both cases, until the new servers’ logs were caught up to the leader’s, the clusters would be unavailable.</p>
+<img src="/img/03RAFT成员变更(博士论文)/image-20210814100758120.png" alt="image-20210814100758120" style="zoom: 67%;" />
+
+<p>为了避免这种可用性问题，Raft在进行配置变更之前引入了新的阶段，在这个阶段内，新节点会作为非投票成员（non-voting member）加入到集群中。这个节点，Leader会向新节点同步日志，而在投票或者日志复制时，不会把它当做形成Majority的条件。当新节点的日志追上集群后，配置变更才可以继续进行。（这种非投票成员的机制在其他场景中也很有用，比如，将日志复制到大量节点上，在relaxed consistency场景下这些节点可以处理只读请求）。</p>
+<p>In order to avoid availability gaps, Raft introduces an additional phase before the configuration change, in which a new server joins the cluster as a non-voting member. The leader replicates log entries to it, but it is not yet counted towards majorities for voting or commitment purposes. Once the new server has caught up with the rest of the cluster, the reconfiguration can proceed as described above. (The mechanism to support non-voting servers can also be useful in other contexts;for example, it can be used to replicate the state to a large number of servers, which can serve readonly<br>requests with relaxed consistency.)</p>
+<p>Leader需要判断新节点的日志是否已经足够接近当前集群，从而开始配置变更。这就需要小心对待，因为如果节点太早添加，则根据上面的讨论，集群的可用性就会有风险。<strong>我们的目标是让不可用时间小于选举超时时间</strong>（即日志追赶的时间小于选举超时时间），因为客户必须已经能够容忍这种规模的偶尔不可用期（在领导者失败的情况下）。当然，如果可能的话，我们希望通过使新服务器的日志更接近Leader的日志来进一步减少不可用时间。</p>
+<p>The leader needs to determine when a new server is sufficiently caught up to continue with the configuration change. This requires some care to preserve availability: if the server is added too soon, the cluster’s availability may be at risk, as described above. Our goal was to keep any temporary unavailability below an election timeout, since clients must already be able to tolerate occasional unavailability periods of that magnitude (in case of leader failures). Moreover, if possible, we wanted to minimize unavailability further by bringing the new server’s log even closer to the leader’s.</p>
+<p>当新节点崩溃，或者复制日志太慢以至于永远追不上的情况下，Leader需要中断配置变更过程。向集群中添加崩溃的节点，或者太慢的节点是一种错误。</p>
+<p>The leader should also abort the change if the new server is unavailable or is so slow that it will never catch up. This check is important: Lamport’s ancient Paxos government broke down because they did not include it. They accidentally changed the membership to consist of only drowned sailors and could make no more progress [48]. Attempting to add a server that is unavailable or slow is often a mistake. In fact, our very first configuration change request included a typo in a network port number; the system correctly aborted the change and returned an error.</p>
+<p>我们建议使用以下算法来确定新节点的日志是否已经足够接近，从而得以加入到集群中：将复制日志到新服务器分为若干轮（round），如图4.5所示。每一轮都会将round开始时领导日志中的所有日志项复制到新服务器的日志中。在复制本轮日志时，客户端的新日志也会不断的到达Leader；这些新日志将在下一轮中复制。随着复制的进行，每一轮的持续时间会缩短。算法等待固定的轮数（如10轮），如果最后一轮的持续时间少于选举超时时间，假设剩下的的未复制条目不会造成显著的可用性问题，那么领导者会将新服务器添加到集群中。</p>
+<p>否则的话，Leader就会中断配置变更过程，并且返回给CLIENT一个错误，CLIENT后续会重试（下次的成功率更高，因为新节点已经有了部分日志了）。</p>
+<p>We suggest the following algorithm to determine when a new server is sufficiently caught up to add to the cluster. The replication of entries to the new server is split into rounds, as shown in Figure 4.5. Each round replicates all the log entries present in the leader’s log at the start of the round to the new server’s log. While it is replicating entries for its current round, new entries may arrive at the leader; it will replicate these during the next round. As progress is made, the round durations shrink in time. The algorithm waits a fixed number of rounds (such as 10). If the last round lasts less than an election timeout, then the leader adds the new server to the cluster, under the assumption that there are not enough unreplicated entries to create a significant availability gap.</p>
+<p>Otherwise, the leader aborts the configuration change with an error. The caller may always try again (it will be more likely to succeed the next time, since the new server’s log will already be partially caught up).</p>
+<p><img src="/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210814104827516.png" alt="image-20210814104827516"></p>
+<p><em>图4.5：为了让新节点能追赶上当前的日志进度，将日志复制到新节点时分成多轮。每轮将该轮开始时包含的日志复制完之后就结束。此时，Leader可能接收到了新的条目，这些条目在下一轮开始复制。</em></p>
+<p>为了添加新节点，Leader首先肯定要发现新节点的日志是空的，如果通过原来的AppendEntries回复失败进行检测，直到<code>nextIndex</code>减为1之后才得出日志为空的结论，这样性能太差了。有很多办法可以解决这个问题，最简单的就是新节点回复AppendEntries错误时，附带上自己的日志长度。</p>
+<p>As the first step to catching up a new server, the leader must discover that the new server’s log is empty. With a new server, the consistency check in AppendEntries will fail repeatedly until the leader’s nextIndex finally drops to one. This back-and-forth might be the dominant factor in the performance of adding a new server to the cluster (after this phase, log entries can be transmitted to the follower with fewer RPCs by using batching). Various approaches can make nextIndex converge to its correct value more quickly, including those described in Chapter 3. The simplest approach<br>to solving this particular problem of adding a new server, however, is to have followers return the length of their logs in the AppendEntries response; this allows the leader to cap the follower’s nextIndex accordingly.</p>
+<h4 id="4-2-2-Removing-the-current-leader-移除当前Leader"><a href="#4-2-2-Removing-the-current-leader-移除当前Leader" class="headerlink" title="4.2.2 Removing the current leader     移除当前Leader"></a>4.2.2 Removing the current leader     移除当前Leader</h4><p>如果Cnew中是需要移除当前的Leader，则该Leader必须在某个时间点进行下线。最直接的办法是第三章的办法：当前Leader首先转移领导权到其他节点，然后新Leader节点进行正常的配置变更。</p>
+<p>If the existing leader is asked to remove itself from the cluster, it must step down at some point. One straightforward approach is to use the leadership transfer extension described in Chapter 3: a leader that is asked to remove itself would transfer its leadership to another server, which would then carry out the membership change normally.</p>
+<p>我们最初开发了一种不同的方法，即旧配置中的Leader直接进行配置变更，然后再下线。这种方法可能会使集群处于一种尴尬的场景中：Leader管理的配置中不包含自己。之所以最初开发这种方法，是为了配合4.3中介绍的任意配置变更算法（即joint consensus），这种配置变更算法中，新旧配置中可能没有可用于转移领导权的节点。当然这种方法也适用于无法实现领导权转移的其他系统中。</p>
+<p>We initially developed a different approach for Raft, in which the existing leader carries out the membership change to remove itself, then it steps down. This puts Raft in a somewhat awkward mode of operation while the leader temporarily manages a configuration in which it is not a member. We initially needed this approach for arbitrary configuration changes (see Section 4.3), where the old configuration and the new configuration might not have any servers in common to which leadership could be transferred. The same approach is also viable for systems that do not implement leadership transfer.</p>
+<p>这种方法中，Leader在Cnew提交后就会下线，如果Leader在此之前下线，则它还有可能会选举超时并且再次成为leader，从而拖慢了整体进度。在更极端的2节点场景中，只能是该旧Leader重新成为Leader后集群才得以继续运行，即下图的内容：</p>
+<p>In this approach, a leader that is removed from the configuration steps down once the Cnew entry is committed. If the leader stepped down before this point, it might still time out and become leader again, delaying progress. In an extreme case of removing the leader from a two-server cluster, the server might even have to become leader again for the cluster to make progress; see Figure 4.6.</p>
+<p><img src="/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210814122205814.png" alt="image-20210814122205814"></p>
+<p><em>图4.6：在Cnew日志项提交之前，被移除的Leader需要继续领导集群。此时S1是Leader，而S2在收到Cnew配置之前它是无法成为新Leader的（因为S2还是旧配置，他就需要S1的投票，而S1不会给他投票，因为它的日志不够新）。</em></p>
+<p>因此，Leader需要等到Cnew提交之后才能下线。只有到了这个时间点，新配置才可以在没有被移除的Leader参与的情况下继续运行集群：即Cnew中可以选举出新的Leader。当旧Leader下线之后，Cnew中的某个节点会选举超时，然后赢得选举。这种不可用区间应该是可以接受的，因为它类似于Leader崩溃的场景。</p>
+<p>Thus, the leader waits until Cnew is committed to step down. This is the first point when the new configuration can definitely operate without participation from the removed leader: it will always be possible for the members of Cnew to elect a new leader from among themselves. After the removed leader steps down, a server in Cnew will time out and win an election. This small availability gap should be tolerable, since similar availability gaps arise when leaders fail.</p>
+<p>这个方法可能会决策（decision-making）导致两种比较奇怪（但是无害）的影响：</p>
+<ul>
+<li>会有一段时间（在提交Cnew之前），Leader管理的集群不包含自己，它向其他节点复制日志，但是并不把自己算作Majority；</li>
+<li>在Cnew提交之前，旧Leader依然可以开始新的选举，即使该节点不存在于自己最新的配置中（比如4.6中的场景，S1如果在Cnew之前崩溃重启了，因S2无法成为新Leader，所以只有S1才能成为Leader），只不过这种情况下它不会投票给自己。</li>
+</ul>
+<p>This approach leads to two implications about decision-making that are not particularly harmful but may be surprising. First, there will be a period of time (while it is committing Cnew) when a leader can manage a cluster that does not include itself; it replicates log entries but does not count itself in majorities. Second, a server that is not part of its own latest configuration should still start new elections, as it might still be needed until the Cnew entry is committed (as in Figure 4.6). It does not count its own vote in elections unless it is part of its latest configuration.</p>
+<h4 id="4-2-3-Disruptive-servers-破坏性节点"><a href="#4-2-3-Disruptive-servers-破坏性节点" class="headerlink" title="4.2.3 Disruptive servers     破坏性节点"></a>4.2.3 Disruptive servers     破坏性节点</h4><p>到现在为止，如果没有额外的机制，不存在于Cnew中的节点实际上会破坏集群的可用性。<strong>当Leader创建好Cnew日志后，Cnew之外的节点就再也收不到心跳包了</strong>，所以该节点最终会超时，并且开始新的选举。因为该节点收不到Cnew日志，也就不会知道它的提交，也认识不到自己已经被移除了。所以该节点会以新的term发送RequestVote RPC，这就导致Leader转为Follower状态。最终Cnew中的某个节点可能会当选，但是破坏性节点还是会超时并重复选举过程，这就对可用性造成了很大影响。如果多个节点被移除的话，这种情况还会加剧。</p>
+<p>Without additional mechanism, servers not in Cnew can disrupt the cluster. Once the cluster leader has created the Cnew entry, a server that is not in Cnew will no longer receive heartbeats, so it will time out and start new elections. Furthermore, it will not receive the Cnew entry or learn of that entry’s commitment, so it will not know that it has been removed from the cluster. The server will send RequestVote RPCs with new term numbers, and this will cause the current leader to revert to follower state. A new leader from Cnew will eventually be elected, but the disruptive server will time out again and the process will repeat, resulting in poor availability. If multiple servers have been removed from the cluster, the situation could degrade further.</p>
+<p>我们首先想到的解决办法是，节点在开始选举之前，它需要首先检查它是否有机会赢得选举。该方法在选举时引入了一个新的阶段，称为PreVote阶段。一个Candidate在真正的拉票之前，首先会询问其他节点，自己的日志是否与他们的日志一样新。只有当Candidate收到Majority节点的Yes回复之后，他才增加term，开始正式的选举过程。</p>
+<p>Our first idea for eliminating disruptions was that, if a server is going to start an election, it would first check that it wouldn’t be wasting everyone’s time—that it had a chance to win the election. This introduced a new phase to elections, called the Pre-Vote phase. A candidate would first ask other servers whether its log was up-to-date enough to get their vote. Only if the candidate believed it could get votes from a majority of the cluster would it increment its term and start a normal election.</p>
+<p>然而，这种<font color=red>PreVote方法无法解决这种破坏性节点问题</font>：某些场景下，破坏性节点的日志也是足够新的，比如下图中的例子。一旦Leader创建了Cnew日志后，被移除的节点就已经具有破坏性了。PreVote方法无法解决该问题，因为它的日志可能要跟Majority一样新。（注：尽管PreVote方法无法解决该问题，但是它依然是提升领导者选举健壮性的好方法，参考第九章）</p>
+<p>Unfortunately, the Pre-Vote phase does not solve the problem of disruptive servers: there are situations where the disruptive server’s log is sufficiently up-to-date, but starting an election would still be disruptive. Perhaps surprisingly, these can happen even before the configuration change completes. For example, Figure 4.7 shows a server that is being removed from a cluster. Once the leader creates the Cnew log entry, the server being removed could be disruptive. The Pre-Vote check does not help in this case, since the server being removed has a log that is more up-to-date than a majority of either cluster. (Though the Pre-Vote phase does not solve the problem of disruptive servers, it does turn out to be a useful idea for improving the robustness of leader election in general; see Chapter 9.)</p>
+<p><img src="/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210816081740316.png" alt="image-20210816081740316"></p>
+<p><em>图4.7：Cnew日志条目提交之前，某个节点可能会干扰集群的可用性，而且PreVote无法解决该问题。上图中，4节点集群中要移除S1，当前Leader为S4，它已经创建好了Cnew日志，但是尚未复制它。即使Cnew提交之前，S1也不会收到Leader发来的心跳了，所以S1选举超时，增加term，发送RequestVote RPC，这就导致S4会转为Follower。这种情况下，PreVote方法没用，因为S1的日志与集群中其他节点一样新。</em></p>
+<p>由于这种情况，我们现在认为，仅基于比较日志（如PreVote检查）的解决方案不足以判断选举是否会造成破坏。我们不能要求服务器在开始选举之前检查Cnew中每个服务器的日志，因为Raft必须始终能够容忍故障。我们也不想假设领导者能够可靠地以足够快的速度复制条目，从而快速超越图4.7所示的场景；这在实践中可能是可行的，但这取决于我们更愿意避免的更强有力的假设，即寻找日志发散点的性能以及复制日志条目的性能。</p>
+<p>Because of this scenario, we now believe that no solution based on comparing logs alone (such as the Pre-Vote check) will be sufficient to tell if an election will be disruptive. We cannot require a server to check the logs of every server in Cnew before starting an election, since Raft must always be able to tolerate faults. We also did not want to assume that a leader will reliably replicate entries fast enough to move past the scenario shown in Figure 4.7 quickly; that might have worked in practice, but it depends on stronger assumptions that we prefer to avoid about the performance of finding where logs diverge and the performance of replicating log entries.</p>
+<p><font color=red>Raft的解决方法是使用心跳来检测有效Leader的存在（租约）</font>。在Raft中，只要Leader能维持与Follower的心跳消息，该Leader就被认为是active的。因此，移除节点就无法破坏当前的leader了。为了使用此方法，我们修改了RequestVote RPC机制：如果节点在当前Leader的最小选举超时时间内收到了RequestVote请求，则它不会更新term，也不会投票。它可以忽略该请求，或者返回一个拒绝投票的结果。这种机制不会影响正常的选举。因为所有节点至少会等到最小选举超时时间后，才会发起新的选举。</p>
+<p>Raft’s solution uses heartbeats to determine when a valid leader exists. In Raft, a leader is considered active if it is able to maintain heartbeats to its followers (otherwise, another server will start an election). Thus, servers should not be able to disrupt a leader whose cluster is receiving heartbeats. We modify the RequestVote RPC to achieve this: if a server receives a RequestVote request within the minimum election timeout of hearing from a current leader, it does not update its term or grant its vote. It can either drop the request, reply with a vote denial, or delay the request; the result is essentially the same. This does not affect normal elections, where each server waits at least a minimum election timeout before starting an election. However, it helps avoid disruptions from servers not in Cnew: while a leader is able to get heartbeats to its cluster, it will not be deposed by larger term numbers.</p>
+<p><font color=red>Note:</font>这种修改与第三章描述的领导权转移机制有些冲突，转移机制中，节点不会等到选举超时就会开始新的选举，这种情况下，其他节点即使在当前有active Leader的情况下也会处理RequestVote消息。这种冲突可以通过在RequestVote消息中包含特殊标志，表明“我可以取代leader，它告诉我的”。</p>
+<p>This change conflicts with the leadership transfer mechanism as described in Chapter 3, in which a server legitimately starts an election without waiting an election timeout. In that case, RequestVote messages should be processed by other servers even when they believe a current cluster leader exists. Those RequestVote requests can include a special flag to indicate this behavior (“I have permission to disrupt the leader—it told me to!”).</p>
+<h3 id="4-2-4-Availability-argument-可用性论证"><a href="#4-2-4-Availability-argument-可用性论证" class="headerlink" title="4.2.4 Availability argument     可用性论证"></a>4.2.4 Availability argument     可用性论证</h3><p>这一节我们论证上面的解决方案可以保证配置变更期间的可用性。因为Raft的配置变更时基于Leader的，我们会论证上面的方案会在变更期间维持或替换Leader，并且Leader会处理CLIENT的请求，并完成配置变更。我们假设在这期间，Cold中的Majority是available 的（直到Cnew提交之前），而且Cnew中的Majority也是available的。</p>
+<p>This section argues that the above solutions are sufficient to maintain availability during membership changes. Since Raft’s membership changes are leader-based, we show that the algorithm will be able to maintain and replace leaders during membership changes and that the leader(s) will both service client requests and complete the configuration changes. We assume, among other things, that a majority of the old configuration is available (at least until Cnew is committed) and that a majority of the new configuration is available.</p>
+<ol>
+<li><p>在配置变更的所有节点，总会有一个Leader被选举出来：</p>
+<ul>
+<li>如果在Cnew中的某个节点具有最新的日志，并且它拥有Cnew日志，它可以获得Cnew的Majority的投票，并且成为Leader；</li>
+<li>否则的话，Cnew日志一定尚未提交。此时在所有Cold和Cnew节点中，具有最新日志的节点可以从Cold的Majority，以及Cnew的Majority中获得选票，所以不管该节点使用的是什么配置，它总可以成为Leader；</li>
+</ul>
+</li>
+<li><p>Leader被选举出来之后，只要他的心跳能够发送给其配置中的Follower，其领导权就能得到保障，除非它因为自己不属于Cnew而在Cnew提交后主动下线。</p>
+<ul>
+<li>只要Leader可以向其配置中的Follower发送心跳，则它自己和其Follower都不会采用更大的term；他们不会选举超时开始新的选举，并且对于附带更高term的RequestVote 消息会视而不见。因此，该Leader不会被迫下线；</li>
+<li>如果Leader在提交Cnew后，因自己已经不属于Cnew而下线，Raft将会选出新的Leader。新Leader肯定是Cnew的一员，并且会完成配置变更流程。然而，可能具有较小的可能性，已下线的旧Leader又重新成为了新Leader，如果它确实当选了，则会再次确认Cnew然后接着再次下线，然后Cnew中的某个节点将会在下次选举中获得领导权。</li>
+</ul>
+</li>
+<li><p>Leader在进行配置变更期间还是可以处理客户端发来的请求。</p>
+<ul>
+<li>Leader可以在整个变更过程中继续将客户机请求附加到其日志中；</li>
+<li>因新节点在加入到集群之前可以追上日志进度，所以Leader可以更新其commitIndex，并且及时回复客户端；</li>
+</ul>
+</li>
+<li><p>领导者将通过提交Cnew来完成配置更改，并在必要时下线以允许Cnew中的服务器成为领导者；</p>
+</li>
+<li><p>A leader can be elected at all steps of the configuration change:</p>
+<ul>
+<li>If the available server with the most up-to-date log in the new cluster has the Cnew entry, it can collect votes from a majority of Cnew and become leader.</li>
+<li>Otherwise, the Cnew entry must not yet be committed. The available server with the most up-to-date log among both the old and new clusters can collect votes from a majority of Cold and a majority of Cnew, so no matter which configuration it uses, it can become leader.</li>
+</ul>
+</li>
+<li><p>A leader is maintained once elected, assuming its heartbeats get through to its configuration, unless it intentionally steps down because it is not in Cnew but has committed Cnew.</p>
+<ul>
+<li>If a leader can reliably send heartbeats to its own configuration, then neither it nor its followers will adopt a higher term: they will not time out to start any new elections, and they will ignore any RequestVote messages with a higher term from other servers. Thus, the leader will not be forced to step down.</li>
+<li>If a server that is not in Cnew commits the Cnew entry and steps down, Raft will then elect a new leader. It is likely that this new leader will be part of Cnew, allowing the configuration change to complete. However, there is some (small) risk that the server that stepped down might become leader again. If it was elected again, it would confirm the commitment of the Cnew entry and soon step down, and it is again likely that a server in Cnew would succeed the next time.</li>
+</ul>
+</li>
+<li><p>The leader(s) will service client requests throughout the configuration change.</p>
+<ul>
+<li>Leaders can continue to append client requests to their logs throughout the change.</li>
+<li>Since new servers are caught up before being added to the cluster, a leader can advance its commit index and reply to clients in a timely manner.</li>
+</ul>
+</li>
+<li><p>The leader(s) will progress towards and complete the configuration change by committing Cnew, and, if necessary, stepping down to allow a server in Cnew to become leader.</p>
+</li>
+</ol>
+<h3 id="4-3-Arbitrary-configuration-changes-using-joint-consensus-使用联合共识算法进行任意配置更改"><a href="#4-3-Arbitrary-configuration-changes-using-joint-consensus-使用联合共识算法进行任意配置更改" class="headerlink" title="4.3 Arbitrary configuration changes using joint consensus     使用联合共识算法进行任意配置更改"></a>4.3 Arbitrary configuration changes using joint consensus     使用联合共识算法进行任意配置更改</h3><p>本节描述的是一种更加复杂的成员变更方法，该方法可以一次性处理任意数量的节点变更。比如2个节点同时加入集群，或者是同时替换集群中所有5个节点。该方法是我们实现的第一种成员变更方法，引入该方法仅仅是为了RAFT算法的完整性。现在我们已经知道了更加简单的单节点成员变更算法，所以我们更加推荐该方法，因为一次性处理任意节点的变更需要额外的复杂性。尽管任意变更通常是本文中假定的成员变更操作方式，但是实际环境中我们不认为这种灵活性是必须的，因为多次的单节点成员变更总是可以实现最终的变更效果。</p>
+<p>This section presents a more complex approach to cluster membership changes that handles arbitrary changes to the configuration at one time. For example, two servers can be added to a cluster at once, or all of the servers in a five server cluster can be replaced at once. This was the first approach to membership changes that we came up with, and it is described only for completeness. Now that we know about the simpler single-server approach, we recommend that one instead, since handling arbitrary changes requires extra complexity. Arbitrary changes are typically the way membership changes are assumed to operate in the literature, but we don’t think this flexibility is needed in real systems, where a series of single-server changes can change the cluster membership to any desired configuration.</p>
+<p>为了保证任意配置变更期间的安全性，集群首先进入到一种过渡配置状态，我们称之为联合共识（joint consensus），一旦联合共识被提交了，则系统进入到新配置。联合共识既包含Cold，也包含Cnew：</p>
+<ul>
+<li>Cold-new日志项会被复制到Cold以及Cnew的节点上；</li>
+<li>Cold或Cnew中的节点都可以成为leader；</li>
+<li>共识（比如选举，日志提交）需要在Cold的Majority，以及Cnew的Majority中同时满足（用于保证不会出现两个Leader）。比如当3节点集群扩展到9节点集群过程中，在Cold中的2节点，以及Cnew中的5节点上，必须同时达到共识才行；</li>
+</ul>
+<p>To ensure safety across arbitrary configuration changes, the cluster first switches to a transitional configuration we call joint consensus; once the joint consensus has been committed, the system then transitions to the new configuration. The joint consensus combines both the old and new configurations:</p>
+<ul>
+<li>Log entries are replicated to all servers in both configurations.</li>
+<li>Any server from either configuration may serve as leader.</li>
+<li>Agreement (for elections and entry commitment) requires separate majorities from both the old and new configurations. For example, when changing from a cluster of 3 servers to a different cluster of 9 servers, agreement requires both 2 of the 3 servers in the old configuration and 5 of the 9 servers in the new configuration.</li>
+</ul>
+<p>联合共识允许单个服务器在不影响安全性的前提下，在不同的时间在不同的配置之间转换。此外，联合共识允许集群在整个配置更改过程中继续为CLIENT请求提供服务。</p>
+<p>The joint consensus allows individual servers to transition between configurations at different times without compromising safety. Furthermore, joint consensus allows the cluster to continue servicing client requests throughout the configuration change.</p>
+<p><img src="/img/03RAFT%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%8D%9A%E5%A3%AB%E8%AE%BA%E6%96%87)/image-20210830200406801.png"></p>
+<p><em>图4.8：上图展示了联合共识算法的时间线。虚线表示配置项已经创建，但是尚未提交，实线表示最新的已提交的配置项。Leader首先创建Cold,new，然后将其提交到Cold,new（即Cold的Majority，以及Cnew的Majority），然后创建Cnew配置项，并将其提交到Cnew中的Majority。任何阶段，都不会存在Cold和Cnew同时独立决策的场景出现。</em></p>
+<p>联合共识方法实际上是通过中间态日志来对单节点变更方法进行的扩展。上图展示了联合共识的过程：Leader收到配置变更请求，要从Cold转为Cnew，Leader将联合共识作为一条日志项（即图中的Cold,new），并将其复制到集群中的节点。就像单节点变更算法一样，节点只要保存了配置日志，就开始将其作为最新的配置项使用。这就意味着Leader将使用Cold,new的配置来决定何时将Cold,new提交。如果Leader挂了，则新Leader可能是Cold中的某节点，也可能是Cold,new中的节点，这取决于该节点是否收到了Cold,new日志。不管是哪种情况，此阶段中Cnew不能单方面做出决定。</p>
+<p>This approach extends the single-server membership change algorithm with an intermediate log entry for the joint configuration; Figure 4.8 illustrates the process. When the leader receives a request to change the configuration from Cold to Cnew, it stores the configuration for joint consensus (Cold,new in the figure) as a log entry and replicates that entry using the normal Raft mechanism. As with the single-server configuration change algorithm, each server starts using a new configuration as soon as it stores the configuration in its log. This means that the leader will use the rules of<br>Cold,new to determine when the log entry for Cold,new is committed. If the leader crashes, a new leader may be chosen under either Cold or Cold,new, depending on whether the winning candidate has received Cold,new. In any case, Cnew cannot make unilateral decisions during this period.</p>
+<p>一旦Cold,new被提交，则Cold和Cnew都不能在未经对方批准的情况下做出决定，而且Leader完备性保证了只有拥有Cold,new的节点才能选举成功。Cold,new提交后，Leader可以创建Cnew配置，并将其复制到其他节点，只要节点收到并保存了该配置，则节点就使用该配置做决策了。当Cnew日志项在Cnew的Majority中被提交了，则Cold就无关紧要了，不在Cnew中的节点可以关机了。就像上图4.8展示的那样，不会存在Cold和Cnew同时独立决策的情况，这就保证了安全性。</p>
+<p>Once Cold,new has been committed, neither Cold nor Cnew can make decisions without approval of the other, and the Leader Completeness Property ensures that only servers with the Cold,new log entry can be elected as leader. It is now safe for the leader to create a log entry describing Cnew and replicate it to the cluster. Again, this configuration will take effect on each server as soon as it is seen. When the Cnew log entry has been committed under the rules of Cnew, the old configuration is irrelevant and servers not in the new configuration can be shut down. As shown in Figure 4.8, there is no time when Cold and Cnew can both make unilateral decisions; this guarantees safety.</p>
+<p>联合共识算法可以更加的一般化，从而允许前一个配置更改尚未完成时，开始新的配置变更。但是，实际上这样做没有太大的好处。因此，leader可以在进行配置变更时拒绝新的配置变更请求（上一次的配置变更尚未提交）。</p>
+<p>The joint consensus approach could be generalized to allow a configuration change to begin while a prior change was still in progress. However, there would not be much practical advantage to doing this. Instead, a leader rejects additional configuration changes when a configuration change is already in progress (when its latest configuration is not committed or is not a simple majority). Changes that are rejected in this way can simply wait and try again later.</p>
+<p>联合共识算法要比单节点变更算法更为复杂，因为它有中间状态。联合共识算法需要更改投票选举和日志提交的决策策略：leader必须检查Cold的Majority节点，和Cnew的Majority节点。</p>
+<p>This joint consensus approach is more complex than the single-server changes precisely because it requires transitioning to and from an intermediate configuration. Joint configurations also require changes to how all voting and commitment decisions are made; instead of simply counting servers, the leader must check if the servers form a majority of the old cluster and also form a majority of the new cluster. Implementing this required finding and changing about six comparisons in our Raft implementation [86].</p>
+<h3 id="4-4-System-integration"><a href="#4-4-System-integration" class="headerlink" title="4.4 System integration"></a>4.4 System integration</h3><p>Raft的真正实现中，可能会与本章描述的节点变更机制略有不同。</p>
+<p>Raft implementations may expose the cluster membership change mechanism described in this chapter in different ways. For example, the AddServer and RemoveServer RPCs in Figure 4.1 can be invoked by administrators directly, or they can be invoked by a script that uses a series of singleserver steps to change the configuration in arbitrary ways.</p>
+<p>你可能想自动调用成员变更以响应节点故障等事件。然而，这只能在合理的策略下进行。例如，自动删除发生故障的节点可能是危险的，因为这样可能会留下太少的副本，无法满足预期的容错要求。一种合理的方法是让系统管理员配置所需的集群大小，并在在这种限制下，可用节点可以自动替换出现故障的节点。</p>
+<p>It may be desirable to invoke membership changes automatically in response to events like server failures. However, this should only be done according to a reasonable policy. For example, it can be dangerous for the cluster to automatically remove failed servers, as it could then be left with too few replicas to satisfy the intended durability and fault-tolerance requirements. One reasonable approach is to have the system administrator configure a desired cluster size, and within<br>that constraint, available servers could automatically replace failed servers.</p>
+<p>在进行需要多次单节点变更时，<font color=red>添加节点最好放在删除节点之前</font>。例如，要替换3节点集群中的某个节点，添加一个节点，然后再删除一个节点，这可以允许系统在整个过程中容忍一个节点故障。但是，如果在添加节点之前先删除了一个节点，系统将暂时无法容忍任何故障（因为两个节点群集要求两节点都可用）。</p>
+<p>When making cluster membership changes that require multiple single-server steps, it is preferable to add servers before removing servers. For example, to replace a server in a three-server cluster, adding one server and then removing the other allows the system to handle one server failure at all times throughout the process. However, if one server was first removed before the other was added, the system would temporarily not be able to mask any failures (since two-server clusters require both servers to be available).</p>
+<p>节点变更机制可以引入一种新的集群初始化启动的方法。如果没有动态成员变更，每个节点都会有包含配置信息的静态文件。有了动态成员变更机制之后，则不再需要静态配置文件，因为系统会使用Raft日志中的配置；静态配置的方法还更容易出错（例如，应该使用哪种配置初始化新服务器？）。相反，我们建议在第一次创建集群时，单节点被初始化为其日志条目中的第一条就是配置项，该配置项中只包含自己一个节点，这样该节点自己就形成了Majority，所以可以将配置提交。其他节点被初始化为空的日志条目，它们被添加到集群中，并通过节点变更机制了解当前配置。</p>
+<p>Membership changes motivate a different approach to bootstrapping a cluster. Without dynamic membership, each server simply has a static file listing the configuration. With dynamic membership changes, the static configuration file is no longer needed, since the system manages configurations in the Raft log; it is also potentially error-prone (e.g., with which configuration should a new server be initialized?). Instead, we recommend that the very first time a cluster is created, one server is initialized with a configuration entry as the first entry in its log. This configuration lists only that one<br>server; it alone forms a majority of its configuration, so it can consider this configuration committed. Other servers from then on should be initialized with empty logs; they are added to the cluster and learn of the current configuration through the membership change mechanism.</p>
+<p>成员变更机制也使得一种动态的方法来让客户机找到集群成为必要；第6章对此进行了讨论。</p>
+<p>Membership changes also necessitate a dynamic approach for clients to find the cluster; this is discussed in Chapter 6.</p>
+<h3 id="4-5-Conclusion-结论"><a href="#4-5-Conclusion-结论" class="headerlink" title="4.5 Conclusion 结论"></a>4.5 Conclusion 结论</h3><p>本章描述了Raft中的成员变更机制，这是一个完整的共识系统中重要的组成部分，因为容错的需求会随着时间的推移而变化，最终需要更换出现故障的节点。</p>
+<p>This chapter described an extension to Raft for handling cluster membership changes automatically. This is an important part of a complete consensus-based system, since fault-tolerance requirements can change over time, and failed servers eventually need to be replaced.</p>
+<p>共识算法必须从根本上在配置变更中保持安全性，因为新配置会影响“Majority”的含义。本章介绍了一种一次添加或删除单个节点的简单方法。这些操作简单地维护了安全性，因为在更改期间Cnew和Cold集合，Majority至少有一个节点的交集。多个节点的变更可以执行多步单节点变更。在变更期间Raft集群可以继续处理Client发来的请求。</p>
+<p>The consensus algorithm must fundamentally be involved in preserving safety across configuration changes, since a new configuration affects the meaning of “majority”. This chapter presented a simple approach that adds or removes a single server at a time. These operations preserve safety simply, since at least one server overlaps any majority during the change. Multiple single-server changes may be composed to modify the cluster more drastically. Raft allows the cluster to continue operating normally during membership changes.</p>
+<p>在配置更改期间保持可用性需要处理几个非常重要的问题。特别是，Cnew中排除的节点可能会破坏集群中有效的Leader，在确定基于心跳的解决方案之前，我们在基于日志比较的几个不足的解决方案中苦苦挣扎了很久。</p>
+<p>Preserving availability during configuration changes requires handling several non-trivial issues. In particular, the issue of a server not in the new configuration disrupting valid cluster leaders was surprisingly subtle; we struggled with several insufficient solutions based on log comparisons before settling on a working solution based on heartbeats.</p>
+<hr>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/" rel="prev" title="【转载】单节点变更的问题和工程实践">
+      <i class="fa fa-chevron-left"></i> 【转载】单节点变更的问题和工程实践
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/" rel="next" title="raft大论文翻译-04-1成员变更总结">
+      raft大论文翻译-04-1成员变更总结 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#4-Cluster-membership-changes-%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4"><span class="nav-number">1.</span> <span class="nav-text">4 Cluster membership changes    集群节点变更</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-Safety-%E5%AE%89%E5%85%A8"><span class="nav-number">1.1.</span> <span class="nav-text">4.1 Safety     安全</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-Availability-%E5%8F%AF%E7%94%A8%E6%80%A7"><span class="nav-number">1.2.</span> <span class="nav-text">4.2 Availability     可用性</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#4-2-1-Catching-up-new-servers-%E6%96%B0%E8%8A%82%E7%82%B9%E7%9A%84%E6%97%A5%E5%BF%97%E8%BF%BD%E8%B5%B6"><span class="nav-number">1.2.1.</span> <span class="nav-text">4.2.1 Catching up new servers     新节点的日志追赶</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#4-2-2-Removing-the-current-leader-%E7%A7%BB%E9%99%A4%E5%BD%93%E5%89%8DLeader"><span class="nav-number">1.2.2.</span> <span class="nav-text">4.2.2 Removing the current leader     移除当前Leader</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#4-2-3-Disruptive-servers-%E7%A0%B4%E5%9D%8F%E6%80%A7%E8%8A%82%E7%82%B9"><span class="nav-number">1.2.3.</span> <span class="nav-text">4.2.3 Disruptive servers     破坏性节点</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-4-Availability-argument-%E5%8F%AF%E7%94%A8%E6%80%A7%E8%AE%BA%E8%AF%81"><span class="nav-number">1.3.</span> <span class="nav-text">4.2.4 Availability argument     可用性论证</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-3-Arbitrary-configuration-changes-using-joint-consensus-%E4%BD%BF%E7%94%A8%E8%81%94%E5%90%88%E5%85%B1%E8%AF%86%E7%AE%97%E6%B3%95%E8%BF%9B%E8%A1%8C%E4%BB%BB%E6%84%8F%E9%85%8D%E7%BD%AE%E6%9B%B4%E6%94%B9"><span class="nav-number">1.4.</span> <span class="nav-text">4.3 Arbitrary configuration changes using joint consensus     使用联合共识算法进行任意配置更改</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-4-System-integration"><span class="nav-number">1.5.</span> <span class="nav-text">4.4 System integration</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-5-Conclusion-%E7%BB%93%E8%AE%BA"><span class="nav-number">1.6.</span> <span class="nav-text">4.5 Conclusion 结论</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="raft状态机以消息为输入，状态机运转之后产生输出，输出以Ready结构的形式传递给外部模块。 raft状态机的输出全都包含在Ready结构中，比如需要保存到NVS中的日志条目、Term、快照，以及需要向外发送的各种消息等等。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-15Ready的处理">
+<meta property="og:url" content="http://example.com/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="raft状态机以消息为输入，状态机运转之后产生输出，输出以Ready结构的形式传递给外部模块。 raft状态机的输出全都包含在Ready结构中，比如需要保存到NVS中的日志条目、Term、快照，以及需要向外发送的各种消息等等。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-05-15T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:22:23.240Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-15Ready的处理 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-15Ready的处理
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-16 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-16T00:00:00+08:00">2022-05-16</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:22:23" itemprop="dateModified" datetime="2022-06-28T09:22:23+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>raft状态机</code>以消息为输入，状态机运转之后产生输出，输出以<code>Ready</code>结构的形式传递给外部模块。</p>
+<p><code>raft状态机</code>的输出全都包含在<code>Ready</code>结构中，比如需要保存到<code>NVS</code>中的日志条目、Term、快照，以及需要向外发送的各种消息等等。</p>
+<span id="more"></span>
+<h3 id="Ready结构"><a href="#Ready结构" class="headerlink" title="Ready结构"></a>Ready结构</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> SoftState <span class="keyword">struct</span> &#123;</span><br><span class="line">	Lead      <span class="type">uint64</span> <span class="comment">// must use atomic operations to access; keep 64-bit aligned.</span></span><br><span class="line">	RaftState StateType</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> HardState <span class="keyword">struct</span> &#123;</span><br><span class="line">	Term   <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,1,opt,name=term&quot; json:&quot;term&quot;`</span></span><br><span class="line">	Vote   <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,2,opt,name=vote&quot; json:&quot;vote&quot;`</span></span><br><span class="line">	Commit <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,3,opt,name=commit&quot; json:&quot;commit&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> ReadState <span class="keyword">struct</span> &#123;</span><br><span class="line">	Index      <span class="type">uint64</span></span><br><span class="line">	RequestCtx []<span class="type">byte</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> Ready <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">//包含集群Leader的id，以及当前节点的状态；只有发生变化时才有具体的值，否则为nil</span></span><br><span class="line">	*SoftState</span><br><span class="line"></span><br><span class="line">	<span class="comment">//在发送响应到CLIENT之前必须保存到NVS中的状态，包括节点的Term，Vote，以及Committed Index;</span></span><br><span class="line">	<span class="comment">//如果没有变化，则是空的状态；</span></span><br><span class="line">	pb.HardState</span><br><span class="line"></span><br><span class="line">	<span class="comment">//ReadStates用于处理读请求，其中包含了收到读请求时最新的committed Index，以及外部模块用于</span></span><br><span class="line">    <span class="comment">//区分读请求的上下文RequestCtx；</span></span><br><span class="line">	ReadStates []ReadState</span><br><span class="line"></span><br><span class="line">	<span class="comment">//在发送响应给CLIENT之前，需要保存到NVS中的日志条目</span></span><br><span class="line">	Entries []pb.Entry</span><br><span class="line"></span><br><span class="line">	<span class="comment">//需要保存到NVS中的snapshot；</span></span><br><span class="line">	Snapshot pb.Snapshot</span><br><span class="line"></span><br><span class="line">	<span class="comment">//可用于提交给状态机的日志条目；再次之前他们肯定已经保存到NVS中了；</span></span><br><span class="line">	CommittedEntries []pb.Entry</span><br><span class="line"></span><br><span class="line">	<span class="comment">//在日志条目保存到NVS中之后，需要发送给外部的消息</span></span><br><span class="line">	Messages []pb.Message</span><br><span class="line"></span><br><span class="line">	<span class="comment">//为true表示HardState和Entries必须同步写入磁盘，否则则允许异步写入；</span></span><br><span class="line">	MustSync <span class="type">bool</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="Ready的处理流程"><a href="#Ready的处理流程" class="headerlink" title="Ready的处理流程"></a>Ready的处理流程</h3><h4 id="发送Ready"><a href="#发送Ready" class="headerlink" title="发送Ready"></a>发送Ready</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> HasReady() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> readyWithoutAccept() Ready</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">newReady</span><span class="params">(r *raft, prevSoftSt *SoftState, prevHardSt pb.HardState)</span></span> Ready</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> acceptReady(rd Ready)</span><br></pre></td></tr></table></figure>
+
+<p>在<code>node.run</code>这个Goroutine中，每次循环的开始，都会调用<code>RawNode.HasReady</code>查看是否有新的<code>Ready</code>结构待发送。在此之前，<code>readyc</code>和<code>advancec</code>这两个Channel都是<code>nil</code>。<code>RawNode.HasReady</code>方法的逻辑很简单，就是判断是否可以由包含到<code>Ready</code>中的新内容。下面的条件满足其一就返回<code>true</code>，否则返回<code>false</code>：</p>
+<ul>
+<li>调用<code>raft.softState</code>返回的<code>softState</code>不同于之前的<code>RawNode.prevSoftSt</code>；</li>
+<li>调用<code>raft.hardState</code>返回的<code>hardState</code>不同于之前的<code>RawNode.prevHardSt</code>；</li>
+<li>调用<code>raftLog.hasPendingSnapshot</code>返回<code>true</code>，即表示<code>raftLog.unstable.snapshot</code>不为<code>nil</code>；</li>
+<li><code>raft.msgs</code>不为空；</li>
+<li><code>raft.raftLog.unstableEntries</code>不为空；</li>
+<li><code>raft.raftLog.hasNextEnts</code>返回<code>true</code>，即有待应用的日志；</li>
+<li><code>raft.readStates</code>不为空；</li>
+</ul>
+<p>当调用<code>RawNode.HasReady</code>返回<code>true</code>后，说明可以有新的<code>Ready</code>结构了，所以调用<code>newReady</code>函数获取新的<code>Ready</code>结构，然后设置<code>readyc</code>为<code>node.readyc</code>，并将<code>Ready</code>结构通过该管道发送给外部模块。<code>newReady</code>函数就是构造新的<code>Ready</code>结构，其中：</p>
+<ul>
+<li>设置<code>Entries</code>为<code>raft.raftLog.unstableEntries</code>;</li>
+<li>设置<code>CommittedEntries</code>为<code>raft.raftLog.nextEnts</code>，即已commit但尚未apply的日志条目；</li>
+<li>设置<code>Messages</code>为<code>r.msgs</code>；</li>
+<li>设置<code>SoftState</code>为<code>raft.softState</code>的返回值；</li>
+<li>设置<code>HardState</code>；</li>
+<li>设置<code>Snapshot</code>为<code>raft.raftLog.unstable.snapshot</code>；</li>
+<li>设置<code>ReadStates</code>为<code>raft.readStates</code>；</li>
+<li>如果<code>Entries</code>中有新内容，或者<code>hardState</code>发生了变化，则<code>MustSync</code>为<code>true</code>，即必须要<code>Entries</code>和<code>hardState</code>保存到<code>NVS</code>中之后才能继续处理；</li>
+</ul>
+<p>外部模块收到之后，在<code>node.run</code>中，调用<code>RawNode.acceptReady</code>方法重置一些状态：</p>
+<ul>
+<li>设置<code>RawNode.prevSoftSt</code>；</li>
+<li>设置<code>RawNode.raft.readStates</code>为<code>nil</code>；</li>
+<li>设置<code>RawNode.raft.msgs</code>为nil；</li>
+</ul>
+<p>然后设置<code>advancec</code>为<code>node.advancec</code>，并等待该管道上的信号。</p>
+<hr>
+<h4 id="处理Ready"><a href="#处理Ready" class="headerlink" title="处理Ready"></a>处理Ready</h4><p>外部应用收到<code>Ready</code>结构后进行处理，以<code>raftexample</code>为例：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> rd := &lt;-rc.node.Ready():</span><br><span class="line">	rc.wal.Save(rd.HardState, rd.Entries)</span><br><span class="line">	<span class="keyword">if</span> !raft.IsEmptySnap(rd.Snapshot) &#123;</span><br><span class="line">		rc.saveSnap(rd.Snapshot)</span><br><span class="line">		rc.raftStorage.ApplySnapshot(rd.Snapshot)</span><br><span class="line">		rc.publishSnapshot(rd.Snapshot)</span><br><span class="line">	&#125;</span><br><span class="line">	rc.raftStorage.Append(rd.Entries)</span><br><span class="line">	rc.transport.Send(rd.Messages)</span><br><span class="line">	applyDoneC, ok := rc.publishEntries(rc.entriesToApply(rd.CommittedEntries))</span><br><span class="line">	<span class="keyword">if</span> !ok &#123;</span><br><span class="line">		rc.stop()</span><br><span class="line">		<span class="keyword">return</span></span><br><span class="line">	&#125;</span><br><span class="line">	rc.maybeTriggerSnapshot(applyDoneC)</span><br><span class="line">	rc.node.Advance()</span><br></pre></td></tr></table></figure>
+
+<p>在该Goroutine中，从<code>rc.node.Ready()</code>返回的Channel中阻塞接收<code>Ready</code>结构，收到新的<code>Ready</code>结构后：</p>
+<ul>
+<li>调用<code>rc.wal.Save(rd.HardState, rd.Entries)</code>，把需要保存到<code>NVS</code>中的<code>HardState</code>、日志条目进行保存；</li>
+<li>如果<code>Ready</code>中包含了<code>Snapshot</code>，则首先调用<code>rc.saveSnap(rd.Snapshot)</code>，把<code>snapshot</code>保存到<code>NVS</code>中；然后调用<code>rc.raftStorage.ApplySnapshot(rd.Snapshot)</code>，替换<code>Storage</code>中的<code>snapshot</code>，并清空其中的日志；最后调用<code>rc.publishSnapshot</code>应用该snapshot；</li>
+<li>调用<code>rc.raftStorage.Append(rd.Entries)</code>，将日志条目追加到<code>Storage</code>中；</li>
+<li>调用<code>rc.transport.Send(rd.Messages)</code>，将<code>Ready</code>中的<code>Messages</code>中发送出去；</li>
+<li>调用<code>rc.publishEntries(rc.entriesToApply(rd.CommittedEntries))</code>，将可应用的日志条目应用到状态机，并更新<code>applyIndex</code>；如果其中包含了配置变更的日志条目，则进行响应的配置变更；</li>
+<li>调用<code>rc.maybeTriggerSnapshot(applyDoneC)</code>，满足条件的情况下创建snapshot；</li>
+<li>调用<code>rc.node.Advance()</code>，通知<code>raft模块</code>进行下一步动作；</li>
+</ul>
+<h4 id="raft模块进行下一步动作"><a href="#raft模块进行下一步动作" class="headerlink" title="raft模块进行下一步动作"></a>raft模块进行下一步动作</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Advance()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Advance(rd Ready)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> advance(rd Ready)</span><br></pre></td></tr></table></figure>
+
+<p>外部模块使用完<code>Ready</code>后，会调用<code>node.Advance</code>方法通知<code>raft模块</code>，就是向<code>node.advance</code>管道中发一个信号；</p>
+<p>在<code>node.run</code>这个<code>Goroutine</code>中，接收到<code>node.advance</code>上的信号之后，就调用<code>RawNode.Advance</code>方法，保存<code>Ready.HardState</code>为<code>RawNode.prevHardSt</code>；并调用<code>raft.advance</code>完成最后的动作，主要就是完成一些状态的更改，包括：</p>
+<ul>
+<li>调用<code>r.reduceUncommittedSize(rd.CommittedEntries)</code>，参考下一篇文章；</li>
+<li>如果<code>Ready</code>的待应用日志中包含了配置变更条目的话，则发送一个空的<code>pb.EntryConfChangeV2</code>消息，驱动配置变更完成第二阶段的动作；</li>
+<li>调用<code>raftLog.stableTo</code>，清除<code>unstable</code>中的相应日志条目；</li>
+<li>调用<code>raftLog.stableSnapto</code>，清除<code>unstable</code>中的snapshot；</li>
+</ul>
+<hr>
+<h3 id="其他"><a href="#其他" class="headerlink" title="其他"></a>其他</h3><h4 id="send"><a href="#send" class="headerlink" title="send"></a>send</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> send(m pb.Message)</span><br></pre></td></tr></table></figure>
+
+<p><code>raft.send</code>方法是<code>raft模块</code>中最底层的”消息发送“方法，其他如<code>sendAppend</code>、<code>sendHeartbeat</code>等最终都会调用到该方法。但是实际上该方法并没有真正的发送动作，它仅仅是把消息追加到<code>r.msgs</code>中，这些<code>msgs</code>中的消息最终会附加到<code>Ready</code>结构中，发送到<code>raft</code>模块外部。</p>
+<p>该方法在将消息追加到<code>r.msgs</code>之前，会检查并设置消息中的<code>Term</code>等属性。具体的逻辑是：</p>
+<ul>
+<li>如果<code>m.From</code>尚未设置，则将其置为<code>r.id</code>，即本节点的<code>id</code>；</li>
+<li>对于竞选消息，包括：<code>pb.MsgVote</code>（拉票消息）、<code>pb.MsgVoteResp</code>（拉票回应）、<code>pb.MsgPreVote</code>（预拉票消息）、<code>pb.MsgPreVoteResp</code>（预拉票回应），这些消息的<code>Term</code>值，在调用<code>send</code>之前必须已经设置好了，否则直接<code>panic</code>；</li>
+<li>其他类型的消息，在调用<code>send</code>之前不能设置，否则直接<code>panic</code>；<ul>
+<li>如果消息既不是<code>pb.MsgProp</code>提案消息，也不是<code>pb.MsgReadIndex</code>消息，则设置其<code>Term</code>为当前<code>Term</code>；</li>
+<li>而对于<code>pb.MsgProp</code>提案消息和<code>pb.MsgReadIndex</code>消息，他们实际上都是要转发给<code>Leader</code>的消息，所以按照本地消息的方式对待，无需设置其<code>Term</code>。</li>
+</ul>
+</li>
+</ul>
+<hr>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/" rel="prev" title="【转载】TiDB 在 Raft 成员变更上踩的坑">
+      <i class="fa fa-chevron-left"></i> 【转载】TiDB 在 Raft 成员变更上踩的坑
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/28/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/%E8%AE%BA%E6%96%87/02The%20many%20faces%20of%20consistency#####/" rel="next" title="The many faces of consistency">
+      The many faces of consistency <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Ready%E7%BB%93%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">Ready结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Ready%E7%9A%84%E5%A4%84%E7%90%86%E6%B5%81%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">Ready的处理流程</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8F%91%E9%80%81Ready"><span class="nav-number">2.1.</span> <span class="nav-text">发送Ready</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%84%E7%90%86Ready"><span class="nav-number">2.2.</span> <span class="nav-text">处理Ready</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#raft%E6%A8%A1%E5%9D%97%E8%BF%9B%E8%A1%8C%E4%B8%8B%E4%B8%80%E6%AD%A5%E5%8A%A8%E4%BD%9C"><span class="nav-number">2.3.</span> <span class="nav-text">raft模块进行下一步动作</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B6%E4%BB%96"><span class="nav-number">3.</span> <span class="nav-text">其他</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#send"><span class="nav-number">3.1.</span> <span class="nav-text">send</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="以下内容，是对Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于配置变更的总结，内容来自于“4 Cluster membership changes”。 成员变更的最大风险，是可能会同时出现 2 个领导者。比如有一个由节点 A、B、C 组成的 Raft 集群，现在需要增加另外 2 个节点，扩展为由节点 A、B、C、D、E， 5 个节点组成的新集">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-04-1成员变更总结">
+<meta property="og:url" content="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="以下内容，是对Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于配置变更的总结，内容来自于“4 Cluster membership changes”。 成员变更的最大风险，是可能会同时出现 2 个领导者。比如有一个由节点 A、B、C 组成的 Raft 集群，现在需要增加另外 2 个节点，扩展为由节点 A、B、C、D、E， 5 个节点组成的新集">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/03RAFT成员变更(博士论文)/v2-26c7a68e9aae047a910c2071bcff4831_720w.jpg">
+<meta property="og:image" content="http://example.com/img/14%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4_%E6%80%BB%E7%BB%93/image-20220419081632386.png">
+<meta property="article:published_time" content="2021-12-19T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T05:39:34.226Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/03RAFT成员变更(博士论文)/v2-26c7a68e9aae047a910c2071bcff4831_720w.jpg">
+
+<link rel="canonical" href="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-04-1成员变更总结 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-04-1成员变更总结
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-20 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-20T00:00:00+08:00">2021-12-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:39:34" itemprop="dateModified" datetime="2022-06-28T13:39:34+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>以下内容，是对Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于配置变更的总结，内容来自于“4 Cluster membership changes”。</p>
+<p>成员变更的最大风险，是可能会同时出现 2 个领导者。比如有一个由节点 A、B、C 组成的 Raft 集群，现在需要增加另外 2 个节点，扩展为由节点 A、B、C、D、E， 5 个节点组成的新集群。在进行成员变更时，节点 A、B 和 C 之间发生了分区错误，节点 A、B 组成旧配置中的“大多数”，也就是变更前的 3 节点集群中的“大多数”，那么这时节点 A和B采用旧配置，可以选出Leader，而节点 C 和新节点 D、E 组成了新配置的“大多数”，它们可能会选举出新的Leader。那么这时，就出现了同时存在 2 个领导者的情况。这就破坏了 Raft 集群的领导者唯一性，影响了集群的运行。</p>
+<span id="more"></span>
+<img src="/img/03RAFT成员变更(博士论文)/v2-26c7a68e9aae047a910c2071bcff4831_720w.jpg" alt="img" style="zoom: 50%;" />
+
+<p>所以，成员变更的首要任务和挑战就是维护安全性。即在成员变更期间不能在同一个Term内选举出两个Leader。因集群中所有节点不可能同时自动切换到新配置，所以在变更期间，需要防止集群分裂为两个不相交的Majority集合。</p>
+<p>Raft推荐用一种简单的方法来处理这个问题，即限制允许的配置变更类型：集群中一次只能添加或删除一个节点。更复杂的成员变更可以通过一系列的单节点变更来实现。这就是单节点变更算法。</p>
+<p>向集群中添加或删除一个节点，那旧集群配置的任一Majority节点集合，与新集群配置的任一Majority节点集合肯定有交集。这种集合的相交，防止了集群被分裂成两个独立的Majority节点集合，保证了集群成员变更的安全性。如图：</p>
+<p><img src="/img/14%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4_%E6%80%BB%E7%BB%93/image-20220419081632386.png" alt="image-20220419081632386"></p>
+<p>单节点变更算法具体流程：</p>
+<ul>
+<li>当Leader收到请求需要在当前配置（Cold）中增加或删除一个节点时，它把新配置（Cnew）作为一个日志条目，使用常规的Raft日志复制机制，将其复制到其他节点上。</li>
+<li>其他节点只要收到该条目，将该条目追加到本地日志后，就认为新配置生效了；这就表示节点无需等到Cnew条目提交后才是用新配置，它们直接使用日志中能找到的最新配置。</li>
+<li>Cnew条目只会复制到Cnew的节点中，使用Cnew中的Majority节点来决定Cnew的提交。</li>
+</ul>
+<p>一旦Cnew条目提交后，就认为本次配置变更完成了。从此刻起，Leader就知道Cnew节点中的过半节点已经采用了Cnew的配置。而且可以明确Cnew之外的节点不可能形成Majority集合了，从而Cnew之外的节点就无法选出Leader了。Cnew条目的提交可以让下面的操作得以继续：</p>
+<ul>
+<li>Leader可以确认配置变更已经完成；</li>
+<li>如果配置变更是移除了某个节点，则该节点可以下线了；</li>
+<li>可以开始新的配置变更了。如果在此之前进行新的配置变更，则重叠的配置变更可能会导致类似上图那样的危险场景（重叠的配置变更可能会导致新旧配置的Majority节点不相交的场景：考虑<code>abc -&gt; abcd -&gt; abcde</code>的过程，如果原<code>abc</code>中<code>c</code>为Leader，现在加入<code>d</code>，新配置<code>abcd</code>只复制给了<code>c</code>和<code>d</code>，尚未提交时，又来了新的配置变更，增加<code>e</code>，最新配置<code>abcde</code>复制到了<code>c</code>、<code>d</code>和<code>e</code>，那现在<code>ab</code>使用最老的配置，<code>cde</code>使用最新的配置，一旦分区就出现了脑裂）；</li>
+</ul>
+<p>节点直接使用日志中最新的配置，而不用等到配置提交后才使用。这可以使得Leader在当前配置未提交时，不会开始新的配置变更，从而避免了配置变更并行的场景（上述的第三点）。只有当Cnew配置提交后，开始进行新的配置变更才是安全的。</p>
+<p>如果节点等到Cnew日志提交后才使用Cnew的配置，那Leader是无法感知是否有Majority的节点已经使用Cnew配置了。这就需要Leader去获取其他节点的CommitIndex，其他节点也需要将CommitIndex进行持久化，这两种机制都不是Raft所需的。因此，当节点将Cnew日志追加到日志表中，回复了AppendEntries RPC之后，节点就可以采用Cnew配置了，Leader收到Majority节点关于Cnew日志的AppendEntries RPC的成功回复，就可以将Cnew提交，进而开始下一次的配置变更了。不过，这种机制可能会使得配置日志被删除（当Leader发生变更时），所以节点必须能回退到日志中上一个配置。</p>
+<hr>
+<p>在Raft中，使用调用者（RPC发起者）的配置来实现共识，而非被调用者（RPC接收者）的配置。比如对于投票和日志复制而言：</p>
+<ul>
+<li>收到RequestVote RPC的节点a，在满足条件的基础上，可以投票给它不认识的节点b（即a节点本地日志中最新配置中之外的节点）。比如，Cold为[a, b, c]三个节点，leader为a，Cnew为[a, b, c, d]，即新增d节点。如果配置变更时a已经将Cnew复制给了a, b, d，而c节点没有收到，此时Cnew也能生效。但接着节点a崩溃了，此时新节点d成为Candidate，它需要b，c的投票，如果c因为其配置中不包含d而拒绝投票的话，d就无法成为leader，降低了集群的可用性。</li>
+<li>节点a收到了节点b发来的AppendEntries RPC，即使a不认识节点b，它也会接受该RPC。还是继续上面的例子，新节点d成为新Leader后开始发送AppendEntries RPC，如果c不接受该RPC，则d收到的AppendEntries RPC回复永远无法成为Majority（此时Cnew配置为[a, b, c, d]，a崩溃了，则Majority只能是[b, c, d]），导致集群不可用。</li>
+</ul>
+<p>因此，节点收到RPC后，无需查询当前的配置信息。</p>
+<hr>
+<p>配置变更对于集群可用性，有以下几点影响：</p>
+<ul>
+<li><p>新加入集群的节点的日志需要追上Leader：无日志的新节点加入集群时，如果它直接成为集群的一员，那他的日志需要很长一段时间才能追上Leader，这段时间内，集群很容易处于不可用的状态。比如，三节点的集群（a, b, c），如果不包含任何日志的第四个节点（d）加入到集群中，并且原来的节点c崩溃了，则d的日志在追上Leader之前，集群是无法提交任何的新日志。</p>
+<p>为了避免这种可用性问题，Raft在进行配置变更之前引入了新的阶段，在这个阶段内，新节点会作为非投票成员（non-voting member）加入到集群中。这个节点，Leader会向新节点同步日志，而在投票或者日志复制时，不会把它当做形成Majority的条件。当新节点的日志追上集群后，配置变更才可以继续进行。</p>
+</li>
+<li><p>如果Cnew中是需要移除当前的Leader，则该Leader必须在某个时间点进行下线。</p>
+<p>Raft最初开发了一种配合联合共识的Leader下线方法：旧配置中的Leader直接进行配置变更，然后再下线。这种方法可能会使集群处于一种尴尬的场景中：Leader管理的配置中不包含自己。这种方法中，Leader在Cnew提交后就会下线，如果Leader在此之前下线，则它还有可能会选举超时并且再次成为leader，从而拖慢了整体进度。在更极端的2节点场景中，只能是该旧Leader重新成为Leader后集群才得以继续运行</p>
+</li>
+<li><p>被移出的节点会影响新集群的可用性：Leader创建好Cnew日志后，Cnew之外的节点就再也收不到心跳包了，所以这些节点最终会超时，并且开始新的选举，新的Term发送RequestVote RPC，这就导致Leader转为Follower状态。虽然最终Cnew中的某个节点可能会当选，但是破坏性节点还是会超时并重复选举过程，这对集群可用性造成很大影响。</p>
+<p>首先想到的解决办法是增加PreVote阶段。但是实际上PreVote并不能解决该问题，一旦Leader创建了Cnew日志后，被移除的节点就已经具有破坏性了。PreVote方法无法解决该问题，因为它的日志可能要跟Majority一样新。</p>
+<p>最终的解决方法是使用心跳来检测有效Leader的存在（租约）。在Raft中，只要Leader能维持与Follower的心跳消息，该Leader就被认为是active的。因此，移除节点就无法破坏当前的Leader了。修改RequestVote RPC机制：如果节点在当前Leader的最小选举超时时间内收到了RequestVote请求，则它不会更新term，也不会投票。它可以忽略该请求，或者返回一个拒绝投票的结果。</p>
+</li>
+</ul>
+<hr>
+<p>联合共识算法，可以一次性处理任意数量的节点变更。</p>
+<p>为了保证配置变更期间的安全性，集群首先进入到一种过渡配置状态，称之为联合共识（joint consensus），联合共识既包含Cold，也包含Cnew。所谓联合共识，就是指选举或日志提交，需要在Cold的Majority，以及Cnew的Majority中同时满足（保证了不会出现两个Leader）。一旦联合共识被提交了，则系统进入到新配置。具体而言：</p>
+<ul>
+<li>Leader收到配置变更请求，要从Cold转为Cnew，Leader将Cold,new作为一条日志项，将其复制到Cold以及Cnew的节点上；就像单节点变更算法一样，节点只要保存了配置日志，就开始将其作为最新的配置项使用。这就意味着Leader将使用Cold,new的配置来决定何时将Cold,new提交。如果Leader挂了，则新Leader可能是Cold中的某节点，也可能是Cold,new中的节点，这取决于该节点是否收到了Cold,new日志。不管是哪种情况，此阶段中Cnew不能单方面做出决定。</li>
+<li>一旦Cold,new被提交，则Cold和Cnew都不能在未经对方批准的情况下做出决定，而且Leader完备性保证了只有拥有Cold,new的节点才能选举成功。Cold,new提交后，Leader可以创建Cnew配置，并将其复制到Cnew节点上，只要节点收到并保存了该配置，则节点就使用该配置做决策了。当Cnew日志项在Cnew的Majority中被提交了，则Cold就无关紧要了，不在Cnew中的节点可以关机了。</li>
+<li>这个过程中，不会存在Cold和Cnew同时独立决策的情况，这就保证了安全性。</li>
+</ul>
+<hr>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/" rel="prev" title="raft大论文翻译-04-1集群节点变更">
+      <i class="fa fa-chevron-left"></i> raft大论文翻译-04-1集群节点变更
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/" rel="next" title="etcd_raft源码解析-08选举和状态转换">
+      etcd_raft源码解析-08选举和状态转换 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

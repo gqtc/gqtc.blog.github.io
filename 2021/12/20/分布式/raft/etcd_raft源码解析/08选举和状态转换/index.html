@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="背景基本算法下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于Leader选举的基本内容，节选自“3.4 Leader election ”和“3.6.2 Election restriction”。 当节点启动时，它们都是Follower。节点只要能从Leader或Candidate收到有效的RPC，它就会一直保持Follower状态。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-08选举和状态转换">
+<meta property="og:url" content="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="背景基本算法下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于Leader选举的基本内容，节选自“3.4 Leader election ”和“3.6.2 Election restriction”。 当节点启动时，它们都是Follower。节点只要能从Leader或Candidate收到有效的RPC，它就会一直保持Follower状态。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-12-19T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:39:56.538Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-08选举和状态转换 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-08选举和状态转换
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-20 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-20T00:00:00+08:00">2021-12-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:56" itemprop="dateModified" datetime="2022-06-28T09:39:56+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><h4 id="基本算法"><a href="#基本算法" class="headerlink" title="基本算法"></a>基本算法</h4><p>下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于Leader选举的基本内容，节选自“3.4 Leader election ”和“3.6.2 Election restriction”。</p>
+<p>当节点启动时，它们都是Follower。节点只要能从Leader或Candidate收到有效的RPC，它就会一直保持Follower状态。Leader周期性的向Follower发送心跳消息来维护自己的领导地位。如果一个Follower在一段时间（称为选举超时时间）内没有收到任何消息，那该Follower就会开始选举流程。</p>
+<p>节点间通信时会交换当前Term值。如果一个节点当前Term比其他节点的小，该节点会将自己的Term更新为较大的那个值。如果一个 Candidate 或 Leader 发现自己的Term过期（较小）了，它会立即回到 Follower 状态。如果一个节点接收到一个包含过期（较小）Term的RPC消息，它会直接拒绝&#x2F;忽略这个RPC消息。</p>
+<span id="more"></span>
+<p>开始选举时，Follower增加自己的Term，并转为Candidate状态。然后投票给自己，并向集群中的其他节点并发的发送RequestVote请求。Candidate会一直保持这种状态，直到发送下面三种情况之一：</p>
+<ul>
+<li><p>a赢得选举：如果Candidate在同一任期内可以从集群中获得过半节点的投票，则该Candidate就可以赢得选举。在给定的任期内，每个节点最多只能投票给一个Candidate，先到先得（注：3.6.2节中增加了投票的额外限制）。需要获取过半节点的投票，这条规则使得特定任期内最多只会有一个Candidate赢得选举。一旦Candidate赢得选举，它就会转为Leader。然后向所有节点发送心跳消息，以确立起领导者地位，阻止新的选举。</p>
+</li>
+<li><p>b另一个节点确立了自己的领导者地位：在等待选票期间，Candidate可能会收到另一个声称自己是Leader的节点发来的<code>AppendEntries</code>请求。如果该RPC中附带的Term值大于等于该Candidate的本地Term，那Candidate就会承认该Leader是合法的，并回到Follower的状态。如果RPC中的Term小于该Candidate的本地Term，则Candidate拒绝该RPC，保持Candidate状态不变。</p>
+</li>
+<li><p>c选举超时时间内没有人赢得选举：如果同一时间内有多个Follower转为Candidate开始选举，那选票可能会被这些Candidate瓜分，从而没有Candidate能够获得过半节点的投票。这种情况发生时，每个Candidate都会再次选举超时，增加Term，然后开始新的选举。但是如果不采取额外措施，瓜分选票的情况会无限重复下去。</p>
+<p>Raft采用随机的选举超时策略来确保瓜分选票的情况很少发生，即使发生了也能很快解决。选举超时时间在固定的时间范围（比如[100ms, 300ms]）内随机选择。这种随机策略会把各个节点的选举超时时刻打散，所以多数情况下只会有一个节点会超时；并且会在其他节点超时之前赢得选举并发送心跳消息。<font color=red>出现瓜分选票的情况是也采取同样的策略，每个Candidate在开始选举时会重置其随机的超时时间，等到超时后才进行下一次选举</font>；这就降低了新的选举中再次出现瓜分选票的可能性。</p>
+</li>
+</ul>
+<p>在任何基于Leader的共识算法中，Leader最终必须包含所有已提交的日志条目。Raft采用简单的方法来保证选举时新Leader在当选时就有之前任期的所有已提交的条目，而无需将这些条目再传输给新Leader。<font color=red>这就意味着日志条目只会从Leader流向Follower，是单向的，而Leader永远不会覆盖日志中的条目。</font></p>
+<p><font color=red>Raft在投票过程中增加限制：只有Candidate的日志包含了所有已提交条目，该Candidate才会当选。</font>在选举时Candidate需要与集群中过半节点通信，这就表示其中至少有一个节点包含所有已提交的条目。如果Candidate的日志至少与过半节点的日志一样新（下面定义了“新”的概念），那就能保证该Candidate包含了所有已提交的条目。在RequestVote RPC实现了该限制：RPC中包含了Candidate的日志信息，投票者判断如果自己的日志比Candidate新，则拒绝投票。</p>
+<p><font color=red>Raft通过比较日志中最后一个条目的Index和Term来确定哪个日志更“新”。</font>如果两份日志的最后条目的Term不同，则具有更大Term的日志更新；如果Term一样，则Index更大的更新；</p>
+<p><font color=red>个人理解</font>，基于这个“新”的定义，并不足以保证当选的Leader包含了所有已提交的条目，某些场景下还是会有问题，所以才有了3.6.2中的<font color=red>日志提交约束。</font>，即Raft不能仅通过计算副本数来提交之前任期创建的条目。针对当前任期创建的条目，通过计算副本数进行提交才是安全可行的，根据日志匹配属性，一旦当前任期中的条目以这种方法（计算副本数）提交了，那之前的条目也就间接的提交了。</p>
+<h4 id="PreVote优化"><a href="#PreVote优化" class="headerlink" title="PreVote优化"></a>PreVote优化</h4><p>上面的流程基本上能工作，但是还有优化的余地，因此在9.6节”Preventing disruptions when a server rejoins the cluster”中增加了PreVote的机制。下面是该章节的部分内容：</p>
+<p>基本的选举算法有一个缺点，一个曾经被分区隔离的集群节点，重新连接到集群时可能会造成集群中断。节点被隔离后，它收不到心跳消息，因此会增加Term以开始选举，此时它肯定无法成为Leader。但当该节点稍后恢复连接时，其较大的Term将传播到集群的其余节点（通过RequestVote请求或AppendEntries响应）。这将迫使正常的Leader转为Follower，然后必须进行新的选举以选出新的Leader。</p>
+<p>Raft的基本选举算法可以扩展一个额外的阶段以防止这种干扰，即PreVote过程。<font color=red>在PreVote过程中，Candidate只有从群集中多数节点那里得知他们愿意给自己投票时（假设Candidate的日志足够最新，并且Voters在至少一个选举超时时间内没有收到有效Leader的心跳），才增加其Term。</font>该算法实际上是受到了ZooKeeper算法的启发。</p>
+<p>PreVote过程解决了隔离节点在重新连接集群时中断集群的问题。当节点被分区时，它将不能增加其Term，因为它不能从集群的大多数接收选票。然后，当它重新加入集群时，它仍然无法增加它的Term，因为其他节点将一直收到来自Leader的心跳。一旦该节点收到来自Leader自身的心跳信号，它将返回到Follower状态（在同一Term中）。</p>
+<hr>
+<h3 id="代码流程"><a href="#代码流程" class="headerlink" title="代码流程"></a>代码流程</h3><h4 id="初始状态StateFollower"><a href="#初始状态StateFollower" class="headerlink" title="初始状态StateFollower"></a>初始状态StateFollower</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> becomeFollower(term <span class="type">uint64</span>, lead <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> reset(term <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> resetRandomizedElectionTimeout()</span><br></pre></td></tr></table></figure>
+
+<p>节点启动时，都是以<code>Follower</code>状态启动，即调用<code>raft.becomeFollower</code>将状态置为<code>Follower</code>。该函数中主要是：</p>
+<ul>
+<li>将<code>raft.step</code>回调函数置为<code>stepFollower</code>；将<code>raft.tick</code>回调函数置为<code>raft.tickElection</code>；</li>
+<li>将<code>raft.state</code>设置为<code>StateFollower</code>；</li>
+<li>将<code>raft.lead</code>设置为参数<code>lead</code>；</li>
+<li>调用<code>raft.reset(term)</code>重置本节点Term，并初始化其他状态。</li>
+</ul>
+<p>除了节点启动时会调用<code>becomeFollower</code>外，还有以下情况会调用该方法：</p>
+<ul>
+<li><code>raft.Step</code>中，收到的消息中Term大于节点本地Term时，一般就会调用本方法转为<code>Follower</code>，以下几种情况是例外：<ul>
+<li>收到的消息是 <code>pb.MsgVote</code> 或 <code>pb.MsgPreVote</code> 时，这种情况下，如果下面的条件都满足，直接忽略这两类消息：<ul>
+<li>消息中的<code>Context</code>不是<code>campaignTransfer</code>。<code>Context</code>为<code>campaignTransfer</code>表示这是领导权转移的目标节点发起的PreVote或Vote流程，不能忽略。具体参考《领导权转移流程》；</li>
+<li><code>r.checkQuorum &amp;&amp; r.lead != None &amp;&amp; r.electionElapsed &lt; r.electionTimeout</code> 为<code>true</code>，这个条件的意思应该就是本节点距离上次收到<code>Leader</code>发来的信息的时间差，在选举超时时间的最小值<code>r.electionTimeout</code>内，因此本节点不会理会投票消息，直接丢弃。<font color=red>这是为了防止被分区隔离的<code>Follower</code>不断增加自己的Term来进行选举，导致正常的<code>Leader</code>被迫下线。具体参考《CheckQuorum和心跳消息》。</font></li>
+</ul>
+</li>
+<li>收到<code>pb.MsgPreVote</code>消息时，消息中的Term是发起PreVote流程的节点Term+1，所以这种情况不会使当前节点转为<code>Follower</code>；</li>
+<li>收到的是<code>pb.MsgPreVoteResp</code>消息，并且其中的<code>Reject</code>为<code>false</code>，这是对于<code>pb.MsgVote</code>消息成功回复的唯一场景，因为<code>pb.MsgVote</code>中的Term是本节点的Term+1，收到<code>pb.MsgPreVoteResp</code>成功回复时，其中的Term就是<code>pb.MsgVote</code>中的Term，所以大于本节点Term是正常的；</li>
+</ul>
+</li>
+<li>如果节点当前是<code>Candidate</code>，收到了<code>pb.MsgApp, pb.MsgHeartbeat, pb.MsgSnap</code>消息，并且消息中的Term大于等于本地Term，说明这些消息都是有效<code>Leader</code>发来的消息，因此调用本方法转为<code>Follower</code>；</li>
+<li>如果节点当前是<code>Candidate</code>，统计选票结果为<code>quorum.VoteLost</code>，调用本方法转为<code>Follower</code>；</li>
+<li>作为<code>Leader</code>，在<code>stepLeader</code>中，收到了<code>pb.MsgCheckQuorum</code>消息，并且此时<code>r.prs.QuorumActive()</code>得到的结果为<code>false</code>，则调用本方法转为<code>Follower</code>。<font color=red>这是<code>Leader</code>的<code>CheckQuorum</code>检查失败，即<code>Leader</code>在一段时间内无法得到集群内Majority个节点的响应，说明该<code>Leader</code>很可能被分区隔离了，所以<code>Leader</code>主动降级为<code>Follower</code>。具体参考《CheckQuorum和心跳消息》</font>;</li>
+</ul>
+<p><code>raft.reset</code>方法主要在状态转换，即<code>becomeFollower</code>, <code>becomeCandidate</code>, <code>becomeLeader</code>中调用。该函数中除了会重置节点本地的Term之外，还会初始化并重置其他的一些状态：</p>
+<ul>
+<li>在<code>term</code>不等于当前<code>raft.Term</code>的情况下，重置<code>raft.Term</code>为参数<code>term</code>；并且将<code>raft.Vote</code>重置为<code>None</code>；</li>
+<li>重置<code>raft.lead</code>为<code>None</code>；</li>
+<li>将<code>raft.electionElapsed</code>，<code>raft.heartbeatElapsed</code>这两个时钟tick重置为<code>0</code>；并且调用<code>raft.resetRandomizedElectionTimeout()</code>，重新生成随机的超时选举时间<code>raft.randomizedElectionTimeout</code>，其值的范围是<code>[raft.electiontimeout, 2 * raft.electiontimeout - 1]</code>；</li>
+<li>调用<code>raft.abortLeaderTransfer()</code>，将<code>raft.leadTransferee</code>重置为<code>None</code>；</li>
+<li>调用<code>raft.prs.ResetVotes()</code>，重置记录投票结果的<code>ProgressTracker.Votes</code>；</li>
+<li><font color=red>重建每个节点对应的<code>tracker.Progress</code>结构</font>：<ul>
+<li>如果是本节点对应<code>tracker.Progress</code>结构，则将<code>Progress.Match</code>置为当前最后日志条目的Index，否则将<code>Progress.Match</code>置为<code>0</code>；</li>
+<li>将<code>Progress.Next</code>置为当前最后日志条目的Index加<code>1</code>；</li>
+<li>重建<code>Progress.Inflights</code>；</li>
+<li>保留原来的<code>Progress.IsLearner</code>属性；</li>
+<li>这里并没有显示的设置<code>Progress.StateProbe</code>属性，所以其值为<code>0</code>，即<code>StateProbe</code>；</li>
+</ul>
+</li>
+<li>将<code>raft.pendingConfIndex</code>重置为0；将<code>raft.uncommittedSize</code>重置为0；新建<code>raft.readOnly</code>结构；</li>
+</ul>
+<hr>
+<h4 id="选举超时"><a href="#选举超时" class="headerlink" title="选举超时"></a>选举超时</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Tick()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Tick()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> tickElection()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> promotable() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> pastElectionTimeout() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p><code>node.Tick</code>方法就是向<code>node.tickc</code>管道中发一个<code>struct&#123;&#125;&#123;&#125;</code>，即一个信号。一般在<code>raft</code>模块外部，收到一个由<code>time.NewTicker</code>创建的管道上的定时信号后就会调用<code>node.Tick</code>方法，即起到一个<font color=red>逻辑时钟滴答</font>的功能。</p>
+<p>在<code>node.run</code>方法中，收到<code>node.Tick</code>中向<code>node.tickc</code>管道中发送的信号之后，就会调用<code>raft.tick</code>回调函数，针对<code>Follower</code>而言，该回调函数就是<code>raft.tickElection</code>方法。</p>
+<p>在<code>raft.tickElection</code>方法中，首先对<code>raft.electionElapsed</code>进行自增，然后判断是否已经满足开始选举流程的条件，这里的条件有两个：</p>
+<ul>
+<li>由<code>raft.promotable</code>判断当前节点是否可以进行选举，满足以下条件才返回<code>true</code>：节点本身的<code>id</code>存在于<code>raft.prs.Progress</code>中，即节点是集群中的一员；节点不是<code>Learner</code>；节点当前没有尚未应用的快照；</li>
+<li>由<code>raft.pastElectionTimeout</code>方法判断当前<code>raft.electionElapsed</code>是否已经到了选举超时时间<code>raft.randomizedElectionTimeout</code>。<code>raft.randomizedElectionTimeout</code>是在<code>raft.resetRandomizedElectionTimeout</code>中设置的，是<code>[raft.electiontimeout, 2 * raft.electiontimeout - 1]</code>范围内的随机值，其中<code>raft.electiontimeout</code>是一个配置决定的选举超时基准时间。而<code>raft.resetRandomizedElectionTimeout</code>方法是在<code>raft.reset</code>方法中调用，即当节点状态转换时会重新设置<code>raft.randomizedElectionTimeout</code>选举超时时间。</li>
+</ul>
+<p>满足选举的条件后，在<code>raft.tickElection</code>方法中，就会以一个<code>pb.MsgHup</code>类型的本地消息调用<code>raft.Step</code>方法。<code>pb.MsgHup</code>消息没有消息体，关键的就只是消息类型，主要用于在<code>raft.Step</code>方法中触发PreVote或Vote流程。</p>
+<p>在<code>raft.Step</code>方法中，针对<code>pb.MsgHup</code>消息，根据<code>raft.preVote</code>是否为<code>true</code>，来决定发起PreVote或者Vote流程。这里<code>raft.preVote</code>是个配置选项，当前版本应该都支持PreVote流程。</p>
+<hr>
+<h4 id="PreVote流程"><a href="#PreVote流程" class="headerlink" title="PreVote流程"></a>PreVote流程</h4><h5 id="发送pb-MsgPreVote消息，状态转为StatePreCandidate"><a href="#发送pb-MsgPreVote消息，状态转为StatePreCandidate" class="headerlink" title="发送pb.MsgPreVote消息，状态转为StatePreCandidate"></a>发送pb.MsgPreVote消息，状态转为StatePreCandidate</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> hup(t CampaignType)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> campaign(t CampaignType)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> becomePreCandidate()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> poll(id <span class="type">uint64</span>, t pb.MessageType, v <span class="type">bool</span>) (granted <span class="type">int</span>, rejected <span class="type">int</span>, result quorum.VoteResult)</span><br></pre></td></tr></table></figure>
+
+<p><code>raft.hub</code>的参数类型<code>CampaignType</code>，针对本方法而言，值可能为<code>campaignPreElection</code>或<code>campaignElection</code>。<code>campaignPreElection</code>表示PreVote流程，<code>campaignElection</code>表示Vote流程。<code>raft.hub</code>方法就是进行一系列检查后，调用<code>raft.campaign</code>方法开始PreVote或Vote流程。这里的检查项包括：</p>
+<ul>
+<li>当前<code>raft.state</code>不能是<code>StateLeader</code>，即当前节点不能是<code>Leader</code>；</li>
+<li><code>raft.promotable</code>返回必须是<code>true</code>，即：节点本身的id存在于<code>raft.prs.Progress</code>中，即节点是集群中的一员；节点不是<code>Learner</code>；节点当前没有尚未应用的快照；</li>
+<li>节点当前的日志中，Index在<code>[raft.raftLog.applied+1, raft.raftLog.committed+1]</code>的日志条目，即已提交未应用的日志条目中，不能有配置变更日志；</li>
+<li>满足上面的条件后，调用<code>raft.campaign(t)</code>，开始PreVote流程；</li>
+</ul>
+<p><code>raft.campaign</code>方法，针对参数<code>t</code>为<code>campaignPreElection</code>的PreVote流程而言：</p>
+<ul>
+<li><p>首先调用<code>raft.becomePreCandidate</code>方法，该方法主要动作是：</p>
+<ul>
+<li>将<code>raft.step</code>回调函数置为<code>stepCandidate</code>；</li>
+<li>调用<code>raft.prs.ResetVotes</code>方法，将<code>ProgressTracker.Votes</code>重置，即清空记录投票结果的map；</li>
+<li>将<code>raft.tick</code>回调函数置为<code>raft.tickElection</code>；</li>
+<li>将<code>raft.lead</code>置为<code>None</code>，将<code>raft.state</code>置为<code>StatePreCandidate</code>；</li>
+<li><font color=red>注意</font>，这里没有重置<code>raft.Term</code>（即本节点的Term），也没有修改<code>raft.Vote</code>（即将选票投给自己）；</li>
+</ul>
+</li>
+<li><p>接下来以本节点id，以及true为参数调用<code>raft.poll</code>方法，得到投给自己一票后的PreVote结果。<code>raft.poll</code>方法就是先将节点id以及投票结果v记录到<code>ProgressTracker.Votes</code>这个map中，然后调用<code>ProgressTracker.TallyVotes</code>方法，统计<code>ProgressTracker.Votes</code>中的投票结果并返回；</p>
+</li>
+<li><p>如果<code>raft.poll</code>返回结果为<code>quorum.VoteWon</code>，说明<font color=red>当前集群中只有一个节点</font>，因此直接进入下一步流程。针对PreVote流程而言，下一步就是调用<code>raft.campaign(campaignElection)</code>开始Vote流程；然后直接返回；</p>
+</li>
+<li><p>接下来，针对<code>raft.prs.Voters</code>中的每个节点（排除本节点），以id从小到大的顺序，发送<code>pb.MsgPreVote</code>消息。消息的结构如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	Term: term, <span class="comment">//节点Term+1</span></span><br><span class="line">	To: id, </span><br><span class="line">	Type: pb.MsgPreVote, </span><br><span class="line">	Index: r.raftLog.lastIndex(), <span class="comment">//最后日志条目的Index</span></span><br><span class="line">	LogTerm: r.raftLog.lastTerm(), <span class="comment">//最后日志条目的Term</span></span><br><span class="line">    Context: ctx <span class="comment">//nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><font color=red>注意</font>，PreVote流程中并没有修改节点的Term，所以<code>pb.MsgPreVote</code>消息中附带的Term是节点Term+1，否则其他节点不会投票给自己。</p>
+</li>
+</ul>
+<hr>
+<h5 id="接收处理pb-MsgPreVote消息"><a href="#接收处理pb-MsgPreVote消息" class="headerlink" title="接收处理pb.MsgPreVote消息"></a>接收处理pb.MsgPreVote消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>其他节点收到<code>pb.MsgPreVote</code>消息后，最终都在<code>raft.Step</code>方法中处理。</p>
+<p><code>raft.Step</code>首先根据消息中的Term做不同的处理，<font color=red>一般的处理方式</font>是：</p>
+<ul>
+<li>如果消息中Term为<code>0</code>，则表示本地消息，不做特殊处理，在后面的流程中根据消息类型进行具体处理；</li>
+<li>如果消息中Term大于本地Term，则一般表示本地的Term已经过期了，所以会直接调用<code>raft.becomeFollower</code>转为<code>Follower</code>状态，然后再根据消息类型做具体处理；</li>
+<li>如果消息中Term小于本地Term，表示消息源节点是个过期节点，一般直接忽略消息，不在继续处理；</li>
+</ul>
+<p>针对<code>pb.MsgPreVote</code>消息，Step中的处理逻辑是：</p>
+<ul>
+<li><p>如果消息中的Term大于节点本地Term，并且下面的条件都满足，则直接返回，不再处理<code>pb.MsgPreVote</code>消息：</p>
+<ul>
+<li>消息中的<code>Context</code>不是<code>campaignTransfer</code>；<code>Context</code>为<code>campaignTransfer</code>表示这是领导权转移的目标节点发起的PreVote或Vote流程，不能忽略。具体参考《领导权转移流程》；</li>
+<li><code>raft.checkQuorum &amp;&amp; raft.lead != None &amp;&amp; raft.electionElapsed &lt; raft.electionTimeout</code> 为<code>true</code>，这个条件的意思应该就是本节点距离上次收到<code>Leader</code>发来的信息的时间差，在选举超时时间的最小值<code>raft.electionTimeout</code>内，因此本节点不会理会投票消息，直接丢弃。<font color=red>这是为了防止被分区隔离的<code>Follower</code>不断增加自己的Term来进行选举，导致正常的<code>Leader</code>被迫下线。具体参考《CheckQuorum和心跳消息》。</font></li>
+</ul>
+</li>
+<li><p>如果消息中的Term小于节点本地Term，则需要发送<code>Reject</code>为<code>true</code>的<code>pb.MsgPreVoteResp</code>响应消息，而不是像常规处理方式那样直接忽略。如果直接忽略，可能会造成集群的死锁（节点相互等待对方的投票）。具体的解释参考最后的<font color=red>“PreVote导致死锁”</font>的一节；</p>
+</li>
+<li><p>走到这里，表示消息中的Term大于等于节点本地Term，根据下面的条件判断是否可以投票：</p>
+<ul>
+<li><p><code>raft.raftLog.isUpToDate(m.Index, m.LogTerm)</code>返回<code>true</code>，即根据消息中的Index和LogTerm，发起选举的节点的日志要比本节点的日志更新。不满足该条件则会拒绝投票；</p>
+</li>
+<li><p><code>raft.Vote == m.From</code>为<code>true</code>（可以给同一节点重复投票），或者<code>raft.Vote == None &amp;&amp; raft.lead == None</code>（本节点没有<code>Leader</code>节点，也没有投过票），或者<code>m.Type == pb.MsgPreVote &amp;&amp; m.Term &gt; raft.Term</code>（收到的是<code>pb.MsgPreVote</code>消息，且消息中的Term大于本地Term）；</p>
+</li>
+<li><p>根据上面的条件决定发送的<code>pb.MsgPreVoteResp</code>响应消息内容。<code>pb.MsgPreVoteResp</code>响应消息格式如下：、</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pb.Message&#123;</span><br><span class="line">	To: m.From, </span><br><span class="line">	Term: m.Term / r.Term, <span class="comment">//见下面注释</span></span><br><span class="line">	Type: pb.MsgPreVoteResp,</span><br><span class="line">	Reject: <span class="literal">true</span> / <span class="literal">false</span> <span class="comment">//true表示投票，false则拒绝投票</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>如果可以投票，则消息中的Term使用的是<code>pb.MsgPreVote</code>消息中的Term，而不是节点本地Term，根据注释，这是因为：如果一个节点之前被隔离了，则其Term值可能是过时的（较小），如果响应消息中附带的是本地Term，则发起PreVote的节点可能会直接忽略本节点的响应消息；</li>
+<li>如果拒绝投票，则消息中的Term使用的是本地Term；</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h5 id="接收处理pb-MsgPreVoteResp消息"><a href="#接收处理pb-MsgPreVoteResp消息" class="headerlink" title="接收处理pb.MsgPreVoteResp消息"></a>接收处理pb.MsgPreVoteResp消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepCandidate</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>发起PreVote流程的节点收到<code>pb.MsgPreVoteResp</code>消息后，最终都在<code>raft.Step</code>方法中处理。其中针对<code>pb.MsgPreVoteResp</code>消息的处理逻辑是：</p>
+<ul>
+<li><p>如果消息中的Term大于本地Term，并且消息中的<code>Reject</code>为<code>false</code>（这是<font color=red>PreVote成功的唯一情况</font>），此时消息中的Term为之前发送的<code>pb.MsgPreVote</code>消息中附带的Term，即本节点的Term+1，因此说明可以获取对方的选票，因此剩下的流程在<code>stepCandidate</code>中处理；</p>
+</li>
+<li><p>如果消息中的Term大于本地Term，但是消息中的<code>Reject</code>为<code>true</code>，此时消息中的Term就是对端节点的Term，因此本节点的Term小于对端节点的Term，所以直接调用<code>r.becomeFollower(m.Term, None)</code>，转为<code>Follower</code>状态，并更新自己的Term为更高的对端节点的Term值。</p>
+<p>这里只要收到一个<code>Reject</code>为<code>true</code>，且<code>Term</code>较大的<code>pb.MsgPreVoteResp</code>消息就立即转为<code>Follower</code>状态，而不是等待其他节点的回复，这里也是没有问题的：如果其他节点可以PreVote成功，说明其他节点具备了相应的条件，如果其他节点也无法PreVote成功，则本节点在选举超时后以更大的Term进行PreVote，就有可能PreVote成功；</p>
+</li>
+<li><p>如果消息中的Term小于本地Term，则根据上面<code>pb.MsgPreVote</code>消息的流程，此时<code>Reject</code>一定为<code>true</code>，所以直接忽略，不再继续处理；</p>
+</li>
+<li><p>剩下的流程在<code>raft.stepCandidate</code>中处理，该方法中就是统计选票，即根据消息源节点id，以及<code>!Reject</code>为参数调用<code>raft.poll</code>方法，统计PreVote结果：</p>
+<ul>
+<li>如果结果为<code>quorum.VoteWon</code>，则可以进行正式投票了，调用<code>raft.campaign(campaignElection)</code>开始Vote流程；</li>
+<li>如果结果为<code>quorum.VoteLost</code>，则调用<code>raft.becomeFollower(r.Term, None)</code>转为<code>Follower</code>状态；</li>
+<li>其他情况说明当前选票还不到半数，所以需要等待其他<code>pb.MsgPreVoteResp</code>消息，一直等到可以通过<code>raft.poll</code>方法获取确切的投票结果，或者等到选举超时时间后，再次发起PreVote流程；</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h4 id="Vote流程"><a href="#Vote流程" class="headerlink" title="Vote流程"></a>Vote流程</h4><p>Vote流程与PreVote流程，除了一些细节外基本一致。为了方便查阅，下面的描述跟PreVote有冗余的地方。</p>
+<h5 id="发送pb-MsgVote消息，状态转为StateCandidate"><a href="#发送pb-MsgVote消息，状态转为StateCandidate" class="headerlink" title="发送pb.MsgVote消息，状态转为StateCandidate"></a>发送pb.MsgVote消息，状态转为StateCandidate</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> campaign(t CampaignType)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> becomeCandidate()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> reset(term <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> poll(id <span class="type">uint64</span>, t pb.MessageType, v <span class="type">bool</span>) (granted <span class="type">int</span>, rejected <span class="type">int</span>, result quorum.VoteResult)</span><br></pre></td></tr></table></figure>
+
+<p>在<code>stepCandidate</code>回调函数中，PreVote收集到过半的选票后，调用<code>raft.campaign(campaignElection)</code>开始Vote流程。</p>
+<p><code>raft.campaign</code>方法，针对参数<code>t</code>为<code>campaignElection</code>的Vote流程而言：</p>
+<ul>
+<li><p>首先调用<code>raft.becomeCandidate</code>方法，该方法主要动作是：</p>
+<ul>
+<li>将<code>raft.step</code>回调函数置为<code>stepCandidate</code>；</li>
+<li>调用<code>raft.reset(r.Term + 1)</code>，增加本节点的Term；同时初始化一些状态，包括将集群中其他节点的<code>tracker.Progress</code>进行重置：将<code>Match</code>置为0，而<code>Next</code>置为<code>r.raftLog.lastIndex() + 1</code>；调用<code>r.prs.ResetVotes</code>方法，将<code>ProgressTracker.Votes</code>重置，即清空记录投票结果的<code>map</code>；</li>
+<li>将<code>raft.tick</code>回调函数置为<code>raft.tickElection</code>；</li>
+<li>将<code>raft.state</code>置为<code>StateCandidate</code>；</li>
+<li>将<code>raft.Vote</code>置为自己的id，表示投票给自己；</li>
+<li><font color=red>注意</font>，与<code>raft.becomePreCandidate</code>不同，这里重置了<code>raft.Term</code>（即本节点的Term），也也修改了<code>raft.Vote</code>（即将选票投给自己）；</li>
+</ul>
+</li>
+<li><p>接下来以本节点id，以及<code>true</code>为参数调用<code>raft.poll</code>方法，得到投给自己一票后的PreVote结果。<code>raft.poll</code>方法就是先将节点id以及投票结果<code>v</code>记录到<code>ProgressTracker.Votes</code>这个<code>map</code>中，然后调用<code>ProgressTracker.TallyVotes</code>方法，统计<code>ProgressTracker.Votes</code>中的投票结果并返回；</p>
+</li>
+<li><p>如果<code>raft.poll</code>返回结果为<code>quorum.VoteWon</code>，说明当前集群中只有一个节点，因此直接进入下一步流程。针对Vote流程而言，下一步就是调用<code>raft.becomeLeader()</code>直接转为<code>Leader</code>状态；然后直接返回；</p>
+</li>
+<li><p>接下来，针对<code>raft.prs.Voters</code>中的每个节点（排除本节点），以<code>id</code>从小到大的顺序，发送<code>pb.MsgVote</code>消息。这里的结构如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	Term: term, <span class="comment">//节点Term</span></span><br><span class="line">	To: id, </span><br><span class="line">	Type: pb.MsgVote, </span><br><span class="line">	Index: r.raftLog.lastIndex(), <span class="comment">//最后日志条目的Index</span></span><br><span class="line">	LogTerm: r.raftLog.lastTerm(), <span class="comment">//最后日志条目的Term</span></span><br><span class="line">    Context: ctx <span class="comment">//nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+</ul>
+<hr>
+<h5 id="接收处理pb-MsgVote消息"><a href="#接收处理pb-MsgVote消息" class="headerlink" title="接收处理pb.MsgVote消息"></a>接收处理pb.MsgVote消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>其他节点收到<code>pb.MsgVote</code>消息后，最终都在<code>raft.Step</code>方法中处理。其中针对<code>pb.MsgVote</code>消息的处理逻辑是：</p>
+<ul>
+<li><p>如果消息中的Term大于节点本地Term，并且下面的条件都满足，则直接返回，不再处理<code>pb.MsgVote</code>消息：</p>
+<ul>
+<li>消息中的<code>Context</code>不是<code>campaignTransfer</code>；<code>Context</code>为<code>campaignTransfer</code>表示这是领导权转移的目标节点发起的PreVote或Vote流程，不能忽略。具体参考《领导权转移流程》；</li>
+<li><code>raft.checkQuorum &amp;&amp; raft.lead != None &amp;&amp; raft.electionElapsed &lt; raft.electionTimeout</code> 为<code>true</code>，这个条件的意思是本节点距离上次收到<code>Leader</code>发来的信息的时间差，在选举超时时间的最小值<code>raft.electionTimeout</code>内，因此本节点不会理会投票消息，直接丢弃。<font color=red>这是为了防止被分区隔离的<code>Follower</code>不断增加自己的Term来进行选举，导致正常的<code>Leader</code>被迫下线。具体参考《CheckQuorum和心跳消息》。</font></li>
+</ul>
+</li>
+<li><p>如果消息中的Term大于节点本地Term，并且上面的条件不满足，则调用<code>raft.becomeFollower(m.Term, None)</code>转为<code>Follower</code>状态，并且设置<code>raft.lead</code>为<code>None</code>（下面要用到该条件）；</p>
+</li>
+<li><p>如果消息中的Term小于本节点Term，则不予处理；</p>
+</li>
+<li><p>走到这里，此时节点本地Term肯定等于消息中的Term。根据下面的条件判断是否可以投票：</p>
+<ul>
+<li><p><code>raft.raftLog.isUpToDate(m.Index, m.LogTerm)</code>返回<code>true</code>，即根据消息中的<code>Index</code>和<code>LogTerm</code>，发起选举的节点的日志要比本节点的日志更新。不满足该条件则会拒绝投票；</p>
+</li>
+<li><p><code>raft.Vote == m.From</code>为<code>true</code>（可以给同一节点重复投票），或者<code>raft.Vote == None &amp;&amp; raft.lead == None</code>（本节点没有<code>Leader</code>节点，也没有投过票），或者<code>m.Type == pb.MsgPreVote &amp;&amp; m.Term &gt; raft.Term</code>（收到的是<code>pb.MsgPreVote</code>消息，且消息中的Term大于本地Term）；</p>
+</li>
+<li><p>根据上面的条件决定发送的<code>pb.MsgVoteResp</code>响应消息内容。<code>pb.MsgVoteResp</code>响应消息格式如下：、</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pb.Message&#123;</span><br><span class="line">	To: m.From, </span><br><span class="line">	Term: m.Term / r.Term, <span class="comment">//见下面注释</span></span><br><span class="line">	Type: pb.MsgPreVoteResp,</span><br><span class="line">	Reject: <span class="literal">true</span> / <span class="literal">false</span> <span class="comment">//true表示投票，false则拒绝投票</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>针对Vote流程而言，走到这一步了，此时<code>m.Term</code>肯定等于本地<code>r.Term</code>；所以虽然代码中针对<code>Reject</code>为<code>true</code>或<code>false</code>的情况，分别使用了<code>m.Term</code>和<code>r.Term</code>，但是此时它们肯定是一样的；</li>
+<li>在可以投票的情况下，将<code>raft.electionElapsed</code>置为0，同时记录<code>raft.Vote</code>；</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h5 id="接收处理pb-MsgVoteResp消息"><a href="#接收处理pb-MsgVoteResp消息" class="headerlink" title="接收处理pb.MsgVoteResp消息"></a>接收处理pb.MsgVoteResp消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepCandidate</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>发起Vote流程的节点收到<code>pb.MsgVoteResp</code>消息后，最终都在<code>raft.Step</code>方法中处理。其中针对<code>pb.MsgVoteResp</code>消息的处理逻辑是：</p>
+<ul>
+<li><p>如果消息中的Term大于本地Term，则调用<code>raft.becomeFollower(m.Term, None)</code>转为<code>Follower</code>状态；</p>
+</li>
+<li><p>如果消息中的Term小于本地Term，则不予处理；</p>
+</li>
+<li><p>剩下的流程在<code>raft.stepCandidate</code>中处理，该方法中就是统计选票，即根据消息源节点<code>id</code>，以及<code>!Reject</code>为参数调用<code>raft.poll</code>方法，统计<code>PreVote</code>结果：</p>
+<ul>
+<li>如果结果为<code>quorum.VoteWon</code>，则调用 <code>raft.becomeLeader() 和 raft.bcastAppend()</code>，状态转为<code>Leader</code>，并发送空的日志条目；</li>
+<li>如果结果为<code>quorum.VoteLost</code>，则调用<code>raft.becomeFollower(raft.Term, None)</code>转为<code>Follower</code>状态；</li>
+<li>其他情况说明当前选票还不到半数，所以需要等待其他<code>pb.MsgPreVoteResp</code>消息，一直等到可以通过<code>raft.poll</code>方法获取确切的投票结果，或者等到选举超时时间后，再次发起PreVote流程；</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h4 id="状态转为StateLeader"><a href="#状态转为StateLeader" class="headerlink" title="状态转为StateLeader"></a>状态转为StateLeader</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> becomeLeader()</span><br></pre></td></tr></table></figure>
+
+<p>调用<code>raft.becomeLeader</code>将状态置为<code>Leader</code>，其逻辑是：</p>
+<ul>
+<li>将<code>step</code>回调函数置为<code>stepLeader</code>;</li>
+<li>调用<code>raft.reset(r.Term)</code>，重置一些状态；</li>
+<li>将<code>tick</code>回调函数置为<code>raft.tickHeartbeat</code>；</li>
+<li>设置<code>raft.lead</code>为自己的<code>id</code>；</li>
+<li>将<code>raft.state</code>置为<code>StateLeader</code>；</li>
+<li>调用<code>progress.BecomeReplicate</code>方法，将节点自己对应的<code>Progress</code>中，状态置为<code>StateReplicate</code>，将<code>Next</code>置为<code>Match+1</code>；</li>
+<li>将<code>raft.pendingConfIndex</code>置为最后一个日志条目的Index，这样做的效果就是直到<code>Leader</code>当前的所有日志都应用到状态机之前，该<code>Leader</code>不会接受新的配置变更提案；这样做的目的就是为了防止多个配置变更并行执行，具体参考《成员变更流程》；</li>
+<li>生成一个包含空数据的Entry（即no-op日志条目），然后将其追加到本地日志中。这里对应的是小论文中的<code>5.4.2</code>一节和大论文的<code>3.6.2</code>一节，即增加的<font color=red>日志提交约束</font>：<code>Leader</code>不能直接提交之前保存的日志，而是在当选之后首先追加一条no-op日志，这条no-op日志一旦被提交，就可以间接的导致之前保存的日志被提交。增加这条限制的原因是为了防止已提交的日志被覆盖，具体的场景可以参考论文或《日志追加》中的描述。</li>
+<li>最后，调用<code>raft.reduceUncommittedSize([]pb.Entry&#123;emptyEnt&#125;)</code>，<font color=red>具体参考《Ready的处理及其他》；</font></li>
+</ul>
+<hr>
+<h3 id="PreVote导致死锁"><a href="#PreVote导致死锁" class="headerlink" title="PreVote导致死锁"></a>PreVote导致死锁</h3><p>根据<a target="_blank" rel="noopener" href="https://github.com/etcd-io/etcd/issues/8501%E4%B8%AD%E7%9A%84%E6%8F%8F%E8%BF%B0%EF%BC%8C%E8%80%83%E8%99%91%E4%B8%8B%E9%9D%A2%E7%9A%84%E5%9C%BA%E6%99%AF%EF%BC%9A">https://github.com/etcd-io/etcd/issues/8501中的描述，考虑下面的场景：</a></p>
+<p>Raft库是从某个版本才开始支持PreVote的，因此在将不支持PreVote的Raft库升级到支持PreVote的Raft库时出现了问题。升级采用的是rolling restart方式，即集群内节点依次重启的方式，因此这个过程中，集群中某些节点是支持PreVote的，而另一些则是不支持PreVote。</p>
+<p>考虑3个节点的集群，节点为<code>n1,n2,n3</code>，此时<code>n1</code>和<code>n2</code>支持PreVote，而<code>n3</code>尚不支持，<code>n1</code>为<code>Leader</code>，<code>n2</code>和<code>n3</code>为<code>Follower</code>。<code>n1,n2,n3</code>的Term此时都是2，然后经过下面的步骤：</p>
+<ul>
+<li><code>n3</code>被分区隔离了；</li>
+<li><code>n1</code>向<code>n1, n2</code>和<code>n3</code>进行AppendEntry，此时<code>n1</code>和<code>n2</code>可以Append成功，所以<code>n1</code>和<code>n2</code>最后的日志索引要比<code>n3</code>大；</li>
+<li><code>n3</code>选举超时后，因其不支持PreVote，因此直接开始Vote流程，增加自身的Term后开始选举。经过一段时间后，<code>n3</code>的Term值要远大于<code>n1</code>和<code>n2</code>的Term值；</li>
+<li><code>n3</code>节点被升级，重启后可以支持PreVote了；</li>
+<li><code>n3</code>网络恢复，与<code>n1</code>和<code>n2</code>重新连接；</li>
+<li><code>n2</code>成为新的<code>Leader</code>，接下来<code>n2</code>被分区隔离，与<code>n1,n3</code>失去联系；</li>
+<li><code>n1</code>和<code>n3</code>开始选举，都开始PreVote流程。此时<code>n3</code>的Term比<code>n1</code>大，而<code>n1</code>的最后日志条目Index比<code>n3</code>大；</li>
+<li>这种情况下，<code>n1</code>不会给<code>n3</code>投票，因为<code>n1</code>的日志比<code>n3</code>要新，而<code>n3</code>也不会给<code>n1</code>投票，因为<code>n1</code>的Term较小。这就造成了<code>n1</code>和<code>n3</code>互相等待对方的投票，形成了死锁的局面。</li>
+<li>为了解决该问题，在PreVote流程中，如果收到的<code>pb.MsgPreVote</code>消息中的Term小于节点本地Term，则需要发送<code>Reject</code>为<code>true</code>的<code>pb.MsgPreVoteResp</code>响应消息，而不是直接忽略，响应消息中的Term就是本地较大的Term。</li>
+<li>因此，上面的场景中，<code>n3</code>收到<code>n1</code>的<code>pb.MsgPreVote</code>消息后，发送<code>pb.MsgPreVoteResp</code>响应消息，其中的<code>Reject</code>为<code>true</code>，且Term为本地较大的Term。<code>n1</code>收到该响应消息后，在<code>raft.Step</code>方法中，因消息中的Term大于本地Term，因此调用<code>raft.becomeFollower(m.Term, None)</code>，即以消息中的Term更新本地Term，转为<code>Follower</code>；当其选举再次超时后，因<code>n1</code>当前的Term已经与<code>n3</code>一样大，且其日志更新，所以<code>n1</code>最终可以赢得选举，成为新的<code>Leader</code>；</li>
+</ul>
+<hr>
+<h3 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h3><ul>
+<li><a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/366661148">https://zhuanlan.zhihu.com/p/366661148</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.jianshu.com/p/1496228df9a9">https://www.jianshu.com/p/1496228df9a9</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/etcd-io/etcd/issues/8501">https://github.com/etcd-io/etcd/issues/8501</a></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/" rel="prev" title="raft大论文翻译-04-1成员变更总结">
+      <i class="fa fa-chevron-left"></i> raft大论文翻译-04-1成员变更总结
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/" rel="next" title="etcd_raft源码解析-09日志追加">
+      etcd_raft源码解析-09日志追加 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95"><span class="nav-number">1.1.</span> <span class="nav-text">基本算法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#PreVote%E4%BC%98%E5%8C%96"><span class="nav-number">1.2.</span> <span class="nav-text">PreVote优化</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BB%A3%E7%A0%81%E6%B5%81%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">代码流程</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%9D%E5%A7%8B%E7%8A%B6%E6%80%81StateFollower"><span class="nav-number">2.1.</span> <span class="nav-text">初始状态StateFollower</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%80%89%E4%B8%BE%E8%B6%85%E6%97%B6"><span class="nav-number">2.2.</span> <span class="nav-text">选举超时</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#PreVote%E6%B5%81%E7%A8%8B"><span class="nav-number">2.3.</span> <span class="nav-text">PreVote流程</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8F%91%E9%80%81pb-MsgPreVote%E6%B6%88%E6%81%AF%EF%BC%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E4%B8%BAStatePreCandidate"><span class="nav-number">2.3.1.</span> <span class="nav-text">发送pb.MsgPreVote消息，状态转为StatePreCandidate</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8E%A5%E6%94%B6%E5%A4%84%E7%90%86pb-MsgPreVote%E6%B6%88%E6%81%AF"><span class="nav-number">2.3.2.</span> <span class="nav-text">接收处理pb.MsgPreVote消息</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8E%A5%E6%94%B6%E5%A4%84%E7%90%86pb-MsgPreVoteResp%E6%B6%88%E6%81%AF"><span class="nav-number">2.3.3.</span> <span class="nav-text">接收处理pb.MsgPreVoteResp消息</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Vote%E6%B5%81%E7%A8%8B"><span class="nav-number">2.4.</span> <span class="nav-text">Vote流程</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8F%91%E9%80%81pb-MsgVote%E6%B6%88%E6%81%AF%EF%BC%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E4%B8%BAStateCandidate"><span class="nav-number">2.4.1.</span> <span class="nav-text">发送pb.MsgVote消息，状态转为StateCandidate</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8E%A5%E6%94%B6%E5%A4%84%E7%90%86pb-MsgVote%E6%B6%88%E6%81%AF"><span class="nav-number">2.4.2.</span> <span class="nav-text">接收处理pb.MsgVote消息</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8E%A5%E6%94%B6%E5%A4%84%E7%90%86pb-MsgVoteResp%E6%B6%88%E6%81%AF"><span class="nav-number">2.4.3.</span> <span class="nav-text">接收处理pb.MsgVoteResp消息</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%8A%B6%E6%80%81%E8%BD%AC%E4%B8%BAStateLeader"><span class="nav-number">2.5.</span> <span class="nav-text">状态转为StateLeader</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#PreVote%E5%AF%BC%E8%87%B4%E6%AD%BB%E9%94%81"><span class="nav-number">3.</span> <span class="nav-text">PreVote导致死锁</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%82%E8%80%83"><span class="nav-number">4.</span> <span class="nav-text">参考</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

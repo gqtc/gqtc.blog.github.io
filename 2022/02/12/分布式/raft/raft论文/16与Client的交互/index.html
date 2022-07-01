@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Chapter 6  Client interaction     与Client的交互本章描述了几个客户端如何与基于 Raft 的复制状态机交互的问题：  6.1节描述Client如何找到集群，即使是集群成员会随时变化的情况下；  6.2节描述Client请求如何路由到集群的Leader节点；  6.3节描述Raft如何提供线性一致性的；  6.4节描述Raft如何更高效的处理只读请求的；">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-06与Client的交互">
+<meta property="og:url" content="http://example.com/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Chapter 6  Client interaction     与Client的交互本章描述了几个客户端如何与基于 Raft 的复制状态机交互的问题：  6.1节描述Client如何找到集群，即使是集群成员会随时变化的情况下；  6.2节描述Client请求如何路由到集群的Leader节点；  6.3节描述Raft如何提供线性一致性的；  6.4节描述Raft如何更高效的处理只读请求的；">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220502102118437.png">
+<meta property="og:image" content="http://example.com/img/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220503091754401.png">
+<meta property="og:image" content="http://example.com/img/05RAFT%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220219173541330.png">
+<meta property="article:published_time" content="2022-02-11T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T05:37:43.565Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220502102118437.png">
+
+<link rel="canonical" href="http://example.com/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-06与Client的交互 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-06与Client的交互
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-02-12 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-12T00:00:00+08:00">2022-02-12</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:37:43" itemprop="dateModified" datetime="2022-06-28T13:37:43+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="Chapter-6-Client-interaction-与Client的交互"><a href="#Chapter-6-Client-interaction-与Client的交互" class="headerlink" title="Chapter 6  Client interaction     与Client的交互"></a>Chapter 6  Client interaction     与Client的交互</h2><p>本章描述了几个客户端如何与基于 Raft 的复制状态机交互的问题：</p>
+<ul>
+<li><p>6.1节描述Client如何找到集群，即使是集群成员会随时变化的情况下；</p>
+</li>
+<li><p>6.2节描述Client请求如何路由到集群的Leader节点；</p>
+</li>
+<li><p>6.3节描述Raft如何提供线性一致性的；</p>
+</li>
+<li><p>6.4节描述Raft如何更高效的处理只读请求的；</p>
+<span id="more"></span>
+<p>This chapter describes several issues in how clients interact with a Raft-based replicated state machine:</p>
+</li>
+<li><p>Section 6.1 describes how clients find the cluster, even when its set of members can change over time;</p>
+</li>
+<li><p>Section 6.2 describes how clients’ requests are routed to the cluster leader for processing;</p>
+</li>
+<li><p>Section 6.3 describes how Raft provides linearizable consistency [34]; and</p>
+</li>
+<li><p>Section 6.4 describes how Raft can process read-only queries more efficiently.</p>
+</li>
+</ul>
+<p>下图展示了Client与复制状态机交互使用的RPC；本章将讨论RPC中的各个元素。这些问题适用于所有基于共识的系统，并且 Raft 的解决方案与其他系统也是类似的。</p>
+<p><img src="/img/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220502102118437.png" alt="image-20220502102118437"></p>
+<p>Figure 6.1 shows the RPCs that clients use to interact with the replicated state machine; the elements of these RPCs are discussed throughout the chapter. These issues apply to all consensus-based systems, and Raft’s solutions are similar to other systems.</p>
+<p>本章假设基于Raft的复制状态机对外是以网络服务的形式暴露给Client的。实际上Raft也可以直接整合到Client的应用程序中，这种情况下，与Client的交互相关问题会被提升到嵌入在应用程序中的网络客户端的层次。比如，嵌入于应用程序的网络客户端同样面临着和 Raft 作为网络服务时一样的，如何发现集群这样的问题。</p>
+<p>This chapter assumes that the Raft-based replicated state machine is exposed to clients directly as a network service. Raft can alternatively be integrated directly into a client application. In this case, some issues in client interaction may be pushed up a level to network clients of the embedding application. For example, network clients of the embedding application would have a similar problem in finding the application’s cluster as clients of a Raft network service have in finding the Raft cluster.</p>
+<h3 id="6-1-Finding-the-cluster-如何找到集群"><a href="#6-1-Finding-the-cluster-如何找到集群" class="headerlink" title="6.1 Finding the cluster     如何找到集群"></a>6.1 Finding the cluster     如何找到集群</h3><p>当Raft对外暴露为网络服务时，Client必须能够定位到集群才能与复制状态机交互。对于有固定成员的集群而言，该问题的解决方法很简单，比如服务器的网络地址可以在配置文件中静态配置。然而对于集群成员随时可能发生变化的场景，如何找到集群就变得有些复杂了。一般有下面两种方法：</p>
+<ol>
+<li>Client可以使用广播或者多播来找到集群的所有节点。但是这种方法只在支持广播或多播的特定环境中有效。</li>
+<li>Client可以通过外部目录服务（如DNS）来发现集群的节点，该服务可在众所周知的位置访问。这种外部系统中记录的节点列表不需要完全一致，但是应该是其超集：Client应该始终都能在列表中找到所有集群节点，但是列表中包含一些非集群节点也是无关紧要的。因此，应该在成员变更之前更新外部目录的节点列表，以包含即将添加到集群中的新节点，然后在成员变更之后，再次更新列表，以便删除那些不属于集群的节点。</li>
+</ol>
+<p>When Raft is exposed as a network service, clients must locate the cluster in order to interact with the replicated state machine. For clusters with fixed membership, this is straightforward; for example, the network addresses of the servers can be stored statically in a configuration file. However, finding the cluster when its set of servers can change over time (as described in Chapter 4) is a bigger challenge. There are two general approaches:</p>
+<ol>
+<li>Clients can use network broadcast or multicast to find all cluster servers. However, this will only work in particular environments that support these features.</li>
+<li>Clients can discover cluster servers via an external directory service, such as DNS, that is accessible at a well-known location. The list of servers in this external system need not be consistent, but it should be inclusive: clients should always be able to find all of the cluster servers, but including a few additional servers that are not currently members of the cluster is harmless. Thus, during cluster membership changes, the external directory of servers should be updated before the membership change to include any servers soon to be added to the cluster, then updated again after the membership change is complete to remove any servers that are no longer part of the cluster.</li>
+</ol>
+<p>LogCabin的Client目前使用DNS来发现集群。但是LogCabin不会在节点变更前后自动更新DNS中的记录（这留给管理脚本去做）。</p>
+<p>LogCabin clients currently use DNS to find the cluster. LogCabin does not currently update DNS records automatically before and after membership changes (this is left to administrative scripts).</p>
+<h3 id="6-2-Routing-requests-to-the-leader-将请求路由到Leader"><a href="#6-2-Routing-requests-to-the-leader-将请求路由到Leader" class="headerlink" title="6.2 Routing requests to the leader     将请求路由到Leader"></a>6.2 Routing requests to the leader     将请求路由到Leader</h3><p>Client的请求都是由Raft中的Leader处理的，因此Client需要能找到Leader。当Client启动时，它会与集群中任一节点取得联系。如果该节点不是Leader，则其拒绝Client的请求。这种情况下，一种简单的处理方式就是Client继续随机的联系下一个节点，直到找到Leader。如果Client单纯的随机选择节点，则对于含有<code>n</code>个节点集群，这种方法有望在<code>(n+1)/2</code>次尝试之后找到Leader，对于小型集群而言还是很快的。</p>
+<p>Client requests in Raft are processed through the leader, so clients need a way to find the leader. When a client first starts up, it connects to a randomly chosen server. If the client’s first choice is not the leader, that server rejects the request. In this case, a very simple approach is for the client to try again with another randomly chosen server until it finds the leader. If clients choose servers randomly without replacement, this naive approach is expected to find the leader of an n-server cluster after (n+1)&#x2F;2  attempts, which may be fast enough for small clusters.</p>
+<p>通过简单的优化，将请求路由到Leader也是很快的。集群中的节点一般都会知道Leader的地址，因为AppendEntries请求中包含了Leader的身份ID。当集群中的非Leader节点收到了Client的请求时，它可以有两种选择：</p>
+<ol>
+<li>第一种，节点拒绝Client的请求，并返回Leader的地址。我们建议选择这种方式，LogCabin也实现了这种方式。这种方式使得Client可以直接重连到Leader，所以后续的请求可以全速的发送到Leader。这种方式几乎不需要修改代码，因为在Leader失效时Client也需要重连新的Leader。</li>
+<li>另一种是，节点可以将请求转发给Leader。这在某些情况下是更简单的方法。比如，如果Client向任意节点发送读请求（6.4节描述），则转发写请求有助于避免Client维护一个专门用于写请求的连接。</li>
+</ol>
+<p>Routing requests to the leader can also be made faster with simple optimizations. Servers usually know the address of the current cluster leader, since AppendEntries requests include the leader’s identity. When a server that is not leader receives a request from a client, it can do one of two things:</p>
+<ol>
+<li>The first option, which we recommend and which LogCabin implements, is for the server to reject the request and return to the client the address of the leader, if known. This allows the client to reconnect to the leader directly, so future requests can proceed at full speed. It also takes very little additional code to implement, since clients already need to reconnect to a different server in the event of a leader failure.</li>
+<li>Alternatively, the server can proxy the client’s request to the leader. This may be simpler in some cases. For example, if a client connects to any server for read requests (see Section 6.4), then proxying the client’s write requests would save the client from having to manage a distinct connection to the leader used only for writes.</li>
+</ol>
+<p>Raft需要避免过时的Leader信息导致的Client请求被无限期的延迟处理。Leader信息可能在整个系统中，即在Leader，Follower和Client中都会过期：</p>
+<ul>
+<li>Leader：节点可能自认为是Leader，但是实际上它不是，这种情况就有可能造成Client请求非必要的延迟。比如，Leader可能已经被分区隔离了，但它仍可以跟特定的Client进行通信。如果没有其他机制，该隔离的Leader因无法将日志复制到其他节点上，导致该Client的请求永久的阻塞。同时期间可能会有新的Leader可以与集群中的过半节点通信，从而可以提交Client的请求。所以，<font color=red>如果Leader在选举超时时间内无法完成一轮心跳的话，Leader会自动下台。</font>这样就使得Client可以将请求发给另一个节点。</li>
+<li>Follower：Follower需要持续跟踪记录Leader的身份信息，以便能将转发Client请求。它们必须在开始新的选举，或者是Term变化时丢弃该信息。否则的话，它们也可能会不必要地延迟客户端请求（比如两个节点可能会彼此重定向，导致Client请求陷入到死循环）。</li>
+<li>Client：如果Client与Leader（或者其他节点）断连了，则它应该随机的选择一个节点进行重试。如果Client只认准一个节点进行不断的重试，则也会导致不必要的延迟。</li>
+</ul>
+<p>Raft must also prevent stale leadership information from delaying client requests indefinitely. Leadership information can become stale all across the system, in leaders, followers, and clients:</p>
+<ul>
+<li>Leaders: A server might be in the leader state, but if it isn’t the current leader, it could be needlessly delaying client requests. For example, suppose a leader is partitioned from the rest of the cluster, but it can still communicate with a particular client. Without additional mechanism, it could delay a request from that client forever, being unable to replicate a log entry to any other servers. Meanwhile, there might be another leader of a newer term that is able to communicate with a majority of the cluster and would be able to commit the client’s request. Thus, a leader in Raft steps down if an election timeout elapses without a successful round of heartbeats to a majority of its cluster; this allows clients to retry their requests with another server.</li>
+<li>Followers: Followers keep track of the leader’s identity so that they can redirect or proxy clients. They must discard this information when starting a new election or when the term changes. Otherwise, they might needlessly delay clients (for example, it would be possible for two servers to redirect to each other, placing clients in an infinite loop).</li>
+<li>Clients: If a client loses its connection to the leader (or any particular server), it should simply retry with a random server. Insisting on being able to contact the last known leader would result in unnecessary delays if that server failed.</li>
+</ul>
+<h3 id="6-3-Implementing-linearizable-semantics-实现线性一致性语义"><a href="#6-3-Implementing-linearizable-semantics-实现线性一致性语义" class="headerlink" title="6.3 Implementing linearizable semantics     实现线性一致性语义"></a>6.3 Implementing linearizable semantics     实现线性一致性语义</h3><p>到目前为止，Raft为Client提供的是<code>at-least-once</code>语义；复制状态机可能会多次执行同一条指令。比如，Client向Leader提交了一个指令，Leader将指令追加到集群的日志中，并且提交了该条目，但是该Leader在回复Client之前崩溃了。因Client没有得到回复，它向新Leader重新提交了该指令，这就导致该指令作为新的条目再次追加到日志中并提交。尽管Client想要执行一次该指令，但是实际上该指令执行了两次。即使Client没有重新提交该指令，该指令还是可能会执行多次，因为网络中可能会复制Client的请求报文。</p>
+<p>As described so far, Raft provides at-least-once semantics for clients; the replicated state machine may apply a command multiple times. For example, suppose a client submits a command to a leader and the leader appends the command to its log and commits the log entry, but then it crashes before responding to the client. Since the client receives no acknowledgment, it resubmits the command to the new leader, which in turn appends the command as a new entry in its log and also commits this new entry. Although the client intended for the command to be executed once, it is executed twice. Commands can also be applied multiple times even without the client’s involvement if the network may duplicate the client’s requests.</p>
+<p>该问题不是Raft独有的，这在大多数有状态的分布式系统中都会发生。然而，这种<code>at-least-once</code>语义特别不适合基于共识的系统，这种系统中，Client通常需要比<code>at-least-once</code>更强的保证。来自重复指令的问题可能以微妙的方式表现出来，导致Client很难从中恢复。这些问题要么导致错误的结果，要么导致错误的状态，或者同时导致两种情况。下图是一个导致错误结果的例子：一个提供锁服务的系统，Client发现它无法获取锁，因为它没有收到之前已经获取了该锁的任何确认消息。导致错误状态的一个例子是递增操作，Client希望只递增一次，但是实际上可能递增了多次。网络上的包乱序，以及多个并发的Client请求可能会导致更奇怪的结果。</p>
+<p><img src="/img/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220503091754401.png" alt="image-20220503091754401"></p>
+<p><em>图6.2：重复指令导致错误结果的例子：Client向复制状态机提交一个用于获取锁的指令。实际上Client第一个指令已经获取了锁，但是却没有收到回复消息。当Client重发该请求时，它发现锁已经是锁住的状态了。</em></p>
+<p>This issue is not unique to Raft; it occurs in most stateful distributed systems. However, these at-least-once semantics are particularly unsuitable for a consensus-based system, where clients typically need stronger guarantees. Problems from duplicated commands can manifest in subtle ways that are difficult for clients to recover from. These problems cause either incorrect results, incorrect states, or both. Figure 6.2 shows an example of an incorrect result: a state machine is providing a lock, and a client finds it is unable to acquire the lock because its original request—for which it received no acknowledgment—has already acquired the lock. An example of an incorrect state would be an increment operation, where the client intends for a value to increment by one but it instead increments by two or more. Network-level reordering and concurrent clients can lead to even more surprising results.</p>
+<p>Raft中，我们的目标是实现线性一致性语义，从而避免此类问题。<font color=red>在线性化系统中，每个操作似乎在调起和响应之间的某个时刻上立即执行了一次。</font>这是一种很强的一致性形式，使得Client更容易理解，并且不允许一条指令被执行多次。</p>
+<p>Our goal in Raft is to implement linearizable semantics [34], which avoid these classes of problems. In linearizability, each operation appears to execute instantaneously, exactly once, at some point between its invocation and its response. This is a strong form of consistency that is simple for clients to reason about, and it disallows commands being processed multiple times.</p>
+<p>为了在Raft中实现线性一致性，节点必须过滤掉重复的请求。一个最基本的想法就是节点保存Client请求的结果，并使用该结果避免同一个请求的多次执行。为了实现这一点，每个Client都被赋予了唯一的标识，而且针对Client的每个请求指令都被赋予了唯一的序列号。状态机为每个Client维持了一个会话。通过会话跟踪记录该Client的最后的序列号，以及相应的响应。如果节点收到的指令序列号表示该指令已经执行过了，则节点直接响应Client，不用再次执行指令。</p>
+<p>To achieve linearizability in Raft, servers must filter out duplicate requests. The basic idea is that servers save the results of client operations and use them to skip executing the same request multiple times. To implement this, each client is given a unique identifier, and clients assign unique serial numbers to every command. Each server’s state machine maintains a session for each client. The session tracks the latest serial number processed for the client, along with the associated response. If a server receives a command whose serial number has already been executed, it responds immediately without re-executing the request.</p>
+<p>基于这种过滤重复请求的机制，Raft保证了线性一致性。针对应用到每个节点的指令，Raft的日志机制已经保证了指令执行的串行顺序。当指令在日志中第一次出现并被应用时，该指令就即刻生效了，并且只执行了一次，因为后续该指令再次出现时都被状态机过滤掉了。</p>
+<p>Given this filtering of duplicate requests, Raft provides linearizability. The Raft log provides a serial order in which commands are applied on every server. Commands take effect instantaneously and exactly once according to their first appearance in the Raft log, since any subsequent appearances are filtered out by the state machines as described above.</p>
+<p>该方法还可以泛化为允许单个Client的多个请求并行执行。通过Client会话不仅仅是跟踪记录Client最后的请求序列号及其响应，它可以是包含序列号和响应对的集合。Client发起的每个请求都包含了其尚未收到响应的最小的序列号，状态机将丢弃所有与之相比更小的序列号的响应。</p>
+<p>This approach also generalizes to allow concurrent requests from a single client. Instead of the client’s session tracking just the client’s latest sequence number and response, it includes a set of sequence number and response pairs. With each request, the client includes the lowest sequence number for which it has not yet received a response, and the state machine then discards all responses for lower sequence numbers.</p>
+<p>然而，因空间有限，会话无法永久保持。因此服务端最终会终止与Client的会话，但这就带来了两个问题：节点间如何就何时终止Client的会话达成共识，以及如何处理被过早终结的活跃Client？</p>
+<p>Unfortunately, sessions cannot be kept forever, as space is limited. The servers must eventually decide to expire a client’s session, but this creates two problems: how can servers agree on when to expire a client’s session, and how can they deal with an active client whose session was unfortunately expired too soon?</p>
+<p>节点间必须就何时终止Client的会话达成一致；否则的话，节点的状态机会出现不一致。比如，如果某个节点将某个特定客户端的会话终止了，然后重新应用了该客户端的多个重复指令；同时其他节点依然保持着该Client的会话，从而不会重复执行指令，这就导致节点间复制状态机的不一致。为了避免该问题，会话何时终止必须是确定的，就像正常的状态机操作一样。一种处理方式是设置会话数的上限，使用LRU（最近最少使用）策略删除条目；另一种处理方式是基于统一的时间戳来将会话过期。在LogCabin中，Leader会对日志中每个指令增加一个时间戳的属性。在提交日志条目时，所有节点在该时间戳上达成一致；然后，状态机使用确定的时间来过期不活跃的会话。Client会在不活跃期间发出keepalive请求，该请求会增加Leader的时间戳并提交到Raft日志中，以保持会话状态。</p>
+<p>Servers must agree on when to expire a client’s session; otherwise, servers’ state machines could diverge from each other. For example, suppose one server expired the session for a particular client, then re-applied many of that client’s duplicated commands; meanwhile, the other servers kept the session alive and did not apply the duplicates. The replicated state machine would become inconsistent. To avoid such problems, session expiry must be deterministic, just as normal state machine operations must be. One option is to set an upper bound on the number of sessions and remove entries using an LRU (least recently used) policy. Another option is to expire sessions based on an agreed upon time source. In LogCabin, the leader augments each command that it appends to the Raft log with its current time. Servers reach agreement on this time as part of committing the log entry; then, the state machines deterministically use this time input to expire inactive sessions. Live clients issue keep-alive requests during periods of inactivity, which are also augmented with the leader’s timestamp and committed to the Raft log, in order to maintain their sessions.</p>
+<p>第二个问题是如何处理会话期满后继续运行的Client。我们希望这是一种异常情况；但是总会有一些风险，因为通常没有办法知道Client何时退出。一种选择是在没有会话记录时为Client分配一个新会话，但这会有重复执行在Client上一个会话过期之前执行过的指令的风险。为了提供更严格的保证，服务端需要将新Client与会话已过期的Client区分开。Client首次启动时，可以使用 RegisterClient RPC 在集群中注册自己。这将分配新Client的会话，并向Client返回其标识符，Client随后的所有指令都要带上这个标识符。如果状态机遇到一个没有会话记录的指令，则它不处理该指令而是向Client返回错误。在这种情况下，目前LogCabin 的实现是导致Client崩溃（大多数Client可能无法正确优雅地处理会话过期错误，但系统通常能够处理Client崩溃）。</p>
+<p>The second issue is how to deal with a client that continues to operate after its session was expired. We expect this to be an exceptional situation; there is always some risk of it, however, since there is generally no way to know when clients have exited. One option would be to allocate a new session for a client any time there is no record of it, but this would risk duplicate execution of commands that were executed before the client’s previous session was expired. To provide stricter guarantees, servers need to distinguish a new client from a client whose session was expired. When a client first starts up, it can register itself with the cluster using the RegisterClient RPC. This allocates the new client’s session and returns the client its identifier, which the client includes with all subsequent commands. If a state machine encounters a command with no record of the session, it does not process the command and instead returns an error to the client. LogCabin currently crashes the client in this case (most clients probably wouldn’t handle session expiration errors gracefully and correctly, but systems must typically already handle clients crashing).</p>
+<h3 id="6-4-Processing-read-only-queries-more-efficiently"><a href="#6-4-Processing-read-only-queries-more-efficiently" class="headerlink" title="6.4 Processing read-only queries more efficiently"></a>6.4 Processing read-only queries more efficiently</h3><p>客户端的只读命令不会修改复制状态机的状态，所以很自然的就能想到只读请求是否可以绕过RAFT的日志机制，因为RAFT的日志就是用于保证多节点以相同顺序修改状态机的状态的。绕过日志可以有很大的性能提升：只读请求在许多应用程序中很常见，将日志条目附加到日志中所需的同步磁盘写入非常耗时。</p>
+<p>Read-only client commands only query the replicated state machine; they do not change it. Thus, it is natural to ask whether these queries can bypass the Raft log, whose purpose is to replicate changes to the servers’ state machines in the same order. Bypassing the log offers an attractive performance advantage: read-only queries are common in many applications, and the synchronous disk writes needed to append entries to the log are time-consuming.</p>
+<p>然而，如果没有额外的预防措施，<font color=red>绕过日志可能会导致读请求得到过时的结果。</font>比如，收到只读请求的Leader可能已经被分区隔离了，当前集群可能已经选出了新的Leader并且有新的日志提交了，所以如果被隔离的Leader没有与集群中的其他节点沟通的情况下直接回复只读请求，CLIENT就会得到一个过时的结果，这就不符合<font color=red>线性一致性（Linearizability ）</font>的约束了。线性一致性要求读请求得到的结果，必须能反映出在读请求开始进行后的系统状态，所以<font color=red>读请求的结果至少应该能返回最近一次已提交的写操作的结果</font>。一个允许读取过期数据的系统只提供了<font color=red>顺序&#x2F;串行一致性（serializability）</font>，这是一种较弱的一致性形式。</p>
+<p>However, without additional precautions, bypassing the log could lead to stale results for readonly queries. For example, a leader might be partitioned from the rest of the cluster, and the rest of the cluster might have elected a new leader and committed new entries to the Raft log. If the partitioned leader responded to a read-only query without consulting the other servers, it would return stale results, which are not linearizable. Linearizability requires the results of a read to reflect a state of the system sometime after the read was initiated; each read must at least return the results of the latest committed write. (A system that allowed stale reads would only provide serializability, which is a weaker form of consistency.) Problems due to stale reads have already been discovered in two third-party Raft implementations [45], so this issue deserves careful attention. </p>
+<p>好在，还是可以绕过日志机制处理只读请求，并且仍然保证线性一致性的能力。Leader采取以下步骤即可：</p>
+<ol>
+<li>如果Leader还没有以其当前Term提交一个日志条目，则该Leader必须要等，直到这个动作完成后（即当前任期提交一个日志条目），才能处理读请求。“Leader完备属性”保证了Leader具有当前集群中所有已提交的条目，但是<font color=red>在其当前任期开始时，它不知道哪些条目是已提交的。</font>要知道这一点，它需要以其当前Term提交一个日志。可以在Leader选举成功后，以自己当前Term提交一个空条目来满足这个要求。只要这个空日志条目被提交了，那就可以保证Leader的committed Index是当前集群所有节点中最大的。 <em>—- 找到Leader刚当选时集群中最大的committed Index；</em></li>
+<li>Leader将其当前的committed Index保存为节点内部的变量readIndex，该readIndex会作为读请求返回的系统状态的版本的<font color=red>下限</font>；*—- 读请求返回的系统状态<font color=red>至少</font>能反映出应用readIndex日志修改后系统状态；*</li>
+<li>Leader需要确保自己没有在未感知的情况下被其他节点所替代了。所以它会发起新一轮的心跳消息，等到收到集群中Majority节点的响应消息后，Leader就知道，<font color=red>在它发出心跳消息的那一刻，就不可能存在一个具有更大Term的新Leader，</font>所以就能保证，readIndex就是当时集群中所有节点中最大的committed Index。*—- <font color=red>保证readIndex确实是发出心跳消息之前（或者可以说，是收到只读请求时），集群中所有节点最大的committed Index；*<ul>
+<li>问：某个Follower先收到了其他Candidate的Vote消息并回复成功了，然后收到了该Leader的心跳消息，怎么办？答：先收到Vote消息并回复成功，说明该Follower的Term增加了，收到心跳消息后就直接忽略了；</li>
+<li>问：先收到心跳消息，再收到Vote消息呢？答：收到心跳消息，因为有CheckQuorum机制，所以直接忽略Vote消息；</li>
+</ul>
+</li>
+<li>Leader等到状态机运行到readIndex后，就能保证线性一致性了；*—- 让状态机运行到readIndex日志条目。状态机应用到 ReadIndex 之后的状态都能使这个读请求满足线性一致，不管过了多久，也不管 Leader 有没有飘走。因为线性一致性的要求就是读请求返回最近一次写操作的结果；*</li>
+<li>此时，Leader向状态机发起读请求，并将结果返回给CLIENT；*—- 此时向状态机发起读请求，得到系统状态，返回给CLIENT*</li>
+</ol>
+<p>Fortunately, it is possible to bypass the Raft log for read-only queries and still preserve linearizability. To do so, the leader takes the following steps:</p>
+<ol>
+<li>If the leader has not yet marked an entry from its current term committed, it waits until it has done so. The Leader Completeness Property guarantees that a leader has all committed entries, but at the start of its term, it may not know which those are. To find out, it needs to commit an entry from its term. Raft handles this by having each leader commit a blank no-op entry into the log at the start of its term. As soon as this no-op entry is committed, the leader’s commit index will be at least as large as any other servers’ during its term. </li>
+<li>The leader saves its current commit index in a local variable readIndex. This will be used as a lower bound for the version of the state that the query operates against.</li>
+<li>The leader needs to make sure it hasn’t been superseded by a newer leader of which it is unaware. It issues a new round of heartbeats and waits for their acknowledgments from a majority of the cluster. Once these acknowledgments are received, the leader knows that there could not have existed a leader for a greater term at the moment it sent the heartbeats. Thus, the readIndex was, at the time, the largest commit index ever seen by any server in the cluster.</li>
+<li>The leader waits for its state machine to advance at least as far as the readIndex; this is current enough to satisfy linearizability.</li>
+<li>Finally, the leader issues the query against its state machine and replies to the client with the results.</li>
+</ol>
+<p>跟将读请求作为普通日志条目进行提交的方法相比，这种方法效率更高，因为它避免了磁盘的同步写操作。为了进一步提高效率，Leader可以分摊其确认领导地位的成本：它可以对累积的只读请求只使用一轮心跳流程。</p>
+<p>This approach is more efficient than committing read-only queries as new entries in the log, since it avoids synchronous disk writes. To improve efficiency further, the leader can amortize the cost of confirming its leadership: it can use a single round of heartbeats for any number of read-only queries that it has accumulated.</p>
+<hr>
+<p><font color=red>Follower也可以帮忙处理读请求</font>，这可以提升提供的读吞吐量，也能分担Leader的负载。然而，如果没有额外的预防措施，Follower处理读操作也有返回过期数据的风险。比如Follower被隔离分区了，或者虽然Follower能收到Leader的心跳消息，但是这个Leader自己可能已经被隔离了，只是它不知道而已。所以，为了保证读请求的安全性，Follower需要询问Leader当前的readIndex（Leader需要执行上面的1-3步），然后Follower执行剩下的4和5步，向自己的状态机发送累积的读请求。</p>
+<p>Followers could also help offload the processing of read-only queries. This would improve the system’s read throughput, and it would also divert load away from the leader, allowing the leader to process more read-write requests. However, these reads would also run the risk of returning stale data without additional precautions. For example, a partitioned follower might not receive any new log entries from the leader for long periods of time, or even if a follower received a heartbeat from a leader, that leader might itself be deposed and not yet know it. To serve reads safely, the follower could issue a request to the leader that just asked for a current readIndex (the leader would execute steps 1–3 above); the follower could then execute steps 4 and 5 on its own state machine for any number of accumulated read-only queries.</p>
+<p>LogCabin implements the above algorithm on leaders, and it amortizes the cost of the heartbeats across multiple read-only queries under high load. Followers in LogCabin do not currently serve read-only requests.</p>
+<h4 id="6-4-1-Using-clocks-to-reduce-messaging-for-read-only-queries"><a href="#6-4-1-Using-clocks-to-reduce-messaging-for-read-only-queries" class="headerlink" title="6.4.1 Using clocks to reduce messaging for read-only queries"></a>6.4.1 Using clocks to reduce messaging for read-only queries</h4><p>上面处理读请求的方法在异步模型中保证了线性一致性，所谓异步模型，就是时钟，CPU，消息的传递都可以以任意的速度进行。这种级别的安全性就需要通信来保证：每一批读请求都需要发送一轮到过半节点的心跳消息，这就增加了处理请求的延迟。下面我们会探索一种替代方法，这种方法中，只读查询可以通过依赖时钟来完全避免发送消息。我们不建议使用这种方法，除非对性能有极高的要求。</p>
+<p>Up until now, the approach to read-only queries presented has provided linearizability in an asynchronous model (where clocks, processors, and messages can all operate at arbitrary speeds). This level of safety requires communication to achieve: it requires a round of heartbeats to half the cluster for each batch of read-only queries, which adds latency to the queries. The remainder of this section explores an alternative in which read-only queries would avoid sending messages altogether by relying on clocks. LogCabin does not currently implement this alternative, and we do not recommend using it unless necessary to meet performance requirements.</p>
+<p>为了在处理只读请求时使用时钟，而非消息，那就需要常规的心跳机制提供一种租约（lease）。一旦Leader的心跳消息被集群中Majority个节点确认了，那Leader就可以认为在一个选举超时时间内没有节点可以成为新的Leader，从而相应的延长其租约（如下图）。在租约到期的这段时间内，Leader就可以无需任何额外的消息直接就可以处理读请求。（第三章介绍的领导权转移机制中，可以提前更换Leader，所以Leader在转移领导权之前需要使其租约超期）</p>
+<p>To use clocks instead of messages for read-only queries, the normal heartbeat mechanism would provide a form of lease [33]. Once the leader’s heartbeats were acknowledged by a majority of the cluster, the leader would assume that no other server will become leader for about an election timeout, and it could extend its lease accordingly (see Figure 6.3). The leader would then reply to read-only queries during that period without any additional communication. (The leadership transfer mechanism presented in Chapter 3 allows the leader to be replaced early; a leader would need to expire its lease before transferring leadership.)</p>
+<p><img src="/img/05RAFT%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220219173541330.png" alt="image-20220219173541330"></p>
+<p><em>图6.3：为了在处理只读请求时时钟而不是消息，Leader使用常规的心跳机制来维护租约。<font color=red>一旦Leader的心跳得到集群中Majority节点的回应，Leader就可以将租约延长到 start + election_timeout &#x2F; clock_drift_bound(时钟漂移范围)。因为Follower在租约超期之前，肯定不会因选举超时而发起新的选举。</font>Leader在租约内可以无需通信，直接处理读请求。</em></p>
+<p>租约方法假设节点之间的时钟差异有一个界限（假设各个服务器的 CPU clock 的时间是准的，即使有误差，也会在一个非常小的 bound 范围里面，如果各个服务器之间 clock 走的频率不一样，有些太快，有些太慢，这套 lease 机制就可能出问题）。发现和维护这种时钟漂移界限可能会有额外的工作，但是如果这个假设被打破的话，则Leader就可能会回复CLIENT一个过期数据。</p>
+<p>The lease approach assumes a bound on clock drift across servers (over a given time period, no server’s clock increases more than this bound times any other). Discovering and maintaining this bound might present operational challenges (e.g., due to scheduling and garbage collection pauses, virtual machine migrations, or clock rate adjustments for time synchronization). If the assumptions are violated, the system could return arbitrarily stale information.</p>
+<p>幸运的是，可以通过简单的一个扩展，来保证即使是在异步场景下（时钟出现错误），CLIENT也可以看到状态机是单调递增的前进（顺序一致性）。比如，CLIENT如果看到了某个节点回复的系统状态对应的是Index为n的日志，那它换一个节点请求时，肯定不会看到n-1日志对应系统状态。要实现这一点，节点每次回复CLIENT时，包含当时状态机状态对应的日志Index。CLIENT可以跟踪记录它看到的结果的最新Index，并在每次请求时向节点提供该Index信息。如果节点收到一个请求，如果请求中的Index大于节点本身Applied的日志索引，则它不会处理该请求。</p>
+<p>Fortunately, a simple extension can improve the guarantee provided to clients, so that even under asynchronous assumptions (even if clocks were to misbehave), each client would see the replicated state machine progress monotonically (sequential consistency). For example, a client would not see the state as of log index n, then change to a different server and see only the state as of log index n - 1. To implement this guarantee, servers would include the index corresponding to the state machine state with each reply to clients. Clients would track the latest index corresponding to results they had seen, and they would provide this information to servers on each request. If a server received a request for a client that had seen an index greater than the server’s last applied log index, it would not service the request (yet).</p>
+<h3 id="6-5-Conclusion-总结"><a href="#6-5-Conclusion-总结" class="headerlink" title="6.5 Conclusion      总结"></a>6.5 Conclusion      总结</h3><p>本章讨论了Client如何与Raft互动的几个问题。在正确性方面，提供线性一致性和优化只读查询的问题尤其微妙。不幸的是，当前的共识相关文献都是讲集群节点间的通信问题，没有涉及这些重要的问题。我们认为这是一个错误。一个完整的系统必须正确地与Client交互，否则核心一致算法提供的一致性水平将被浪费。正如我们在真实的基于Raft的系统中已经看到的，Client与Raft的交互可能是bug的主要来源，但我们希望更好地理解这些问题从而可以防止未来出现问题。</p>
+<p>This chapter discussed several issues in how clients interact with Raft. The issues of providing linearizability and optimizing read-only queries are particularly subtle in terms of correctness. Unfortunately, when the consensus literature only addresses the communication between cluster servers, it leaves these important issues out. We think this is a mistake. A complete system must interact with clients correctly, or the level of consistency provided by the core consensus algorithm will go to waste. As we’ve already seen in real Raft-based systems, client interaction can be a major source of bugs, but we hope a better understanding of these issues can help prevent future problems.</p>
+<hr>
+<h3 id="附注：关于Lease-Read的补充"><a href="#附注：关于Lease-Read的补充" class="headerlink" title="附注：关于Lease Read的补充"></a>附注：关于Lease Read的补充</h3><p>Lease Read就是Leader在发送心跳前记一个时间点start，一旦心跳消息得到集群中Majority节点的回应，Leader就可以将租约延长到 start + election_timeout &#x2F; clock_drift_bound(时钟漂移范围)。Leader在租约内可以直接处理读请求，无需与其他节点进行沟通。</p>
+<p>先抛开节点间的clock drift不谈，start是发送心跳消息的起始时间，Follower收到心跳消息的时间点记为<code>t_recvHeart</code>，那显然<code>start &lt; t_recvHeart</code>，收到Majority节点的心跳响应，就说明Follower至少在<code>t_recvHeart + election_timeout</code>内不会选举超时，也不会投票给其他节点，因为<code>start + election_timeout</code>肯定小于<code>t_recvHeart + election_timeout</code>，所以Leader将租约定为<code>start + election_timeout</code>肯定是安全的。</p>
+<p>考虑clock drift的话，由于不同节点的<code>CPU</code>时钟可能有不同程度的漂移，这会导致在一个很小的时间窗口内，即使Leader认为其持有租约，但集群已经选举出了新的Leader。因此，一些系统在实现Lease Read时缩小了Leader持有租约的时间，选择了一个略小于 <code>election_timeout</code> 的时间，以减小时钟漂移带来的影响。</p>
+<p>下面是关于clock drift的资料：</p>
+<ul>
+<li>clocks on different computers may give different times;</li>
+<li>computer clocks drift from perfect time and their drift rates differ from one another.</li>
+<li>clock drift rate: the relative amount that a computer clock differs from a perfect clock;</li>
+<li>Computer clocks are not generally in perfect agreement.<ul>
+<li>Clock Skew: the difference between the times on two clocks (at any instant);</li>
+<li>Computer clocks are subject to clock drift (they count time at different rates);</li>
+<li>Clock drift rate: the difference per unit of time from some ideal reference;</li>
+<li>Ordinary quartz clocks（普通石英钟） drift by about 1 sec in 11-12 days. (10^-6 secs&#x2F;sec). High precision quartz clocks drift rate is about 10^-7 or 10^-8 secs&#x2F;sec;</li>
+</ul>
+</li>
+</ul>
+<p>参考：</p>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://blog.csdn.net/weixin_43705457/article/details/120572291">https://blog.csdn.net/weixin_43705457/article/details/120572291</a></li>
+<li><a target="_blank" rel="noopener" href="https://mrcroxx.github.io/posts/code-reading/etcdraft-made-simple/6-readonly/#13-lease-read">https://mrcroxx.github.io/posts/code-reading/etcdraft-made-simple/6-readonly/#13-lease-read</a></li>
+<li><a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/25367435">https://zhuanlan.zhihu.com/p/25367435</a></li>
+<li>《Lecture10-TimeClock.pdf》</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" rel="prev" title="etcd_raft源码解析-10日志压缩">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-10日志压缩
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" rel="next" title="etcd_raft源码解析-11成员变更1-confchange包">
+      etcd_raft源码解析-11成员变更1-confchange包 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Chapter-6-Client-interaction-%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92"><span class="nav-number">1.</span> <span class="nav-text">Chapter 6  Client interaction     与Client的交互</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#6-1-Finding-the-cluster-%E5%A6%82%E4%BD%95%E6%89%BE%E5%88%B0%E9%9B%86%E7%BE%A4"><span class="nav-number">1.1.</span> <span class="nav-text">6.1 Finding the cluster     如何找到集群</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-2-Routing-requests-to-the-leader-%E5%B0%86%E8%AF%B7%E6%B1%82%E8%B7%AF%E7%94%B1%E5%88%B0Leader"><span class="nav-number">1.2.</span> <span class="nav-text">6.2 Routing requests to the leader     将请求路由到Leader</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-3-Implementing-linearizable-semantics-%E5%AE%9E%E7%8E%B0%E7%BA%BF%E6%80%A7%E4%B8%80%E8%87%B4%E6%80%A7%E8%AF%AD%E4%B9%89"><span class="nav-number">1.3.</span> <span class="nav-text">6.3 Implementing linearizable semantics     实现线性一致性语义</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-4-Processing-read-only-queries-more-efficiently"><span class="nav-number">1.4.</span> <span class="nav-text">6.4 Processing read-only queries more efficiently</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#6-4-1-Using-clocks-to-reduce-messaging-for-read-only-queries"><span class="nav-number">1.4.1.</span> <span class="nav-text">6.4.1 Using clocks to reduce messaging for read-only queries</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-5-Conclusion-%E6%80%BB%E7%BB%93"><span class="nav-number">1.5.</span> <span class="nav-text">6.5 Conclusion      总结</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%99%84%E6%B3%A8%EF%BC%9A%E5%85%B3%E4%BA%8ELease-Read%E7%9A%84%E8%A1%A5%E5%85%85"><span class="nav-number">1.6.</span> <span class="nav-text">附注：关于Lease Read的补充</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

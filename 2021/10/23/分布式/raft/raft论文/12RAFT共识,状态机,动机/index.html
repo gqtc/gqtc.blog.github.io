@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本章介绍了共识算法和复制状态机的关系，以及设计RAFT的动机。重点在共识算法和复制状态机的关系。 2 Motivation RAFT动机共识是容错系统中的基本问题：即多个服务节点间，即使是有节点失效的情况下，如何就shared state达成一致。共识问题产生于需要提供高可用且不能损害一致性的各种系统中。因此，几乎所有的一致性大规模系统中都需要解决共识问题。2.1节描述了共识通常如何用于创建复制状">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-02RAFT共识,状态机,动机">
+<meta property="og:url" content="http://example.com/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="本章介绍了共识算法和复制状态机的关系，以及设计RAFT的动机。重点在共识算法和复制状态机的关系。 2 Motivation RAFT动机共识是容错系统中的基本问题：即多个服务节点间，即使是有节点失效的情况下，如何就shared state达成一致。共识问题产生于需要提供高可用且不能损害一致性的各种系统中。因此，几乎所有的一致性大规模系统中都需要解决共识问题。2.1节描述了共识通常如何用于创建复制状">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/00RAFT/image-20210922190656584.png">
+<meta property="og:image" content="http://example.com/img/00RAFT/image-20210922193457068.png">
+<meta property="og:image" content="http://example.com/img/00RAFT/image-20210922194212887.png">
+<meta property="og:image" content="http://example.com/img/00RAFT/image-20210922195317445.png">
+<meta property="article:published_time" content="2021-10-22T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T05:34:46.975Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/00RAFT/image-20210922190656584.png">
+
+<link rel="canonical" href="http://example.com/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-02RAFT共识,状态机,动机 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-02RAFT共识,状态机,动机
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-10-23 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-23T00:00:00+08:00">2021-10-23</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:34:46" itemprop="dateModified" datetime="2022-06-28T13:34:46+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本章介绍了共识算法和复制状态机的关系，以及设计RAFT的动机。重点在共识算法和复制状态机的关系。</p>
+<h3 id="2-Motivation-RAFT动机"><a href="#2-Motivation-RAFT动机" class="headerlink" title="2 Motivation RAFT动机"></a>2 Motivation RAFT动机</h3><p>共识是容错系统中的基本问题：即多个服务节点间，即使是有节点失效的情况下，如何就shared state达成一致。共识问题产生于需要提供高可用且不能损害一致性的各种系统中。因此，几乎所有的一致性大规模系统中都需要解决共识问题。2.1节描述了共识通常如何用于创建复制状态机，这是容错系统的通用构建块；2.2节讨论了在大型系统中使用复制状态机的各种方式；2.3节讨论了Paxos共识协议的问题，这也是设计RAFT协议的初衷。</p>
+<p>Consensus is a fundamental problem in fault-tolerant systems: how can servers reach agreement on shared state, even in the face of failures? This problem arises in a wide variety of systems that need to provide high levels of availability and cannot compromise on consistency; thus, consensus is used in virtually all consistent large-scale storage systems. Section 2.1 describes how consensus is typically used to create replicated state machines, a general-purpose building block for fault tolerant systems; Section 2.2 discusses various ways replicated state machines are used in larger systems; and Section 2.3 discusses the problems with the Paxos consensus protocol, which Raft aims to address.</p>
+<h4 id="2-1-Achieving-fault-tolerance-with-replicated-state-machines-通过复制状态机实现容错"><a href="#2-1-Achieving-fault-tolerance-with-replicated-state-machines-通过复制状态机实现容错" class="headerlink" title="2.1 Achieving fault tolerance with replicated state machines 通过复制状态机实现容错"></a>2.1 Achieving fault tolerance with replicated state machines 通过复制状态机实现容错</h4><p>共识算法通常出现在复制状态机（replicated state machines）的上下文中。在这种方法中，状态机运行于多个服务节点上，操作相同的状态副本，即使某些服务器下线，也可以继续运行。复制状态机用于解决分布式系统中的各种容错问题。复制状态机的实例，比如Chubby和ZooKeeper，他们用于为小规模配置数据提供分层键值对的存储。它们提供了基本的get和put操作，还提供了compare-and-swap等同步原语，使并发客户端能够安全地进行协调操作。</p>
+<p>Consensus algorithms typically arise in the context of replicated state machines [102]. In this approach, state machines on a collection of servers compute identical copies of the same state and can continue operating even if some of the servers are down. Replicated state machines are used to solve a variety of fault tolerance problems in distributed systems, as described in Section 2.2. Examples of replicated state machines include Chubby [11] and ZooKeeper [38], which both provide hierarchical key-value stores for small amounts of configuration data. In addition to basic operations such as get and put, they also provide synchronization primitives like compare-and-swap, enabling concurrent clients to coordinate safely.</p>
+<p><font color=red>复制状态机通常通过复制日志（replicated log）的方式来实现，</font>比如下面的图2.1展示的那样。每个服务器存储一个包含一系列命令的日志，其状态机按顺序执行这些命令。日志以相同的顺序包含相同的命令，因此每个状态机处理相同的命令序列。由于状态机是确定的，因此每个状态机操作相同的状态，并产生相同的输出序列。</p>
+<p>图2.1: <font color=red>复制状态机的架构。一致性算法管理复制日志，日志中包含来自客户端的状态机命令。状态机处理来自日志的相同命令序列，因此它们产生相同的输出。</font></p>
+<p><img src="/img/00RAFT/image-20210922190656584.png" alt="image-20210922190656584"></p>
+<p>Replicated state machines are typically implemented using a replicated log, as shown in Figure 2.1. Each server stores a log containing a series of commands, which its state machine executes in order. Each log contains the same commands in the same order, so each state machine processes the same sequence of commands. Since the state machines are deterministic, each computes the same state and the same sequence of outputs.</p>
+<p><font color=red>共识算法负责保持复制日志的一致性</font>。服务节点上的共识模块从客户端接收命令并将其添加到日志中。本节点的共识模块与其他服务节点上的共识模块通信，以确保每个日志最终以相同的顺序包含相同的请求，即使某些服务节点出现故障。一旦命令被正确复制，它们就被称为已提交的。<font color=red>每个服务节点上的状态机按日志顺序处理提交的命令，并将输出返回给客户端。</font>因此，多个服务节点就形成了一个单一的、高度可靠的状态机。</p>
+<p><em><font color=red>个人理解</font>：共识算法用于保证日志的一致性，而复制状态机以日志中的命令为输入，多个节点上的状态机，以相同的顺序处理相同的命令，从而产生相同的输出。</em></p>
+<p>Keeping the replicated log consistent is the job of the consensus algorithm. The consensus module on a server receives commands from clients and adds them to its log. It communicates with the consensus modules on other servers to ensure that every log eventually contains the same requests in the same order, even if some servers fail. Once commands are properly replicated, they are said to be committed. Each server’s state machine processes committed commands in log order, and the outputs are returned to clients. As a result, the servers appear to form a single, highly reliable state machine.</p>
+<p>实际系统中，共识算法通常具有如下属性：</p>
+<ul>
+<li>它们可以确保在所有非拜占庭条件下的安全性（从不返回错误结果），非拜占庭条件包括网络延迟、网络分区、数据包丢失、重复和乱序。</li>
+<li>只要大多数服务节点（超过半数）可以运行，且可以相互通信，且可以与客户机通信，它们就可以正常工作（可用）。因此，比如由五台服务节点组成的典型集群可以容忍任意两台服务节点的故障。假定服务节点因宕机而发生故障；它们可能稍后就能从稳定存储上的状态恢复并重新加入集群。</li>
+<li>它们不依赖于时间来确保日志的一致性：错误的时钟和极端的消息延迟在最坏的情况下会导致可用性问题。也就是说，它们保证异步模型下的安全，在异步模型中，消息和处理器以任意速度运行。</li>
+<li>在一般情况下，只要集群的大多数成员响应了一轮RPC，命令就可以完成；少数速度较慢的服务器不会影响总体系统性能。</li>
+</ul>
+<p>Consensus algorithms for practical systems typically have the following properties:</p>
+<ul>
+<li>They ensure safety (never returning an incorrect result) under all non-Byzantine conditions, including network delays, partitions, and packet loss, duplication, and reordering.</li>
+<li>They are fully functional (available) as long as any majority of the servers are operational and can communicate with each other and with clients. Thus, a typical cluster of five servers can tolerate the failure of any two servers. Servers are assumed to fail by stopping; they may later recover from state on stable storage and rejoin the cluster.</li>
+<li>They do not depend on timing to ensure the consistency of the logs: faulty clocks and extreme message delays can, at worst, cause availability problems. That is, they maintain safety under an asynchronous model [71], in which messages and processors proceed at arbitrary speeds.</li>
+<li>In the common case, a command can complete as soon as a majority of the cluster has responded to a single round of remote procedure calls; a minority of slow servers need not impact overall system performance.</li>
+</ul>
+<h4 id="2-2-Common-use-cases-for-replicated-state-machines-复制状态机的常见用例"><a href="#2-2-Common-use-cases-for-replicated-state-machines-复制状态机的常见用例" class="headerlink" title="2.2 Common use cases for replicated state machines  复制状态机的常见用例"></a>2.2 Common use cases for replicated state machines  复制状态机的常见用例</h4><p>复制状态机是使系统容错的通用模块。它们可以以多种方式使用，本节将讨论一些典型的使用模式。</p>
+<p>Replicated state machines are a general-purpose building block for making systems fault-tolerant. They can be used in a variety of ways, and this section discusses some typical usage patterns.</p>
+<p>最常见的共识部署通常只有三到五台服务器构成一个复制状态机。然后，其他服务器可以使用此状态机来协调其活动，如图2.2（a）所示。这些系统通常使用复制状态机来提供组织成员、配置管理，或分布式锁等功能。一个更具体的例子，复制状态机可以提供一个容错工作队列，其他服务器可以使用复制状态机进行协同操作，给自己分配工作队列中的工作任务。</p>
+<p>Most common deployments of consensus have just three or five servers forming one replicated state machine. Other servers can then use this state machine to coordinate their activities, as shown in Figure 2.2(a). These systems often use the replicated state machine to provide group membership, configuration management, or locks [38]. As a more specific example, the replicated state machine could provide a fault-tolerant work queue, and other servers could coordinate using the replicated state machine to assign work to themselves.</p>
+<p>2.2(a)：集群中的节点通过读写状态机来进行协同工作；</p>
+<p>2.2(b)：领导职管理集群中的其他节点，使用复制状态机记录状态。其他节点处于被动状态，直到领导节点崩溃；</p>
+<p><img src="/img/00RAFT/image-20210922193457068.png" alt="image-20210922193457068"></p>
+<p>图2.2（b）显示了这种用法的常见简化。在这种模式中，一台服务器充当领导者，管理其余的服务器。领导者将其关键数据存储在共识系统中。如果领导者失败，则其他备用服务器将争夺领导者的位置，如果成功，它们将使用共识系统中的数据继续运行。许多大型存储系统具有单一领导者，如GFS[30]、HDFS[105]和RAMCloud[90]，都使用这种方法。</p>
+<p>A common simplification to this usage is shown in Figure 2.2(b). In this pattern, one server acts as leader, managing the rest of the servers. The leader stores its critical data in the consensus system. In case it fails, other standby servers compete for the position of leader, and if they succeed, they use the data in the consensus system to continue operations. Many large-scale storage systems that have a single cluster leader, such as GFS [30], HDFS [105], and RAMCloud [90], use this approach.</p>
+<p>共识系统有时也用于复制大规模数据，如图2.3所示。大型存储系统，如Megastore[5]、Panner[20]和District[32]，因存储的数据太多，无法容纳在单个服务器组中。因此它们通过多个复制状态机将数据进行分区，而跨多个分区的操作使用两阶段提交协议（2PC）来保持一致性。</p>
+<p>Consensus is also sometimes used to replicate very large amounts of data, as shown in Figure 2.3. Large storage systems, such as Megastore [5], Spanner [20], and Scatter [32], store too much data to fit in a single group of servers. They partition their data across many replicated state machines, and operations that span multiple partitions use a two-phase commit protocol (2PC) to maintain consistency.</p>
+<p>图2.3：使用共识的大型分区存储系统。为了扩展性，数据在多个复制状态机之间进行分区。跨分区的操作使用两阶段提交协议。</p>
+<p><img src="/img/00RAFT/image-20210922194212887.png" alt="image-20210922194212887"></p>
+<h4 id="2-3-What’s-wrong-with-Paxos-Paxos算法的问题"><a href="#2-3-What’s-wrong-with-Paxos-Paxos算法的问题" class="headerlink" title="2.3 What’s wrong with Paxos?  Paxos算法的问题"></a>2.3 What’s wrong with Paxos?  Paxos算法的问题</h4><p>在过去十年中，Leslie Lamport的Paxos协议几乎就是共识的同义词：它是课程中最常教的协议，大多数共识系统都以其为起点进行实现。Paxos首先定义了一个能够就单个决策达成一致的协议，例如单个复制日志的条目。我们将该子集称为single-decree Paxos。然后，Paxos将single-decree Paxos的多个实例组合起来，以促进一系列决策的达成，这就是所谓的Multi-Paxos。图2.4总结了Single-decree Paxos，图A.5总结了Multi-Paxos。Paxos确保了安全性和活跃性（它最终达成了共识，并且假设使用足够的故障检测器来避免proposer的活锁问题），并且其正确性已经得到了证明。Multi-Paxos在正常情况下是有效的，而且Paxos支持集群成员的变更。</p>
+<p>Over the last ten years, Leslie Lamport’s Paxos protocol [48] has become almost synonymous with consensus: it is the protocol most commonly taught in courses, and most implementations of consensus use it as a starting point. Paxos first defines a protocol capable of reaching agreement on a single decision, such as a single replicated log entry. We refer to this subset as single-decree Paxos. Paxos then combines multiple instances of this protocol to facilitate a series of decisions such as a log (Multi-Paxos). Single-decree Paxos is summarized in Figure 2.4, and Multi-Paxos is summarized<br>in Figure A.5. Paxos ensures safety and liveness (it eventually reaches consensus, assuming an adequate failure detector is used to avoid proposer livelock), and its correctness has been proven. Multi-Paxos is efficient in the normal case, and Paxos supports changes in cluster membership [69].</p>
+<p><img src="/img/00RAFT/image-20210922195317445.png" alt="image-20210922195317445"></p>
+<p>不幸的是，Paxos有两个显著的缺点。第一个缺点是Paxos非常难以理解。Paxos的完整解释[48]是出了名的不透明；只有很少的人，在付出巨大努力的情况下，才能理解它。因此，有人试图用更简单的术语解释Paxos[49,60,61]。这些解释侧重于single-decree subset，但即使如此仍然具有挑战性。在2012年NSDI的一项非正式调查中，我们发现很少有人对Paxos感到满意，即使是在经验丰富的研究人员中也是如此。我们也是在阅读了几篇Paxos的解释，并设计了我们自己的替代方案之后，才能理解完整的Paxos方案，这一过程花了将近一年的时间。</p>
+<p>Unfortunately, Paxos has two significant drawbacks. The first drawback is that Paxos is exceptionally difficult to understand. The full explanation [48] is notoriously opaque; few people succeed in understanding it, and only with great effort. As a result, there have been several attempts to explain Paxos in simpler terms [49, 60, 61]. These explanations focus on the single-decree subset, yet they are still challenging. In an informal survey of attendees at NSDI 2012, we found few people who were comfortable with Paxos, even among seasoned researchers. We struggled with Paxos ourselves; we were not able to understand the complete protocol until after reading several explanations and designing our own alternative protocol, a process that took almost a year.</p>
+<p>我们认为Paxos的不透明性源于其选择Single-decree Paxos子集作为基础。Single-decree Paxos是笨拙而微妙的：它分为两个阶段，没有简单的直观解释，无法独立理解。因此，很难对Single-decree Paxos协议的工作原理形成直觉。而Multi-Paxos的组合规则增加了显著的额外复杂性和微妙性。我们认为，就多个决策（即，一个日志而不是一个条目）达成共识的总体问题可以以其他更直接和明显的方式进行分解。</p>
+<p>We hypothesize that Paxos’ opaqueness stems from its choice of the single-decree subset as its foundation. Single-decree Paxos is dense and subtle: it is divided into two stages that do not have simple intuitive explanations and cannot be understood independently. Because of this, it is difficult to develop intuitions about why the single-decree protocol works. The composition rules for Multi-Paxos add significant additional complexity and subtlety. We believe that the overall problem of reaching consensus on multiple decisions (i.e., a log instead of a single entry) can be decomposed<br>in other ways that are more direct and obvious.</p>
+<p>Paxos的第二个问题是它没有为构建实际的实现提供良好的基础。一个原因是，对于Multi-Paxos，没有广泛认可的算法。Lamport的描述大多是关于Single-decree Paxos；他勾勒出了实现Multi-Paxos的可能方法，但缺少许多细节。有几次尝试充实和优化Paxos，如[77]、[108]和[46]，但它们彼此不同，也不同于Lamport的草图。Chubby[15]等系统已经实现了类似Paxos的算法，但在大多数情况下，它们的详细信息尚未公布。</p>
+<p>The second problem with Paxos is that it does not provide a good foundation for building practical implementations. One reason is that there is no widely agreed-upon algorithm for Multi-Paxos. Lamport’s descriptions are mostly about single-decree Paxos; he sketched possible approaches to Multi-Paxos, but many details are missing. There have been several attempts to flesh out and optimize Paxos, such as [77], [108], and [46], but these differ from each other and from Lamport’s sketches. Systems such as Chubby [15] have implemented Paxos-like algorithms, but in most cases their details have not been published.</p>
+<p>此外，Paxos体系结构对于构建实际系统来说是一个糟糕的体系结构；这是single-decree Paxos分解的另一个结果。例如，独立地选择一组日志条目，然后将它们合并到一个顺序日志中，没有什么好处；这只会增加复杂性。直接围绕日志设计系统更简单也更有效，在日志中，新条目按受限顺序逐条追加。另一个问题是Paxos的核心采用了对称的点对点方法（尽管它也暗示了作为性能优化的一种弱领导形式）。这在一个简化的世界中是有意义的，在这个世界中只会做出一个决定，但很少有实际的系统使用这种方法。如果必须做出一系列决策，那么首先选举一位领导者，然后让领导者协调决策会更简单、更快。（第11章讨论了平等主义Paxos（Egalitarian Paxos），Paxos的一个最新变体，它不使用leader，但在某些情况下可能比使用leader的算法更有效；然而，该算法比基于leader的算法复杂得多。）</p>
+<p>Furthermore, the Paxos architecture is a poor one for building practical systems; this is another consequence of the single-decree decomposition. For example, there is little benefit to choosing a collection of log entries independently and then melding them into a sequential log; this just adds complexity. It is simpler and more efficient to design a system around a log, where new entries are appended sequentially in a constrained order. Another problem is that Paxos uses a symmetric peer-to-peer approach at its core (though it also suggests a weak form of leadership as a performance optimization). This makes sense in a simplified world where only one decision will be made, but few practical systems use this approach. If a series of decisions must be made, it is simpler and faster to first elect a leader, then have the leader coordinate the decisions. (Chapter 11 discusses Egalitarian Paxos, a recent variant of Paxos that does not use a leader but in some situations can be more efficient than algorithms that do; however, this algorithm is much more complex than leader based algorithms.)</p>
+<p>因此，实际系统与Paxos几乎没有相似之处。每个实现都从Paxos开始，发现实现它的困难，然后开发一个显著不同的体系结构。这既耗时又容易出错，理解Paxos的困难更加加剧了问题。Paxos的公式对于证明其正确性的定理来说可能是一个很好的公式，但实际实现与Paxos如此不同，以至于证明几乎没有价值。Chubby的作者的以下评论是典型的：</p>
+<blockquote>
+<p>Paxos算法的描述与现实系统的需求之间存在着巨大的鸿沟，…，最终系统将基于未经验证的协议来构建[15]。</p>
+</blockquote>
+<p>由于上面这些问题，我们得出结论，Paxos 没有提供一个良好的基础，无论是为系统建设，还是教授给学生。考虑到共识算法在大规模软件系统中的重要性，我们决定看看是否可以设计一种比Paxos具有更好的共识算法。RAFT就是这个实验的结果。</p>
+<p>As a result, practical systems bear little resemblance to Paxos. Each implementation begins with Paxos, discovers the difficulties in implementing it, and then develops a significantly different architecture. This is time-consuming and error-prone, and the difficulties of understanding Paxos exacerbate the problem. Paxos’ formulation may be a good one for proving theorems about its correctness, but real implementations are so different from Paxos that the proofs have little value. The following comment from the Chubby implementers is typical：</p>
+<p>There are significant gaps between the description of the Paxos algorithm and the needs of a real-world system. …  the final system will be based on an unproven protocol [15].</p>
+<p>Because of these problems, we concluded that Paxos does not provide a good foundation either for system building or for education. Given the importance of consensus in large-scale software systems, we decided to see if we could design an alternative consensus algorithm with better properties than Paxos. Raft is the result of that experiment.</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/" rel="prev" title="etcd_raft源码解析-04raft包--storage">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-04raft包--storage
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/" rel="next" title="etcd_raft源码解析-05raft包--log_unstable">
+      etcd_raft源码解析-05raft包--log_unstable <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-Motivation-RAFT%E5%8A%A8%E6%9C%BA"><span class="nav-number">1.</span> <span class="nav-text">2 Motivation RAFT动机</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-Achieving-fault-tolerance-with-replicated-state-machines-%E9%80%9A%E8%BF%87%E5%A4%8D%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA%E5%AE%9E%E7%8E%B0%E5%AE%B9%E9%94%99"><span class="nav-number">1.1.</span> <span class="nav-text">2.1 Achieving fault tolerance with replicated state machines 通过复制状态机实现容错</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-Common-use-cases-for-replicated-state-machines-%E5%A4%8D%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA%E7%9A%84%E5%B8%B8%E8%A7%81%E7%94%A8%E4%BE%8B"><span class="nav-number">1.2.</span> <span class="nav-text">2.2 Common use cases for replicated state machines  复制状态机的常见用例</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-3-What%E2%80%99s-wrong-with-Paxos-Paxos%E7%AE%97%E6%B3%95%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">1.3.</span> <span class="nav-text">2.3 What’s wrong with Paxos?  Paxos算法的问题</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

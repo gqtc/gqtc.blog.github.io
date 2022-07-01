@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Chapter 3 Basic Raft algorithm     基本Raft算法本章介绍基本的Raft算法。我们设计Raft的目标是尽可能的容易理解；第一部分描述了为了容易理解而采取的方法；剩下的部分介绍了算法本身，包括为了便于理解而做出的方案选择。 This chapter presents the Raft algorithm. We designed Raft to be as und">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-03基本Raft算法">
+<meta property="og:url" content="http://example.com/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Chapter 3 Basic Raft algorithm     基本Raft算法本章介绍基本的Raft算法。我们设计Raft的目标是尽可能的容易理解；第一部分描述了为了容易理解而采取的方法；剩下的部分介绍了算法本身，包括为了便于理解而做出的方案选择。 This chapter presents the Raft algorithm. We designed Raft to be as und">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404122954818.png">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404085204436.png">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404085227703.png">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404163459728.png">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404164052069.png">
+<meta property="og:image" content="http://example.com/img/02基本Raft算法/image-20220405111022732.png">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/image-20220405161430640.png">
+<meta property="og:image" content="http://example.com/img/02基本Raft算法/image-20220406190047133.png">
+<meta property="og:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/image-20220409101718861.png">
+<meta property="article:published_time" content="2021-11-07T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T05:36:17.569Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404122954818.png">
+
+<link rel="canonical" href="http://example.com/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-03基本Raft算法 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-03基本Raft算法
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-11-08 00:00:00" itemprop="dateCreated datePublished" datetime="2021-11-08T00:00:00+08:00">2021-11-08</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:36:17" itemprop="dateModified" datetime="2022-06-28T13:36:17+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="Chapter-3-Basic-Raft-algorithm-基本Raft算法"><a href="#Chapter-3-Basic-Raft-algorithm-基本Raft算法" class="headerlink" title="Chapter 3 Basic Raft algorithm     基本Raft算法"></a>Chapter 3 Basic Raft algorithm     基本Raft算法</h2><p>本章介绍基本的Raft算法。我们<font color=red>设计Raft的目标是尽可能的容易理解</font>；第一部分描述了为了容易理解而采取的方法；剩下的部分介绍了算法本身，包括为了便于理解而做出的方案选择。</p>
+<p>This chapter presents the Raft algorithm. We designed Raft to be as understandable as possible; the first section describes our approach to designing for understandability. The following sections describe the algorithm itself and include examples of design choices we made for understandability.</p>
+<span id="more"></span>
+<h3 id="3-1-Designing-for-understandability-为可理解性而设计"><a href="#3-1-Designing-for-understandability-为可理解性而设计" class="headerlink" title="3.1 Designing for understandability     为可理解性而设计"></a>3.1 Designing for understandability     为可理解性而设计</h3><p>我们在设计Raft时有几个目标：它必须为构建实际系统提供一个完整且实用的基础，从而减少开发人员所需的设计工作；它必须保证在所有场景下是安全的，保证典型操作下的可用性，同时兼顾常规操作下的效率；但是我们最重要（也是最大的挑战）的设计目标还是容易理解。另外，需要尽可能的使算法直观，以便开发者可以在实现时进行不可避免的扩展；</p>
+<p>We had several goals in designing Raft: it must provide a complete and practical foundation for system building, so that it significantly reduces the amount of design work required of developers; it must be safe under all conditions and available under typical operating conditions; and it must be efficient for common operations. But our most important goal—and most difficult challenge—was understandability. It must be possible for a large audience to understand the algorithm comfortably. In addition, it must be possible to develop intuitions about the algorithm, so that system builders can make the extensions that are inevitable in real-world implementations.</p>
+<p>Raft的设计过程中，有很多设计点，都需要在多个备选方案中进行选择。这种情况下，我们根据是否容易理解来评估备选方案。</p>
+<p>There were numerous points in the design of Raft where we had to choose among alternative approaches. In these situations we evaluated the alternatives based on understandability: how hard is it to explain each alternative (for example, how complex is its state space, and does it have subtle implications?), and how easy will it be for a reader to completely understand the approach and its implications?</p>
+<p>我们认识到这种分析方法太主观了；我们使用两种普遍适用的技术：<font color=red>第一种就是分解问题：可能的话，将问题分为子问题，子问题可以独立的解决、解释和理解。比如我们将Raft的设计分成了领导者选举，日志复制和安全性。</font></p>
+<p>We recognize that there is a high degree of subjectivity in such analysis; nonetheless, we used two techniques that are generally applicable. The first technique is the well-known approach of problem decomposition: wherever possible, we divided problems into separate pieces that could be solved, explained, and understood relatively independently. For example, in Raft we separated leader election, log replication, and safety.</p>
+<p>第二种方法是通过减少要考虑的状态的数量来简化状态空间，从而使系统更加一致，并且在可能的情况下消除不确定性。具体而言，Raft中的日志必须是连续的，而且Raft限制了节点间日志会出现不一致的行为。虽然多数情况下，我们试图消除不确定性，但某些情况下，不确定性实际上提高了可理解性。比如，随机方法引入了不确定性，但随机方法倾向于以类似的方式来处理所有可能的情况来减少状态空间（任选一种，无所谓）。我们使用了随机方法来简化Leader选举算法。</p>
+<p>Our second approach was to simplify the state space by reducing the number of states to consider, making the system more coherent and eliminating nondeterminism where possible. Specifically, logs are not allowed to have holes, and Raft limits the ways in which logs can become inconsistent with each other. Although in most cases we tried to eliminate nondeterminism, there are some situations where nondeterminism actually improves understandability. In particular, randomized approaches introduce nondeterminism, but they tend to reduce the state space by handling all possible choices in a similar fashion (“choose any; it doesn’t matter”). We used randomization to simplify the Raft leader election algorithm.</p>
+<h3 id="3-2-Raft-overview-Raft概览"><a href="#3-2-Raft-overview-Raft概览" class="headerlink" title="3.2 Raft overview     Raft概览"></a>3.2 Raft overview     Raft概览</h3><p>Raft是一种用于管理2.1节（下图）所述的复制日志的算法。图3.1以简明形式总结了该算法；图3.2列出了该算法的关键特性；这些关键特性将在本章其余部分逐节讨论。</p>
+<p><img src="/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404122954818.png" alt="image-20220404122954818"></p>
+<p><em>图2.1：复制状态机架构。共识算法管理包含从Client收到的状态机命令的复制日志。多节点上的状态机以相同的顺序执行日志中的命令，所以他们产生的结果也是相同的。</em></p>
+<p>Raft is an algorithm for managing a replicated log of the form described in Section 2.1. Figure 3.1 summarizes the algorithm in condensed form for reference, and Figure 3.2 lists key properties of the algorithm; the elements of these figures are discussed piecewise over the rest of this chapter.</p>
+<p>Raft通过选择一个节点作为Leader来实现共识，即由该Leader全权负责管理复制的日志。Leader从Client接收日志条目，然后将日志条目复制到其他节点上，并且告诉其他节点何时可以将日志条目应用到状态机。通过Leader可以简化对复制日志的管理。比如Leader可以无需咨询其他节点，自行决定在日志中放置新条目的位置，数据简单的从Leader流向其他节点。Leader节点也可能崩溃，或者与其他节点断连，这种情况下会选出新的Leader。</p>
+<p>Raft implements consensus by first electing a server as leader, then giving the leader complete responsibility for managing the replicated log. The leader accepts log entries from clients, replicates them on other servers, and tells servers when it is safe to apply log entries to their state machines. Having a leader simplifies the management of the replicated log. For example, the leader can decide where to place new entries in the log without consulting other servers, and data flows in a simple fashion from the leader to other servers. A leader can fail or become disconnected from the other servers, in which case a new leader is elected.</p>
+<p>基于Leader的方案，Raft将共识问题分解为三个相对独立的子问题，将在以下小节中讨论：</p>
+<ul>
+<li>Leader选举：在启动集群和现有Leader失败时，必须选择新的Leader（3.4节）；</li>
+<li>日志复制：Leader从Client接收日志条目，并将其复制到集群中的其他节点，强制其他节点的日志与自己的日志保持一致（3.5节）；</li>
+<li>安全性：Raft的安全性的关键就是图3.2中列出的<font color=red>状态机的安全性（最终目标，其他的安全性都是为这一条服务的）：如果任一节点已经将特定日志条目应用到状态机了，则其他节点在相同的日志索引上不能应用一个不同的日志条目。</font>3.6节描述了Raft如何保证该安全性，解决方案就是在Leader选举机制上增加额外的限制。</li>
+</ul>
+<p>Given the leader approach, Raft decomposes the consensus problem into three relatively independent subproblems, which are discussed in the subsections that follow:</p>
+<ul>
+<li>Leader election: a new leader must be chosen when starting the cluster and when an existing leader fails (Section 3.4).</li>
+<li>Log replication: the leader must accept log entries from clients and replicate them across the cluster, forcing the other logs to agree with its own (Section 3.5).</li>
+<li>Safety: the key safety property for Raft is the State Machine Safety Property in Figure 3.2: if any server has applied a particular log entry to its state machine, then no other server may apply a different command for the same log index. Section 3.6 describes how Raft ensures this property; the solution involves an additional restriction on the election mechanism described in Section 3.4.</li>
+</ul>
+<p>在介绍完共识算法之后，本章讨论了系统的可用性，和系统中定时器的作用（3.9节），以及在节点之间转移领导权的可选扩展（3.10节）。</p>
+<p>After presenting the consensus algorithm, this chapter discusses the issue of availability and the role of timing in the system (Section 3.9), and an optional extension to transfer leadership between servers (Section 3.10).</p>
+<p><img src="/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404085204436.png" alt="image-20220404085204436"></p>
+<p><img src="/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404085227703.png" alt="image-20220404085227703"></p>
+<p><em>图3.2：Raft保证任何时候都满足下面的<font color=red>安全属性</font>：</em></p>
+<ul>
+<li><em>选举安全：给定的Term下只会有一个节点当选为Leader（3.4节）；</em></li>
+<li><em>Leader只会追加日志：Leader不会覆盖和删除自己的日志，它只会追加日志（3.5节）；</em></li>
+<li><em>日志匹配：如果不同节点上的两个日志条目具有相同的Index和Term，那节点的日志中该条目以及之前的日志条目肯定都是相同的（3.5节）；</em></li>
+<li><em>Leader完整性：如果某个特定任期内提交了一个日志条目，则该日志条目肯定存在于后续任期的Leader的日志中（3.6节）；</em></li>
+<li><em><font color=red>状态机安全性</font>：如果一个节点将某个Index上的日志条目应用到状态机了，那其他节点在相同Index上不会应用不同的日志条目（3.6.3）；</em></li>
+</ul>
+<hr>
+<h3 id="3-3-Raft-basics-基本Raft算法"><a href="#3-3-Raft-basics-基本Raft算法" class="headerlink" title="3.3 Raft basics     基本Raft算法"></a>3.3 Raft basics     基本Raft算法</h3><p>Raft集群包含多个节点，比如5个节点的集群，该集群可以容忍2个节点的故障。任意时间，节点都处于三种状态之一：Leader，Follower，Candidate。正常操作下，只能有一个Leader，其他节点都是Follower。Follower是被动状态，它不会发出请求，只是回应领导人和候选人的请求。Leader处理Client发来的请求（如果Client向Follower发请求，则Follower会把该请求重定向到Leader）。Candidate状态用于选举新的Leader，下面的图3.3展示了这三种状态，以及他们之前的转换流程：</p>
+<p><img src="/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404163459728.png" alt="image-20220404163459728"></p>
+<p><em>图3.3：节点状态。Follower仅仅是响应其他节点的请求。如果Follower长时间收不到任何消息，则它转为Candidate并开始选举。如果Candidate能从集群中的过半节点上收到选票，则转为Leader。Leader执行操作，直到崩溃。</em></p>
+<p>A Raft cluster contains several servers; five is a typical number, which allows the system to tolerate two failures. At any given time each server is in one of three states: leader, follower, or candidate. In normal operation there is exactly one leader and all of the other servers are followers. Followers are passive: they issue no requests on their own but simply respond to requests from leaders and candidates. The leader handles all client requests (if a client contacts a follower, the follower redirects it to the leader). The third state, candidate, is used to elect a new leader as described in Section 3.4. Figure 3.3 shows the states and their transitions; the transitions are discussed below.</p>
+<p>Raft将时间划分为任意长度的Term（任期），如下图所示。任期以连续的正整数的形式进行编号。每个任期都是从选举开始，即一个或多个Candidate尝试选举为Leader（3.4节）。如果某个Candidate赢得了选举，则该任期内它就是新的Leader。某些场景下，选举时选票可能会被瓜分（没有节点获得过半的选票），那该任期内就没有Leader，新的任期（新的选举）会马上开始。Raft保证在给定任期内最多只有一个Leader。</p>
+<p><img src="/img/02%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95/image-20220404164052069.png" alt="image-20220404164052069"></p>
+<p><em>图3.4：按照任期划分时间，每个任期都是以选举开始。选举成功后，Leader管理集群，直到任期结束。如果选举失败，则这样的任期直到结束时都没能选举出Leader。不同的节点可能在不同的时间观察到任期的转换。</em></p>
+<p>Raft divides time into terms of arbitrary length, as shown in Figure 3.4. Terms are numbered with consecutive integers. Each term begins with an election, in which one or more candidates attempt to become leader as described in Section 3.4. If a candidate wins the election, then it serves as leader for the rest of the term. In some situations an election will result in a split vote. In this case the term will end with no leader; a new term (with a new election) will begin shortly. Raft ensures that there is at most one leader in a given term.</p>
+<p>不同的节点可能会在不同的时间观察到任期间的过渡，某些场景下一个节点可能不会观察到选举，甚至观察不到整个任期。实际上Raft中<font color=red>任期起到的是逻辑时钟的作用，通过Term，节点可以检测到过时信息</font>，比如过时的Leader。每个节点都会将Term保存到硬盘中，Term值随着时间单调增加。节点间通信时会附带自己的Term值，如果某个节点的Term小于其他节点的，则该节点会更新自己的Term为更大的值。如果Candidate或Leader发现自己的Term是过时的（小于收到的消息中的Term），那它会立即转为Follower状态。如果节点收到的请求消息中的Term是过期的（消息中的Term小于本地Term），那它会拒绝该请求。</p>
+<p>Different servers may observe the transitions between terms at different times, and in some situations a server may not observe an election or even entire terms. Terms act as a logical clock [47] in Raft, and they allow servers to detect obsolete information such as stale leaders. Each server stores a current term number, which increases monotonically over time. Current terms are exchanged whenever servers communicate; if one server’s current term is smaller than the other’s, then it updates its current term to the larger value. If a candidate or leader discovers that its term is out of date, it immediately reverts to follower state. If a server receives a request with a stale term number, it rejects the request.</p>
+<p>Raft节点使用RPC进行通信，基本的Raft共识算法中，只需要两种RPC：RequestVote RPC是由Candidate在选举时发出（3.4节），AppendEntries则由Leader在复制日志给Follower时发出，同时这种类型的RPC还起到了心跳的作用（3.5节）。领导权转移（3.10节）以及后续章节会引入额外的RPC类型。</p>
+<p>Raft servers communicate using remote procedure calls (RPCs), and the basic consensus algorithm requires only two types of RPCs between servers. RequestVote RPCs are initiated by candidates during elections (Section 3.4), and AppendEntries RPCs are initiated by leaders to replicate log entries and to provide a form of heartbeat (Section 3.5). Leadership transfer (Section 3.10) and the mechanisms described in subsequent chapters introduce additional RPCs beyond the two in the core consensus algorithm.</p>
+<p>我们选择RPC作为通信结构是为了简化通信模式。每个请求类型都有相应的响应类型。Raft允许请求RPC和响应RPC在网络中丢失；如果没有及时收到响应消息，则请求者有责任重发请求RPC。节点为了获得高性能会并行发送RPC，而且Raft允许这些RPC请求在网络中的乱序；</p>
+<p>We chose to structure communication in Raft as RPCs to simplify its communication patterns. Each request type has a corresponding response type, which also serves as the request’s acknowledgment. Raft assumes RPC requests and responses may be lost in the network; it is the requester’s responsibility to retry the RPC if it does not receive a response in a timely manner. Servers issue RPCs in parallel for best performance, and Raft does not assume the network preserves ordering between RPCs.</p>
+<h3 id="3-4-Leader-election-领导者选举"><a href="#3-4-Leader-election-领导者选举" class="headerlink" title="3.4 Leader election     领导者选举"></a>3.4 Leader election     领导者选举</h3><p>当节点启动时，它们都是Follower。节点只要能从Leader或Candidate收到有效的RPC，它就会一直保持Follower状态。Leader周期性的向Follower发送心跳消息来维护自己的领导地位。如果一个Follower在一段时间（称为选举超时时间）内没有收到任何消息，那该Follower就会开始选举流程。</p>
+<p>Raft uses a heartbeat mechanism to trigger leader election. When servers start up, they begin as followers. A server remains in follower state as long as it receives valid RPCs from a leader or candidate. Leaders send periodic heartbeats (AppendEntries RPCs that carry no log entries) to all followers in order to maintain their authority. If a follower receives no communication over a period of time called the election timeout, then it assumes there is no viable leader and begins an election to choose a new leader.</p>
+<p>开始选举时，Follower增加自己的Term，并转为Candidate状态。然后投票给自己，并向集群中的其他节点并发的发送RequestVote请求。Candidate会一直保持这种状态，直到发送下面三种情况之一：</p>
+<ul>
+<li>a：它赢得了选举；</li>
+<li>b：另一个节点确立了自己的领导者地位；</li>
+<li>c：选举超时时间内没有人赢得选举；</li>
+</ul>
+<p>下面分别讨论：</p>
+<p>To begin an election, a follower increments its current term and transitions to candidate state. It then votes for itself and issues RequestVote RPCs in parallel to each of the other servers in the cluster. A candidate continues in this state until one of three things happens: (a) it wins the election, (b) another server establishes itself as leader, or (c) another election timeout goes by with no winner. These outcomes are discussed separately in the paragraphs below.</p>
+<p>a：如果Candidate在同一任期内可以从集群中获得过半节点的投票，则该Candidate就可以赢得选举。在给定的任期内，每个节点最多只能投票给一个Candidate，先到先得（注：3.6节中增加了投票的额外限制）。需要获取过半节点的投票，这条规则使得特定任期内最多只会有一个Candidate赢得选举（图3.2中的选举安全性）。一旦Candidate赢得选举，它就会转为Leader。然后向所有节点发送心跳消息，以确立起领导者地位，阻止新的选举。</p>
+<p>A candidate wins an election if it receives votes from a majority of the servers in the full cluster for the same term. Each server will vote for at most one candidate in a given term, on a first-come-first-served basis (note: Section 3.6 adds an additional restriction on votes). The majority rule ensures that at most one candidate can win the election for a particular term (the Election Safety Property in Figure 3.2). Once a candidate wins an election, it becomes leader. It then sends heartbeat messages to all of the other servers to establish its authority and prevent new elections.</p>
+<p>b：在等待选票期间，Candidate可能会收到另一个声称自己是Leader的节点发来的AppendEntries请求。如果该RPC中附带的Term值大于等于该Candidate的本地Term，那Candidate就会承认该Leader是合法的，并回到Follower的状态。如果RPC中的Term小于该Candidate的本地Term，则Candidate拒绝该RPC，保持Candidate状态不变。</p>
+<p>While waiting for votes, a candidate may receive an AppendEntries RPC from another server claiming to be leader. If the leader’s term (included in its RPC) is at least as large as the candidate’s current term, then the candidate recognizes the leader as legitimate and returns to follower state. If the term in the RPC is smaller than the candidate’s current term, then the candidate rejects the RPC and continues in candidate state.</p>
+<p>c：Candidate可能在选举中既不赢，也没输：如果同一时间内有多个Follower转为Candidate开始选举，那选票可能会被这些Candidate瓜分，从而没有Candidate能够获得过半节点的投票。这种情况发生时，每个Candidate都会再次选举超时，增加Term，然后开始新的选举。但是如果不采取额外措施，瓜分选票的情况会无限重复下去。</p>
+<p>The third possible outcome is that a candidate neither wins nor loses the election: if many followers become candidates at the same time, votes could be split so that no candidate obtains a majority. When this happens, each candidate will time out and start a new election by incrementing its term and initiating another round of RequestVote RPCs. However, without extra measures split votes could repeat indefinitely.</p>
+<p><font color=red>Raft采用随机的选举超时策略来确保瓜分选票的情况很少发生，即使发生了也能很快解决。</font>为了避免瓜分选票，选举超时时间在固定的时间范围（比如[100ms, 300ms]）内随机选择。这种随机策略会把各个节点的选举超时时刻打散，所以多数情况下只会有一个节点会超时；并且会在其他节点超时之前赢得选举并发送心跳消息。<font color=red>出现瓜分选票的情况是也采取同样的策略，每个Candidate在开始选举时会重置其随机的超时时间，等到超时后才进行下一次选举</font>；这就降低了新的选举中再次出现瓜分选票的可能性。第9章的数据表明这种方法可以很快的选出Leader。</p>
+<p>Raft uses randomized election timeouts to ensure that split votes are rare and that they are resolved quickly. To prevent split votes in the first place, election timeouts are chosen randomly from a fixed interval (e.g., 150–300 ms). This spreads out the servers so that in most cases only a single server will time out; it wins the election and sends heartbeats before any other servers time out. The same mechanism is used to handle split votes. Each candidate restarts its randomized election timeout at the start of an election, and it waits for that timeout to elapse before starting the next election; this reduces the likelihood of another split vote in the new election. Chapter 9 shows that this approach elects a leader rapidly.</p>
+<p>关于可理解性是如何影响我们在各种设计方案中做出选择的，领导者选举就是一个例子。最初我们计划使用优先级策略：每个Candidate被分配一个唯一的优先级，用于在Candidate出现竞争时进行选择。如果某个Candidate发现其他Candidate具有更高的优先级，那它就会转回Follower状态，所以更高优先级的Candidate就更容易赢得下一次选举。我们发现这种方法在可用性方面有些微妙的问题（当优先级较高的节点失败时，低优先级的节点还是需要超时后转为Candidate，但如果太早超时，这又可能会影响正常选举的进度），我们对算法进行了多次调整，但每次调整后都会出现新的边界情况。最终我们得出结论，随机重试方法更直观，更容易理解。</p>
+<p>Elections are an example of how understandability guided our choice between design alternatives. Initially we planned to use a ranking system: each candidate was assigned a unique rank, which was used to select between competing candidates. If a candidate discovered another candidate with higher rank, it would return to follower state so that the higher ranking candidate could more easily win the next election. We found that this approach created subtle issues around availability (a lower-ranked server might need to time out and become a candidate again if a higher-ranked server fails, but if it does so too soon, it can reset progress towards electing a leader).We made adjustments to the algorithm several times, but after each adjustment new corner cases appeared. Eventually we concluded that the randomized retry approach is more obvious and understandable.</p>
+<h3 id="3-5-Log-replication-复制日志"><a href="#3-5-Log-replication-复制日志" class="headerlink" title="3.5 Log replication     复制日志"></a>3.5 Log replication     复制日志</h3><p>一旦选出Leader后，它就可以响应Client的请求了。Client的请求中包含了要在复制状态机（the replicated state machine）中执行的命令。Leader将该命令作为新的条目追加到其日志中，然后向所有Follower发送AppendEntries RPC使他们复制该条目。当该条目安全的复制到大多数Follower上之后，Leader将该条目应用到状态机，并且将执行结果回复给Client。如果Follower崩溃或者运行的太慢，或者网络中丢包了，Leader会不断的重发AppendEntries（即使Leader已经回复Client了），直到所有Follower最终都保存了该条目为止。</p>
+<p>Once a leader has been elected, it begins servicing client requests. Each client request contains a command to be executed by the replicated state machine. The leader appends the command to its log as a new entry, then issues AppendEntries RPCs in parallel to each of the other servers to replicate the entry. When the entry has been safely replicated (as described below), the leader applies the entry to its state machine and returns the result of that execution to the client. If followers crash or run slowly, or if network packets are lost, the leader retries AppendEntries RPCs indefinitely (even after it has responded to the client) until all followers eventually store all log entries.</p>
+<p>日志以下图的形式组织。日志条目中包含一条状态机命令，以及Leader创建该条目时的Term值。该Term用于检查节点间日志是否一致，并且用于保证表3.2中的一些安全属性。每个日志条目还有一个Index，标识其在日志中的位置。</p>
+<img src="/img/02基本Raft算法/image-20220405111022732.png" alt="image-20220405111022732" style="zoom:67%;" />
+
+<p><em>图3.5：日志由条目组成，条目按序排号。每个条目都包含了其创建时的任期号（条目中的数字），以及一条状态机命令。如果某个条目能够安全的应用到状态机，则可以认为该条目时已提交的。</em></p>
+<p>Logs are organized as shown in Figure 3.5. Each log entry stores a state machine command along with the term number when the entry was received by the leader. The term numbers in log entries are used to detect inconsistencies between logs and to ensure some of the properties in Figure 3.2. Each log entry also has an integer index identifying its position in the log.</p>
+<p>Leader决定何时可以安全的将日志条目应用到状态机；这样的条目称为已提交的。<font color=red>Raft保证已提交的条目是持久保存的，并且最终会被所有可用节点的状态机执行。</font>一旦创建日志条目的Leader在过半节点上复制了该条目，就会提交该条目（比如上图中的条目7）。这也会提交Leader日志中之前的所有条目，包括前任Leader创建的条目。3.6节讨论了Leader更换时这种日志提交规则的一些微妙之处，并且也表明了这种对提交的定义是安全的。<font color=red>Leader跟踪记录已提交日志的最大Index，即commitIndex，并且把该Index包含在AppendEntries（包括心跳消息）中，这样集群中的其他节点最终也会知道该Index。一旦Follower知道某条日志是已提交的，那它就可以将该日志应用到本地状态机中（按照日志中的顺序）。</font></p>
+<p>The leader decides when it is safe to apply a log entry to the state machines; such an entry is called committed. Raft guarantees that committed entries are durable and will eventually be executed by all of the available state machines. A log entry is committed once the leader that created the entry has replicated it on a majority of the servers (e.g., entry 7 in Figure 3.5). This also commits all preceding entries in the leader’s log, including entries created by previous leaders. Section 3.6 discusses some subtleties when applying this rule after leader changes, and it also shows that this definition of commitment is safe. The leader keeps track of the highest index it knows to be committed, and it includes that index in future AppendEntries RPCs (including heartbeats) so that the other servers eventually find out. Once a follower learns that a log entry is committed, it applies the entry to its local state machine (in log order).</p>
+<p>我们设计了Raft的日志机制，以便集群中不同节点上的日志能够保持一致。这种机制简化了系统行为，使其更好预测，更重要的是，这是确保安全性的重要组件。<font color=red>Raft保证下面的属性，这些属性共同构成图3.2中的日志匹配属性</font>：</p>
+<ul>
+<li>不同节点的日志中，如果两个条目的Index和Term都相同，那它们保存了相同的命令；</li>
+<li>不同节点的日志中，如果两个条目的Index和Term都相同，那在它们之前的日志条目也是完全相同的；</li>
+</ul>
+<p>We designed the Raft log mechanism to maintain a high level of coherency between the logs on different servers. Not only does this simplify the system’s behavior and make it more predictable, but it is an important component of ensuring safety. Raft maintains the following properties, which together constitute the Log Matching Property in Figure 3.2:</p>
+<ul>
+<li>If two entries in different logs have the same index and term, then they store the same command.</li>
+<li>If two entries in different logs have the same index and term, then the logs are identical in all preceding entries.</li>
+</ul>
+<p><font color=red>第一个属性是这样保证的：Leader在特定的Index和特定Term下只会创建一个条目，而且从来不会改变日志中的条目的位置；第二个属性是靠处理AppendEntries RPC时执行的一致性检查来保证的。</font>当Leader发送AppendEntries  RPC时，RPC中包含了preLogIndex和preLogTerm，它们表示Leader本地日志中，位于RPC中包含的新条目之前一个条目的Index和Term。如果Follower在其本地日志中找不到相同的Index和Term，就会拒绝该RPC。一致性检查是一个归纳步骤：初始状态下日志为空，满足日志匹配属性；当日志追加成功时，这种一致性检查会保证满足日志匹配属性。所以，<font color=red>只要AppendEntries成功返回，Leader就知道Follower的日志中，在RPC中的新条目，以及之前的条目，都跟自己是一样的。</font></p>
+<p>The first property follows from the fact that a leader creates at most one entry with a given log index in a given term, and log entries never change their position in the log. The second property is guaranteed by a consistency check performed by AppendEntries. When sending an AppendEntries RPC, the leader includes the index and term of the entry in its log that immediately precedes the new entries. If the follower does not find an entry in its log with the same index and term, then it refuses the new entries. The consistency check acts as an induction step: the initial empty state of the logs satisfies the Log Matching Property, and the consistency check preserves the Log Matching Property whenever logs are extended. As a result, whenever AppendEntries returns successfully, the leader knows that the follower’s log is identical to its own log up through the new entries.</p>
+<p>正常运行时，Leader和Follower的日志保持一致，所以AppendEntries的一致性检查不会失败。但是，一旦Leader崩溃就可能导致日志不一致（旧Leader可能还没有完全复制其日志中的所有条目）。这种不一致会随着一系列的Leader和Follower的崩溃而加剧。下图展示了Follower与新Leader的日志不一致时的场景。Follower可能没有Leader中存在的一些条目，可能有一些Leader没有的条目，或者两者都有。日志中的缺失条目和无关条目可能会跨越多个Term。</p>
+<p><img src="/img/02%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/image-20220405161430640.png" alt="image-20220405161430640"></p>
+<p><em>图3.6：当顶端的Leader掌权时，Follower中的日志可能出现(a-f)的任何情况。上图条目中的数字表示Term。Follower可能缺少一些条目（a-b），可能包含额外的未提交条目（c-d），或者两者都有（e-f）。比如，<code>f</code>可能是这样发生的：该节点在Term 2时是Leader，向其本地日志中添加了若干条目，如果在提交它们之前崩溃了；然后很快重启了，在Term 3时又成了Leader，有添加了若干日志，在Term 2和Term 3的条目被提交之前，该节点又崩溃了，并且保持崩溃状态到数个任期之久。</em></p>
+<p>During normal operation, the logs of the leader and followers stay consistent, so the AppendEntries consistency check never fails. However, leader crashes can leave the logs inconsistent (the old leader may not have fully replicated all of the entries in its log). These inconsistencies can compound over a series of leader and follower crashes. Figure 3.6 illustrates the ways in which followers’ logs may differ from that of a new leader. A follower may be missing entries that are present on the leader, it may have extra entries that are not present on the leader, or both. Missing and extraneous entries in a log may span multiple terms.</p>
+<p><font color=red>Raft中，处理这种不一致的方式，是Leader强迫Follower复制自己的日志。这表示Follower日志中的冲突条目会被Leader中的日志条目覆盖。</font>3.6节会说明，如果加上一些选举时的限制，这种处理方式是安全的。</p>
+<p>In Raft, the leader handles inconsistencies by forcing the followers’ logs to duplicate its own. This means that conflicting entries in follower logs will be overwritten with entries from the leader’s log. Section 3.6 will show that this is safe when coupled with a restriction on elections.</p>
+<p><font color=red>为了使Follower的日志与自己的保持一致，Leader必须找到两个节点日志中一致的Index最大的条目，删除Follower日志中该条目之后的所有日志，然后将自己日志中该条目之后的所有条目发给Follower。这些动作发生在AppendEntries的一致性检查过程中。</font>Leader为每个Follower维护一个nextIndex，表示Leader会发送给Follower的下一条日志条目的Index。Leader掌权时，会把所有nextIndex初始化为其本地日志中最后一个条目的Index加1（图3.6中的11）。如果某个Follower的日志与Leader不一致，那AppendEntries的一致性检查就会失败，Follower对该AppendEntries回复“拒绝”后，Leader减少该Follower的nextIndex的值，重发AppendEntries RPC。最终nextIndex会减少到Leader和Follower的日志匹配的点。在这之后，AppendEntries就会成功，从而删除Follower中冲突的日志条目，并把Leader的日志追加到Follower中。<font color=red>一旦AppendEntries成功后，Follower的日志就与Leader保持一致了，并在当前任期内一直保持一致。</font></p>
+<p>To bring a follower’s log into consistency with its own, the leader must find the latest log entry where the two logs agree, delete any entries in the follower’s log after that point, and send the follower all of the leader’s entries after that point. All of these actions happen in response to the consistency check performed by AppendEntries RPCs. The leader maintains a nextIndex for each follower, which is the index of the next log entry the leader will send to that follower. When a leader first comes to power, it initializes all nextIndex values to the index just after the last one in its log (11 in Figure 3.6). If a follower’s log is inconsistent with the leader’s, the AppendEntries consistency check will fail in the next AppendEntries RPC. After a rejection, the leader decrements the follower’s nextIndex and retries the AppendEntries RPC. Eventually the nextIndex will reach a point where the leader and follower logs match. When this happens, AppendEntries will succeed, which removes any conflicting entries in the follower’s log and appends entries from the leader’s log (if any). Once AppendEntries succeeds, the follower’s log is consistent with the leader’s, and it will remain that way for the rest of the term.</p>
+<p>为了节省带宽，在发现与Follower的日志匹配点之前，Leader可以发送没有条目的AppendEntries RPC。然后一旦nextIndex紧跟在matchIndex之后时，说明找到了匹配点，Leader才开发发送实际的条目。</p>
+<p>Until the leader has discovered where it and the follower’s logs match, the leader can send AppendEntries with no entries (like heartbeats) to save bandwidth. Then, once the matchIndex immediately precedes the nextIndex, the leader should begin to send the actual entries.</p>
+<p>如果需要优化的话，实际上可以减少拒绝AppendEntries RPC的数量。比如当拒绝AppendEntries时，Follower可以在响应报文中包含冲突条目的Term值，以及该Term下的第一个条目的Index。有了这些信息，Leader可以直接减少nextIndex来跳过该Term下所有的冲突条目；这样，冲突条目的每个Term仅需要一个AppendEntries RPC，而不是每个条目一个RPC。或者，Leader可以使用二分查找法找到Follower日志与本地日志不一致的第一个条目。但是在实际场景中，我们怀疑这种优化是否是有必要的，因为很少发生失败，并且不太可能有太多的不一致条目。</p>
+<p>If desired, the protocol can be optimized to reduce the number of rejected AppendEntries RPCs. For example, when rejecting an AppendEntries request, the follower can include the term of the conflicting entry and the first index it stores for that term. With this information, the leader can decrement nextIndex to bypass all of the conflicting entries in that term; one AppendEntries RPC will be required for each term with conflicting entries, rather than one RPC per entry. Alternatively, the leader can use a binary search approach to find the first entry where the follower’s log differs from its own; this has better worst-case behavior. In practice, we doubt these optimizations are necessary, since failures happen infrequently and it is unlikely that there will be many inconsistent entries.</p>
+<p>有了这种机制，Leader在掌权时就不需要其他任何特殊措施来恢复日志的一致性。它只需要按照正常的操作，并且在一致性检查失败时，日志会自动聚合。Leader从来不会覆盖或删除自己的日志（图3.2中的Leader Append-Only属性）。</p>
+<p>With this mechanism, a leader does not need to take any special actions to restore log consistency when it comes to power. It just begins normal operation, and the logs automatically converge in response to failures of the AppendEntries consistency check. A leader never overwrites or deletes entries in its own log (the Leader Append-Only Property in Figure 3.2).</p>
+<p>这种日志复制机制展示了2.1节中描述的理想的一致性属性：只要大多数节点都活着，Raft就可以接受、复制和应用新的日志条目；正常情况下，一个新条目可以通过一轮RPC就复制到集群中的大多数节点；并且一个较慢的Follower不会影响集群性能。这种日志复制算法也很实用，因为AppendEntries请求的报文大小是可以控制的（Leader不用为了取得进展而在单个AppendEntries请求中发送多个条目）。其他的共识算法的描述中，一般需要发送整个日志，这给实现着带来了优化上的负担。</p>
+<p>This log replication mechanism exhibits the desirable consensus properties described in Section 2.1: Raft can accept, replicate, and apply new log entries as long as a majority of the servers are up; in the normal case a new entry can be replicated with a single round of RPCs to a majority of the cluster; and a single slow follower will not impact performance. The log replication algorithm is also practical to implement, since AppendEntries requests are manageable in size (leaders never need to send more than one entry in a single AppendEntries request to make progress). Some other consensus algorithms are described as sending entire logs over the network; this places a burden on the implementer to develop optimizations required for a practical implementation.</p>
+<h3 id="3-6-Safety-安全性"><a href="#3-6-Safety-安全性" class="headerlink" title="3.6 Safety     安全性"></a>3.6 Safety     安全性</h3><p>前几节描述了Raft如何选举Leader并且如何复制日志。然而到目前为止，<font color=red>上面的机制不足以保证每个节点上的状态机按照相同的顺序执行相同的命令。</font>比如当Leader提交若干日志条目时，某个Follower可能是不可用的，然后该Follower可能被选为Leader，并用新条目覆盖这些已提交的日志条目；这样就造成了不同节点上的状态机执行了不同的命令序列。</p>
+<p>The previous sections described how Raft elects leaders and replicates log entries. However, the mechanisms described so far are not quite sufficient to ensure that each state machine executes exactly the same commands in the same order. For example, a follower might be unavailable while the leader commits several log entries, then it could be elected leader and overwrite these entries with new ones; as a result, different state machines might execute different command sequences.</p>
+<p>本节通过<font color=red>对领导者选举增加限制来完善Raft算法。这种限制保证了特定任期下被选为Leader的节点包含所有前任已提交的日志（图3.2中的Leader完整性）</font>。基于这种选举约束，我们更加精确的制定了日志提交的规则。最后，我们给出了Leader完整性的证明，并展示了它如何正确引导了复制状态机的行为。</p>
+<p>This section completes the Raft algorithm by adding a restriction on which servers may be elected leader. The restriction ensures that the leader for any given term contains all of the entries committed in previous terms (the Leader Completeness Property from Figure 3.2). Given the election restriction, we then make the rules for commitment more precise. Finally, we present a proof sketch for the Leader Completeness Property and show how it leads to correct behavior of the replicated state machine.</p>
+<h4 id="3-6-1-Election-restriction-选举约束"><a href="#3-6-1-Election-restriction-选举约束" class="headerlink" title="3.6.1 Election restriction     选举约束"></a>3.6.1 Election restriction     选举约束</h4><p>在任何基于Leader的共识算法中，Leader最终必须包含所有已提交的日志条目。一些共识算法中，比如Viewstamped Replication算法，即使节点没有包含所有已提交的条目，该节点依然可以被选为Leader。这些算法会有额外的机制来识别缺少的条目，并在选举过程中，或者选举后不久将其复制给新Leader。然而这带来了额外的复杂性。<font color=red>Raft采用简单的方法来保证选举时新Leader在当选时就有之前任期的所有已提交的条目，而无需将这些条目再传输给新Leader。这就意味着日志条目只会从Leader流向Follower，是单向的，而Leader永远不会覆盖日志中的条目。</font></p>
+<p>In any leader-based consensus algorithm, the leader must eventually store all of the committed log entries. In some consensus algorithms, such as Viewstamped Replication [66], a leader can be elected even if it doesn’t initially contain all of the committed entries. These algorithms contain additional mechanisms to identify the missing entries and transmit them to the new leader, either during the election process or shortly afterwards. Unfortunately, this results in considerable additional mechanism and complexity. Raft uses a simpler approach where it guarantees that all the committed entries from previous terms are present on each new leader from the moment of its election, without the need to transfer those entries to the leader. This means that log entries only flow in one direction, from leaders to followers, and leaders never overwrite existing entries in their logs.</p>
+<p><font color=red>Raft在投票过程中增加限制：只有Candidate的日志包含了所有已提交条目，该Candidate才会当选。</font>在选举时Candidate需要与集群中过半节点通信，这就表示其中至少有一个节点包含所有已提交的条目。如果Candidate的日志至少与过半节点的日志一样新（下面定义了“新”的概念），那就能保证该Candidate包含了所有已提交的条目。在RequestVote RPC实现了该限制：RPC中包含了Candidate的日志信息，投票者判断如果自己的日志比Candidate新，则拒绝投票。</p>
+<p>Raft uses the voting process to prevent a candidate from winning an election unless its log contains all committed entries. A candidate must contact a majority of the cluster in order to be elected, which means that every committed entry must be present in at least one of those servers. If the candidate’s log is at least as up-to-date as any other log in that majority (where “up-to-date” is defined precisely below), then it will hold all the committed entries. The RequestVote RPC implements this restriction: the RPC includes information about the candidate’s log, and the voter denies its vote if its own log is more up-to-date than that of the candidate.</p>
+<p><font color=red>Raft通过比较日志中最后一个条目的Index和Term来确定哪个日志更“新”。</font>如果两份日志的最后条目的Term不同，则具有更大Term的日志更新；如果Term一样，则Index更大的更新；</p>
+<p>Raft determines which of two logs is more up-to-date by comparing the index and term of the last entries in the logs. If the logs have last entries with different terms, then the log with the later term is more up-to-date. If the logs end with the same term, then whichever log is longer is more up-to-date.</p>
+<p><font color=red>个人理解，基于这个“新”的定义，并不足以保证当选的Leader包含了所有已提交的条目，某些场景下还是会有问题，所以才有了3.6.2中的提交限制。</font></p>
+<h4 id="3-6-2-Committing-entries-from-previous-terms-之前任期的日志条目的提交"><a href="#3-6-2-Committing-entries-from-previous-terms-之前任期的日志条目的提交" class="headerlink" title="3.6.2 Committing entries from previous terms     之前任期的日志条目的提交"></a>3.6.2 Committing entries from previous terms     之前任期的日志条目的提交</h4><p>如3.5节中所述，Leader知道如果一个当前任期创建条目在内复制到了过半节点上，那就可以提交该条目。<font color=red>如果Leader在提交条目之前崩溃了，那后续的Leader会尝试继续完成该条目的复制。然而，如果某个之前任期创建的条目已经复制到过半节点上了，Leader也不能立即将其提交。</font>下图描述了这种场景，即使某个之前任期创建的条目已经复制到过半节点上了，它依然可能被后续的Leader所覆盖。</p>
+<img src="/img/02基本Raft算法/image-20220406190047133.png" alt="image-20220406190047133" style="zoom:67%;" />
+
+<p><em>图3.7：Leader为何不能直接提交之前任期创建的条目：(a)S1是Leader，把Index2_Term2的条目复制到了部分节点上；(b)S1崩溃了，S3以Term 3赢得了S3、S4以及自己的选票，成为了Leader，并且创建了Index2_Term3的条目；(c)S5崩溃了，S1重启了，以Term 4成为新Leader，继续复制日志，并把Index2_Term2的条目复制到了过半节点上。现在分两种情况：(d1)如果S1没有复制新条目，则Index2_Term2的条目就是S1、S2、S3的最后一个条目，此时S1崩溃了，S5的日志比较新，又重新当选了，继续复制Index2_Term3的条目，它就覆盖了S1、S2和S3上的Index2_Term2条目；(d2)如果S1在崩溃之前以自己的Term复制并提交了新条目，即Index3_Term4，则S5不会当选，并且Index3_Term4之前的Index2_Term2也顺便被提交了。</em></p>
+<p>As described in Section 3.5, a leader knows that an entry from its current term is committed once that entry is stored on a majority of the servers. If a leader crashes before committing an entry, future leaders will attempt to finish replicating the entry. However, a leader cannot immediately conclude that an entry from a previous term is committed once it is stored on a majority of servers. Figure 3.7 illustrates a situation where an old log entry is stored on a majority of servers, yet can still be overwritten by a future leader.</p>
+<p>上图中，<font color=red>如果在(d1)场景下S1直接提交了Index2_Term2条目，则S5当选后用Index3_Term4覆盖了已提交的条目，这违反了图3.2中的状态机安全性，造成了不同节点的状态机应用了不同的日志条目。为了避免出现这种情况，Raft不能仅通过计算副本数来提交之前任期创建的条目。针对当前任期创建的条目，通过计算副本数进行提交才是安全可行的，根据日志匹配属性，一旦当前任期中的条目以这种方法（计算副本数）提交了，那之前的条目也就间接的提交了。</font>某些场景下，Leader也能安全的推导出一个旧条目是已提交的（比如该条目已经复制到所有节点上了），但是为了简单起见Raft采用了更保守的方法。</p>
+<p>To eliminate problems like the one in Figure 3.7, Raft never commits log entries from previous terms by counting replicas. Only log entries from the leader’s current term are committed by counting replicas; once an entry from the current term has been committed in this way, then all prior entries are committed indirectly because of the Log Matching Property. There are some situations where a leader could safely conclude that an older log entry is committed (for example, if that entry is stored on every server), but Raft takes a more conservative approach for simplicity.</p>
+<p>这里Raft的提交规则变复杂了，因为Leader复制之前任期创建的条目时，这些条目保留了其原始Term。其他共识算法中，如果新Leader复制以前任期中的条目时，必须使用新的Term号。Raft的方法更容易对日志条目进行推理，因为这些条目始终保留的是相同的原始Term。另外，Raft中的新Leader比其他算法发送的条目更少，因为其他算法需要发送冗余的条目，以便在提交之前对他们进行重新编号。然而实际情况中这可能不重要，因为Leader变更很少发生。</p>
+<p>Raft incurs this extra complexity in the commitment rules because log entries retain their original term numbers when a leader replicates entries from previous terms. In other consensus algorithms, if a new leader re-replicates entries from prior “terms”, it must do so with its new “term number”. Raft’s approach makes it easier to reason about log entries, since they maintain the same term number over time and across logs. In addition, new leaders in Raft send fewer log entries from previous terms than in other algorithms, since other algorithms must send redundant log entries to renumber them before they can be committed; however, this may not be very important in practice, since leader changes should be rare.</p>
+<h4 id="3-6-3-Safety-argument-安全性论证"><a href="#3-6-3-Safety-argument-安全性论证" class="headerlink" title="3.6.3 Safety argument     安全性论证"></a>3.6.3 Safety argument     安全性论证</h4><p><img src="/img/02%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/image-20220409101718861.png" alt="image-20220409101718861"></p>
+<p><em>图3.8：如果S1（LeaderT）在其任期内提交了一条新条目，S5在任期U时当选为Leader，那至少有一个节点（S3），既接受了S1创建的那个条目，又投票给了S5.</em></p>
+<p>基于上面完整的Raft算法，我们现在可以更精确地论证图3.2中的Leader完整性了。我们使用反证法，假设Leader完整性不成立，然后推导出矛盾点：假设在Term T下的Leader（即LeaderT）在其任期内提交了一个日志条目，但是该条目并没有复制到某个未来Leader上。假设U是满足U&gt;T，并且LeaderU没有保存该条目的最小Term。</p>
+<ol>
+<li><p>那个已提交的条目在LeaderU当选时肯定就不在该节点上（因为日志只能从Leader流向Follower，Leader也从不删除或覆盖条目）；</p>
+</li>
+<li><p>LeaderT将该条目复制到了过半节点上，而LeaderU也获得了过半节点的投票。因此，至少有一个节点（投票者）既接受了LeaderT的条目，也投票给了LeaderU，如上图3.8所示。该节点是推导出矛盾的关键；</p>
+</li>
+<li><p>投票者肯定在投票给LeaderU之前，就接受了LeaderT发来的条目；否则它会拒绝LeaderT的AppendEntries 请求（如果先投票给了LeaderU，则其自己的Term也就变的比T大了）；</p>
+</li>
+<li><p>投票者在投票给LeaderU时肯定仍然保留着该条目，因为LeaderT和LeaderU之间的Leader都包含该条目（假设条件），Leader从不删除条目，而Follower只会在于Leader冲突时才删除条目；</p>
+</li>
+<li><p>投票者投票给了LeaderU，因此LeaderU的日志必须跟该投票者一样新，这就导致了下面的矛盾点：</p>
+</li>
+<li><p>首先，如果投票者和LeaderU最后日志条目的Term值一样，那LeaderU的日志至少要跟该投票者一样长，所以LeaderU的日志包含了投票者所有条目（假设）。这是一个矛盾点，因为投票者包含了已提交的条目，但是LeaderU并没有；</p>
+</li>
+<li><p>否则，那LeaderU的最后条目的Term必须必投票者的大，因此也就大于T，因为投票者最后的日志条目至少为T（因为它包含了任期T中的提交条目）。那构造LeaderU最后条目的前任Leader肯定也包含了该条目（假设条件）。所以根据日志匹配属性，LeaderU的日志中也必须包含该已提交的条目，这又是一个矛盾点。</p>
+<p><font color=red>个人理解：第6条和第7条都可以这样论证：投票者既然投票给LeaderU，说明LeaderU的日志比投票者新，所以LeaderU中最后日志条目的Term大于等于投票者的最后日志条目的Term，并且一定是大于等于T的。所以，LeaderU中的最后日志条目，一定来源于LeaderT或其后的Leader，而这些Leader肯定包含了那个已提交的条目（假设条件），Leader从不删除或覆盖条目，并且通过一致性检查保证Follower的日志与自己一样，那就说明LeaderU一定包含了那个已提交条目，这就得出了矛盾。</font></p>
+</li>
+<li><p>这就完成了推导。所以，任期T之后的所有Leader肯定包含了所有任期T中已提交的日志。</p>
+</li>
+<li><p>日志匹配属性保证了未来的Leader也具有间接提交的条目，比如图3.7中(d2)中的Index2_Term2。</p>
+</li>
+</ol>
+<p>Given the complete Raft algorithm, we can now argue more precisely that the Leader Completeness Property holds (this argument is based on the safety proof; see Chapter 8). We assume that the Leader Completeness Property does not hold, then we prove a contradiction. Suppose the leader for term T (leaderT) commits a log entry from its term, but that log entry is not stored by the leader of some future term. Consider the smallest term U &gt; T whose leader (leaderU) does not store the entry.</p>
+<ol>
+<li>The committed entry must have been absent from leaderU’s log at the time of its election </li>
+<li>leaderT replicated the entry on a majority of the cluster, and leaderU received votes from a majority of the cluster. Thus, at least one server (“the voter”) both accepted the entry from leaderT and voted for leaderU, as shown in Figure 3.8. The voter is key to reaching a contradiction.</li>
+<li>The voter must have accepted the committed entry from leaderT before voting for leaderU; otherwise it would have rejected the AppendEntries request from leaderT (its current term would have been higher than T).</li>
+<li>The voter still stored the entry when it voted for leaderU, since every intervening leader contained the entry (by assumption), leaders never remove entries, and followers only remove entries if they conflict with the leader.</li>
+<li>The voter granted its vote to leaderU, so leaderU’s log must have been as up-to-date as the voter’s. This leads to one of two contradictions.</li>
+<li>First, if the voter and leaderU shared the same last log term, then leaderU’s log must have been at least as long as the voter’s, so its log contained every entry in the voter’s log. This is a contradiction, since the voter contained the committed entry and leaderU was assumed not to.</li>
+<li>Otherwise, leaderU’s last log term must have been larger than the voter’s. Moreover, it was larger than T, since the voter’s last log term was at least T (it contains the committed entry from term T). The earlier leader that created leaderU’s last log entry must have contained the committed entry in its log (by assumption). Then, by the Log Matching Property, leaderU’s log must also contain the committed entry, which is a contradiction.</li>
+<li>This completes the contradiction. Thus, the leaders of all terms greater than T must contain all entries from term T that are committed in term T.</li>
+<li>The Log Matching Property guarantees that future leaders will also contain entries that are committed indirectly, such as index 2 in Figure 3.7(d2).</li>
+</ol>
+<p>基于Leader完整性，我们也能证明图3.2中的状态机安全性。该特性的意思就是如果某个节点已经将给定Index上的条目应用到状态机上，那其他节点在相同Index条目上不会应用不同的条目。当节点应用该条目时，那它的日志在该条目之前肯定与Leader的一样，而且该条目肯定是已提交的。现在考虑任意节点上应用给定Index时的最小Term；Leader 完整性保证拥有更⾼Term的Leader在该Index上会存储相同的⽇志条⽬，所以之后的任期里应用某个索引位置的日志条目也会是相同的值。因此，状态机安全性是成⽴的。</p>
+<p>Given the Leader Completeness Property, we can prove the State Machine Safety Property from Figure 3.2, which states that if a server has applied a log entry at a given index to its state machine, no other server will ever apply a different log entry for the same index. At the time a server applies a log entry to its state machine, its log must be identical to the leader’s log up through that entry, and the entry must be committed. Now consider the lowest term in which any server applies a given log index; the Leader Completeness Property guarantees that the leaders for all higher terms will store that same log entry, so servers that apply the index in later terms will apply the same value. Thus, the State Machine Safety Property holds.</p>
+<p>最后，Raft要求节点按日志索引的顺序应用条目。结合状态机安全性，这就意味着所有节点都会以相同的顺序将完全相同的一组日志条目应用到其状态机上。</p>
+<p>Finally, Raft requires servers to apply entries in log index order. Combined with the State Machine Safety Property, this means that all servers will apply exactly the same set of log entries to their state machines, in the same order.</p>
+<h3 id="3-7-Follower-and-candidate-crashes-Follower和Candidate崩溃"><a href="#3-7-Follower-and-candidate-crashes-Follower和Candidate崩溃" class="headerlink" title="3.7 Follower and candidate crashes      Follower和Candidate崩溃"></a>3.7 Follower and candidate crashes      Follower和Candidate崩溃</h3><p>目前为止我们只关注了Leader崩溃的情况。Follower 和 Candidate 崩溃后的处理方式比 Leader 崩溃要简单的多，并且两者的处理方式是相同的。如果 Follower 或 Candidate 崩溃了（或者它们与Leader断连了），那么后续发送给他们的 RequestVote和AppendEntries RPCs都会失败。Raft通过不断的重试来处理这种失败；如果崩溃的节点重启了，那么这些RPC最终总会成功。如果一个节点在处理完RPC，但在响应之前崩溃了，那么在它重启之后就会再次收到同样的请求。<font color=red>Raft的RPC都是幂等的</font>，所以这样的重试不会造成任何伤害。例如，Follower 如果收到 AppendEntries 请求但是它的日志中已经包含了这些条目，它就会直接忽略该RPC。</p>
+<p>Until this point we have focused on leader failures. Follower and candidate crashes are much simpler to handle than leader crashes, and they are both handled in the same way. If a follower or candidate crashes (or the network link between it and the leader fails), then future RequestVote and AppendEntries RPCs sent to it will fail. Raft handles these failures by retrying indefinitely; if the crashed server restarts, then the RPC will complete successfully. If a server crashes after completing an RPC but before responding, then it will receive the same RPC again after it restarts. Raft RPCs<br>have the same effect if repeated, so this causes no harm. For example, if a follower receives an AppendEntries request that includes log entries already present in its log, it ignores those entries in the new request.</p>
+<h3 id="3-8-Persisted-state-and-server-restarts-持久化状态以及节点重启"><a href="#3-8-Persisted-state-and-server-restarts-持久化状态以及节点重启" class="headerlink" title="3.8 Persisted state and server restarts      持久化状态以及节点重启"></a>3.8 Persisted state and server restarts      持久化状态以及节点重启</h3><p>Raft集群中的节点必须将足够的信息保存到持久化存储中，才能保证节点安全的重启。特别是，<font color=red>每个节点必须要持久化保存当前的Term以及投票</font>，这样才能防止节点在同一Term内投票两次，或者防止来自于新Leader的日志条目被已罢免Leader的日志条目所替换。<font color=red>每个节点还必须在计算日志条目副本数以便决定是否提交之前将其持久化保存，这可以防止节点重启时已提交的条目丢失或未提交。</font></p>
+<p>Raft servers must persist enough information to stable storage to survive server restarts safely. In particular, each server persists its current term and vote; this is necessary to prevent the server from voting twice in the same term or replacing log entries from a newer leader with those from a deposed leader. Each server also persists new log entries before they are counted towards the entries’ commitment; this prevents committed entries from being lost or “uncommitted” when servers restart.</p>
+<p>其他状态都是可以在崩溃时丢弃的，因为他们可以重新计算得到。最有趣的是committIndex，实际上该Index在重启时是可以置为0的。即使所有节点在同一时间都重启了，committIndex也只是短时间内落后于其真实值。一旦一个Leader当选，并且能提交一个新条目之后，它的committIndex就会递增，并很快的将其传播给所有Follower。</p>
+<p>Other state variables are safe to lose on a restart, as they can all be recreated. The most interesting example is the commit index, which can safely be reinitialized to zero on a restart. Even if every server restarts at the same time, the commit index will only temporarily lag behind its true value. Once a leader is elected and is able to commit a new entry, its commit index will advance, and it will quickly propagate this commit index to its followers.</p>
+<p><font color=red>状态机本身可以是易失的，也可以是持久性的。易失性的状态机重启后必须重新应用保存的日志条目才能恢复；而持久性的状态机，重启时（应该是崩溃时）已经应用了大部分日志条目了，为了避免再次应用，那AppliedIndex必须持久保存；</font></p>
+<p>The state machine can either be volatile or persistent. A volatile state machine must be recovered after restarts by reapplying log entries (after applying the latest snapshot; see Chapter 5). A persistent state machine, however, has already applied most entries after a restart; to avoid reapplying them, its last applied index must also be persistent.</p>
+<p>如果节点丢失了任何持久化状态，则该节点就无法再安全地以之前的身份重新加入集群 。这样的节点可以通过集群成员变更（第4章）以新的身份重新回到集群。如果集群中国版节点都丢失了持久化状态，日志可能会丢失，在通过集群成员变更就不可行了，要想继续的话，系统管理员要认识到数据丢失的可能性。</p>
+<p>If a server loses any of its persistent state, it cannot safely rejoin the cluster with its prior identity. Such a server can usually be added back into the cluster with a new identity by invoking a cluster membership change (see Chapter 4). If a majority of the cluster loses its persistent state, however, log entries may be lost and progress on cluster membership changes will not be possible; to proceed, a system administrator would need to admit the possibility of data loss.</p>
+<h3 id="3-9-Timing-and-availability-时间和可用性"><a href="#3-9-Timing-and-availability-时间和可用性" class="headerlink" title="3.9 Timing and availability     时间和可用性"></a>3.9 Timing and availability     时间和可用性</h3><p>Raft的要求之一就是安全性不能依赖时间：<font color=red>系统不能因为某些事件运行得比预期快一点或者慢一点就产生错误的结果。</font>但是，可用性（系统能够及时响应客户端的能力）不可避免的要依赖于时间。例如，当有节点崩溃时，消息交互的时间就会比正常情况下长，Candidate 将无法等待太长时间来赢得选举；如果没有一个稳定的leader，Raft将无法工作。</p>
+<p>One of our requirements for Raft is that safety must not depend on timing: the system must not produce incorrect results just because some event happens more quickly or slowly than expected. However, availability (the ability of the system to respond to clients in a timely manner) must inevitably depend on timing. For example, if message exchanges take longer than the typical time between server crashes, candidates will not stay up long enough to win an election; without a steady leader, Raft cannot make progress.</p>
+<p><font color=red>Leader 选举是Raft中时间最为关键的方面。整个系统要满足下面的时间要求，Raft才可以选举出并维持一个稳定的Leader： <code>broadcastTime（消息广播时间） ＜＜ electionTimeout（选举超时时间） ＜＜ MTBF（平均故障间隔时间）</code>；</font></p>
+<p>Leader election is the aspect of Raft where timing is most critical. Raft will be able to elect and maintain a steady leader when the system satisfies the following timing requirement: <code>broadcastTime ＜＜ electionTimeout ＜＜ MTBF</code></p>
+<p>在这个不等式中，消息广播时间指的是一个节点并行地发送RPC给集群中所有的其他节点并接收到响应的平均时间；选举超时时间就是在3.4节中介绍的选举超时时间；平均故障间隔时间就是对于一台服务器而言，两次故障间隔时间的平均值。消息广播时间必须比选举超时时间小一个量级，这样Leader才能够可靠地发送心跳消息来阻止 Follower 开始进入选举状态；考虑到随机化选举超时时间的方法，这个不等式也使得选票瓜分的情况变得不可能。选举超时时间需要比平均故障间隔时间小上几个数量级，这样系统才能稳步推进。<font color=red>当Leader崩溃后，整个系统会有大约选举超时时间不可用；我们希望该情况在整个时间里只占一小部分。</font></p>
+<p>In this inequality broadcastTime is the average time it takes a server to send RPCs in parallel to every server in the cluster and receive their responses; electionTimeout is the election timeout described in Section 3.4; and MTBF is the mean (average) time between failures for a single server. The broadcast time should be an order of magnitude less than the election timeout so that leaders can reliably send the heartbeat messages required to keep followers from starting elections; given the randomized approach used for election timeouts, this inequality also makes split votes unlikely. The election timeout should be a few orders of magnitude less than MTBF so that the system makes steady progress. When the leader crashes, the system will be unavailable for roughly the election timeout; we would like this to represent only a small fraction of overall time.</p>
+<p>消息广播时间和平均故障间隔时间是由系统决定的，但是选举超时时间是我们自己选择的。Raft的RPCs需要接收方将信息持久化保存，所以广播时间大约是0.5毫秒到20毫秒之间，取决于存储的技术。因此，选举超时时间可能需要在10毫秒到500毫秒之间。大多数的服务器的平均故障间隔时间都在几个月甚至更长，很容易满足时间的要求。第9章更详细地探讨了如何设置选举超时及其对可用性和Leader选举效率的影响。</p>
+<p>The broadcast time and MTBF are properties of the underlying system, while the election timeout is something we must choose. Raft’s RPCs typically require the recipient to persist information to stable storage, so the broadcast time may range from 0:5–20 ms, depending on storage technology. As a result, the election timeout is likely to be somewhere between 10–500 ms. Typical server MTBFs are several months or more, which easily satisfies the timing requirement. Chapter 9 explores how to set the election timeout and its impact on availability and leader election performance in more detail.</p>
+<h3 id="3-10-Leadership-transfer-extension-领导权转移"><a href="#3-10-Leadership-transfer-extension-领导权转移" class="headerlink" title="3.10 Leadership transfer extension     领导权转移"></a>3.10 Leadership transfer extension     领导权转移</h3><p>有时候需要将Leader的领导权转移到其他节点，比如下面的场景：</p>
+<ol>
+<li>Leader必须下线，比如需要维护，或者是从集群中删除。如果Leader直接下线，则集群至少会等一个选举超时的时间，才会有Follower选举成新的Leader，这期间集群是不可用的。这种不可用可以通过让Leader在下台之前将其领导权转移到另一个节点来避免。</li>
+<li>某些情况下，可能有更适合当Leader的节点。比如为了较少Client和Leader之间的延迟，可能需要选择主数据中心的节点作为Leader。其他共识算法中，可能在选举期间就考虑这些因素，但是RAFT只需要节点的日志足够新就能成为Leader，但是选出的Leader不一定就是最合适的。所以，RAFT中的Leader可以定期检查是否有更合适作为Leader的Follower，并进行领导权的转移（如果人类领导人能如此优雅就好了）。</li>
+</ol>
+<p>This section describes an optional extension to Raft that allows one server to transfer its leadership to another. Leadership transfer could be useful in two types of situations:</p>
+<ol>
+<li>Sometimes the leader must step down. For example, it may need to reboot for maintenance, or it may be removed from the cluster (see Chapter 4). When it steps down, the cluster will be idle for an election timeout until another server times out and wins an election. This brief unavailability can be avoided by having the leader transfer its leadership to another server before it steps down.</li>
+<li>In some cases, one or more servers may be more suitable to lead the cluster than others. For example, a server with high load would not make a good leader, or in a WAN deployment, servers in a primary datacenter may be preferred in order to minimize the latency between clients and the leader. Other consensus algorithms may be able to accommodate these preferences during leader election, but Raft needs a server with a sufficiently up-to-date log to become leader, which might not be the most preferred one. Instead, a leader in Raft can periodically check to see whether one of its available followers would be more suitable, and if so, transfer its leadership to that server. (If only human leaders were so graceful.)</li>
+</ol>
+<p>RAFT中实现领导权转移，前任Leader将日志发给目标节点，<font color=red>目标节点不等到选举超时就开始选举流程。</font>这样前任Leader保证目标节点拥有其任期开始到现在的所有日志，然后通过常规的选举流程，Majority节点的投票就保证了安全性。下面是详细过程：</p>
+<ol>
+<li>前任Leader停止接收Client发来的请求；</li>
+<li>前任Leader同步日志给目标节点，保证其日志跟自己的一样；</li>
+<li>前任Leader给目标节点发一个TimeoutNow消息，收到这个消息与选举计时器超时有相同的效果，目标节点开始选举，增加其Term并成为Candidate；</li>
+</ol>
+<p>To transfer leadership in Raft, the prior leader sends its log entries to the target server, then the target server runs an election without waiting for an election timeout to elapse. The prior leader thus ensures that the target server has all committed entries at the start of its term, and, as in normal elections, the majority voting guarantees the safety properties (such as the Leader Completeness Property) are maintained. The following steps describe the process in more detail:</p>
+<ol>
+<li>The prior leader stops accepting new client requests.</li>
+<li>The prior leader fully updates the target server’s log to match its own, using the normal log replication mechanism described in Section 3.5.</li>
+<li>The prior leader sends a TimeoutNow request to the target server. This request has the same effect as the target server’s election timer firing: the target server starts a new election (incrementing its term and becoming a candidate).</li>
+</ol>
+<p>目标节点一旦收到了TimeoutNow消息，则该节点增加Term开始选举，从而比其他节点更容易的成为新Leader。新Leader的消息中带有增加后的Term，这就会让前任Leader自动下线，这样就完成了领导权的转移。</p>
+<p>Once the target server receives the TimeoutNow request, it is highly likely to start an election before any other server and become leader in the next term. Its next message to the prior leader will include its new term number, causing the prior leader to step down. At this point, leadership transfer is complete.</p>
+<p>目标节点也可能失败，这种情况下，集群必须能恢复处理客户端的请求。如果领导权转移在一个选举超时内还没有完成，那前任Leader会终止转移，并恢复处理Client的请求。</p>
+<p>It is also possible for the target server to fail; in this case, the cluster must resume client operations. If leadership transfer does not complete after about an election timeout, the prior leader aborts the transfer and resumes accepting client requests. If the prior leader was mistaken and the target server is actually operational, then at worst this mistake will result in an extra election, after which client operations will be restored.</p>
+<p>领导权转移的方法，在RAFT集群的常规过渡中保证了安全性。比如<font color=red>Raft已经保证了，即使节点时钟以任意速度运行也可以保证安全性，当目标节点收到TimeoutNow请求时，相当于目标节点的时钟发生了跳变，所以这是安全的。</font></p>
+<p>This approach preserves safety by operating within the normal transitions of a Raft cluster. For example, Raft already guarantees safety even when clocks run at arbitrary speeds; when the target server receives a TimeoutNow request, it is equivalent to the target server’s clock jumping forwards quickly, which is safe. However, we have not currently implemented or evaluated this leadership transfer approach.</p>
+<h3 id="3-11-Conclusion-总结"><a href="#3-11-Conclusion-总结" class="headerlink" title="3.11 Conclusion      总结"></a>3.11 Conclusion      总结</h3><p>本章讨论了基于共识的系统的所有核心问题。Raft不仅实现了单个值的共识（就像single-decree Paxos那样），它在一系列不断增长的命令日志上都实现了共识，这是构建复制状态机所必须的。它还包括达成共识后的信息传播，以便其他节点能够知道哪些哪些日志是已提交的。Raft通过选举出Leader来单方面决策，并在其掌权时只发送必要的日志条目，从而以实用且高效的方式实现共识。我们已经在LogCabin中实现了Raft，LogCabin是一个复制状态机，在第10章会介绍。</p>
+<p>This chapter addressed all the core problems for a consensus-based system. Raft goes beyond reaching consensus on a single value, as in single-decree Paxos; it achieves consensus on a growing log of commands, which is needed to build a replicated state machine. It also includes disseminates information once agreement has been reached, so that other servers learn the log entries that have been committed. Raft achieves consensus in a practical and efficient way by electing a cluster leader to unilaterally make decisions and transmitting only the necessary log entries when a new leader comes to power. We have implemented the ideas of Raft in LogCabin, a replicated state machine (described in Chapter 10).</p>
+<p>Raft仅使用少量的机制来解决完全共识问题。比如，它只使用了两种RPC（RequestVote和AppendEntries）。说来奇怪，构造一个紧凑的算法&#x2F;实现并非Raft的明确目标，相反，这是我们为可理解性而设计的结果，设计中的每一个机制都必须有充分的原因和解释。我们发现冗余或迂回的机制很难解释，所以在设计过程中自然会被摒弃。</p>
+<p>Raft uses only a small amount of mechanism to address the full consensus problem. For example, it uses only two RPCs (RequestVote and AppendEntries). Perhaps surprisingly, creating a compact algorithm&#x2F;implementation was not an explicit goal for Raft. Rather, it is a result of our design for understandability, where every bit of mechanism must be fully motivated and explained. We found that redundant or meandering mechanism is hard to motivate, so it naturally gets purged in the design process.</p>
+<p>除非我们确信某个问题会影响Raft的大部分功能，否则我们不会在Raft上解决它。所以Raft的某些部分可能看起来比较幼稚。比如Raft中的节点是通过等待选举超时来判断选票被瓜分的情况；原则上，我们通常可以通过对所有Candidate的得票进行计数，来更快的发现甚至是解决选票瓜分问题。我们决定不对该问题进行优化，因为它增加复杂度，但可能不会带来实际的好处：在配置良好的部署中，瓜分选票是很罕见的。Raft的其他部分可能显得过于保守，比如Leader只能直接提交其当前任期内的条目，即使某些特殊场景下它可以安全的提交之前任期的条目。使用更复杂的提交规则可能不利于可理解性，而且在性能上不会有太大提升；按照目前的规则，提交可能会有短暂的延迟。在于其他人讨论Raft时，我们发现很多人忍不住想要提出这样那样的优化，但是当以可理解性为目标时，我们决定不应该多早优化。</p>
+<p>Unless we felt confident that a particular problem would affect a large fraction of Raft deployments, we did not address it in Raft. As a result, parts of Raft may appear naive. For example, servers in Raft detect a split vote by waiting for an election timeout; in principle, they could often detect and even resolve split votes sooner by counting the votes granted to any candidate. We chose not to develop this optimization for Raft, since it adds complexity but probably brings no practical benefit: split votes are rare in a well-configured deployment. Other parts of Raft may appear overly conservative. For example, a leader only directly commits an entry from its current term, even though in some special cases it could safely commit entries from prior terms. Applying a more complex commitment rule would harm understandability and would not have a significant effect on performance; commitment is only delayed briefly with the current rule. In discussing Raft with others, we found that many people cannot help but think of such optimizations and propose them, but when the goal is understandability, premature optimizations should be left out.</p>
+<p>本章不可避免的遗漏了一些实践中有用的特性或优化。随着开发者的Raft开发经验的增长，他们终将会了解到某些功能特性何时以及为何有用，并且需要在实际的开发中实现这些特性。本章中我们描述了一些可能不是必要的，但有助于指导开发者的扩展特性。通过聚焦可理解性，我们希望已经为开发者根据自己的经验来调整Raft提供了坚实的基础。因为Raft目前运行在我们的实验环境中，我们希望这些只是直接的扩展，而非根本性的更改。</p>
+<p>Inevitably, this chapter might have left out some features or optimizations that turn out to be useful in practice. As implementers gain more experience with Raft, they will learn when and why certain additional features may be useful, and they may need to implement these for some practical deployments. Throughout the chapter, we sketched a few optional extensions that we currently think are unnecessary but that may help guide implementers should the need arise. By focusing on understandability, we hope to have provided a solid foundation for implementers to adjust Raft according to their experiences. Since Raft works in our testing environment, we expect these to be straightforward extensions rather than fundamental changes.</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/" rel="prev" title="etcd_raft源码解析-05raft包--log_unstable">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-05raft包--log_unstable
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/11/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/06raft%E5%8C%85--log/" rel="next" title="etcd_raft源码解析-06raft包--log">
+      etcd_raft源码解析-06raft包--log <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Chapter-3-Basic-Raft-algorithm-%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95"><span class="nav-number">1.</span> <span class="nav-text">Chapter 3 Basic Raft algorithm     基本Raft算法</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-Designing-for-understandability-%E4%B8%BA%E5%8F%AF%E7%90%86%E8%A7%A3%E6%80%A7%E8%80%8C%E8%AE%BE%E8%AE%A1"><span class="nav-number">1.1.</span> <span class="nav-text">3.1 Designing for understandability     为可理解性而设计</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-Raft-overview-Raft%E6%A6%82%E8%A7%88"><span class="nav-number">1.2.</span> <span class="nav-text">3.2 Raft overview     Raft概览</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-Raft-basics-%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95"><span class="nav-number">1.3.</span> <span class="nav-text">3.3 Raft basics     基本Raft算法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-4-Leader-election-%E9%A2%86%E5%AF%BC%E8%80%85%E9%80%89%E4%B8%BE"><span class="nav-number">1.4.</span> <span class="nav-text">3.4 Leader election     领导者选举</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-5-Log-replication-%E5%A4%8D%E5%88%B6%E6%97%A5%E5%BF%97"><span class="nav-number">1.5.</span> <span class="nav-text">3.5 Log replication     复制日志</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-6-Safety-%E5%AE%89%E5%85%A8%E6%80%A7"><span class="nav-number">1.6.</span> <span class="nav-text">3.6 Safety     安全性</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-6-1-Election-restriction-%E9%80%89%E4%B8%BE%E7%BA%A6%E6%9D%9F"><span class="nav-number">1.6.1.</span> <span class="nav-text">3.6.1 Election restriction     选举约束</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-6-2-Committing-entries-from-previous-terms-%E4%B9%8B%E5%89%8D%E4%BB%BB%E6%9C%9F%E7%9A%84%E6%97%A5%E5%BF%97%E6%9D%A1%E7%9B%AE%E7%9A%84%E6%8F%90%E4%BA%A4"><span class="nav-number">1.6.2.</span> <span class="nav-text">3.6.2 Committing entries from previous terms     之前任期的日志条目的提交</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-6-3-Safety-argument-%E5%AE%89%E5%85%A8%E6%80%A7%E8%AE%BA%E8%AF%81"><span class="nav-number">1.6.3.</span> <span class="nav-text">3.6.3 Safety argument     安全性论证</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-7-Follower-and-candidate-crashes-Follower%E5%92%8CCandidate%E5%B4%A9%E6%BA%83"><span class="nav-number">1.7.</span> <span class="nav-text">3.7 Follower and candidate crashes      Follower和Candidate崩溃</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-8-Persisted-state-and-server-restarts-%E6%8C%81%E4%B9%85%E5%8C%96%E7%8A%B6%E6%80%81%E4%BB%A5%E5%8F%8A%E8%8A%82%E7%82%B9%E9%87%8D%E5%90%AF"><span class="nav-number">1.8.</span> <span class="nav-text">3.8 Persisted state and server restarts      持久化状态以及节点重启</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-9-Timing-and-availability-%E6%97%B6%E9%97%B4%E5%92%8C%E5%8F%AF%E7%94%A8%E6%80%A7"><span class="nav-number">1.9.</span> <span class="nav-text">3.9 Timing and availability     时间和可用性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-10-Leadership-transfer-extension-%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB"><span class="nav-number">1.10.</span> <span class="nav-text">3.10 Leadership transfer extension     领导权转移</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-11-Conclusion-%E6%80%BB%E7%BB%93"><span class="nav-number">1.11.</span> <span class="nav-text">3.11 Conclusion      总结</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

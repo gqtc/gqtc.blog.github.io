@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="单步成员变更的问题正确性问题Raft单步变更过程中如果发生Leader切换会出现正确性问题，可能导致已经提交的日志又被覆盖。Raft作者（Diego Ongaro）早在2015年就发现了这个问题，并且在Raft-dev详细的说明了这个问题：https:&#x2F;&#x2F;groups.google.com&#x2F;g&#x2F;raft-dev&#x2F;c&#x2F;t4xj6dJTP6E。 下面是一个Raft单步变更出问题的例子, 初始成员配置是">
+<meta property="og:type" content="article">
+<meta property="og:title" content="【转载】单节点变更的问题和工程实践">
+<meta property="og:url" content="http://example.com/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2[%E8%BD%AC%E8%BD%BD]%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="单步成员变更的问题正确性问题Raft单步变更过程中如果发生Leader切换会出现正确性问题，可能导致已经提交的日志又被覆盖。Raft作者（Diego Ongaro）早在2015年就发现了这个问题，并且在Raft-dev详细的说明了这个问题：https:&#x2F;&#x2F;groups.google.com&#x2F;g&#x2F;raft-dev&#x2F;c&#x2F;t4xj6dJTP6E。 下面是一个Raft单步变更出问题的例子, 初始成员配置是">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/03RAFT%E6%80%BB%E7%BB%93_%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/v2-f40dd27f1d49bd9c1c00ddb939b7e534_720w.jpg">
+<meta property="article:published_time" content="2021-12-07T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-29T05:51:36.023Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/03RAFT%E6%80%BB%E7%BB%93_%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/v2-f40dd27f1d49bd9c1c00ddb939b7e534_720w.jpg">
+
+<link rel="canonical" href="http://example.com/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2[%E8%BD%AC%E8%BD%BD]%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>【转载】单节点变更的问题和工程实践 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2[%E8%BD%AC%E8%BD%BD]%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          【转载】单节点变更的问题和工程实践
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-08 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-08T00:00:00+08:00">2021-12-08</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-29 13:51:36" itemprop="dateModified" datetime="2022-06-29T13:51:36+08:00">2022-06-29</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/" itemprop="url" rel="index"><span itemprop="name">转载</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="单步成员变更的问题"><a href="#单步成员变更的问题" class="headerlink" title="单步成员变更的问题"></a>单步成员变更的问题</h3><h4 id="正确性问题"><a href="#正确性问题" class="headerlink" title="正确性问题"></a><font color=red>正确性问题</font></h4><p>Raft单步变更过程中如果发生Leader切换会出现正确性问题，可能导致已经提交的日志又被覆盖。Raft作者（Diego Ongaro）早在2015年就发现了这个问题，并且在Raft-dev详细的说明了这个问题：<a href="https://link.zhihu.com/?target=https://groups.google.com/g/raft-dev/c/t4xj6dJTP6E%22%20%5Ct%20%22_blank">https://groups.google.com/g/raft-dev/c/t4xj6dJTP6E</a>。</p>
+<p>下面是一个Raft单步变更出问题的例子, 初始成员配置是a b c d这4节点，节点u和v要加入集群, 如果中间出现Leader切换, 就会丢失已提交的日志：</p>
+<span id="more"></span>
+<p><img src="/img/03RAFT%E6%80%BB%E7%BB%93_%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4(%E5%A4%A7%E8%AE%BA%E6%96%87)/v2-f40dd27f1d49bd9c1c00ddb939b7e534_720w.jpg" alt="img"></p>
+<ul>
+<li>t₀：节点a b c d的成员配置为C₀；</li>
+<li>t₁：节点a b c d在Term 0选出a为Leader，b和c为Follower；</li>
+<li>t₂：节点a同步成员变更日志Cᵤ，只同步到a和u，未成功提交；</li>
+<li>t₃：节点a宕机；</li>
+<li>t₄：节点d在Term 1被选为Leader，b和c为Follower；</li>
+<li>t₅：节点d同步成员变更日志Cᵥ，同步到c、d、v，成功提交；</li>
+<li>t₆：节点d同步普通日志E，同步到c、d、v，成功提交；</li>
+<li>t₇：节点d宕机；</li>
+<li>t₈：节点a在Term 2重新选为Leader，u和b为Follower;</li>
+<li>t₉：节点a同步本地的日志Cᵤ给所有人，造成已提交的Cᵥ和E丢失。</li>
+</ul>
+<p>产生该原因，是上一任Leader的成员变更日志还没有同步到多数派就宕机了，新Leader一上任就进行成员变更，使用新的成员配置提交日志，之前上一任Leader重新上任之后可能形成另外一个多数派集合，产生脑裂，将已提交的日志覆盖，造成数据丢失。</p>
+<p>Raft作者在发现这个问题之后，也给出了修复方法。修复方法很简单, 跟Raft的日志Commit条件类似：新任Leader必须在当前Term提交一条no-op日志之后，才允许同步成员变更日志。也即Leader在当前Term还未提交日志之前，不允许同步成员变更日志。</p>
+<p><font color=red>对应上面这个例子，就是 d 当选Leader后必须先提交一条no-op日志，该no-op只有复制到C₀中Majority之后才能提交。然后L₁才能开始同步Cᵥ和E，这样，当a竞选L₂时，因日志不够新，所以当不了新Leader。</font></p>
+<h4 id="可用性问题"><a href="#可用性问题" class="headerlink" title="可用性问题"></a>可用性问题</h4><p>单步成员变更每次只能增加或者减少一个成员，在做成员替换的时候需要分两次变更，第一次变更先将新成员加入进来，第二次变更再将老成员删除，中间如果如果网络分区，有可能会导致服务不可用。</p>
+<p>比如原集群包含3个节点abc，现在要将a替换为d，则使用单节点变更算法的话，需要两次单节点变更：abc -&gt; abcd -&gt; bcd。</p>
+<p>考虑a、b、c三个成员部署在三个机房，d跟a在同一个机房。则当集群为abcd时，有可能在出现二分的网络分区(ad | bc)导致整个集群不可用。</p>
+<p>如果使用联合共识算法的话，则不存在正确性和可用性问题。</p>
+<hr>
+<h3 id="单步成员变更的工程实践"><a href="#单步成员变更的工程实践" class="headerlink" title="单步成员变更的工程实践"></a>单步成员变更的工程实践</h3><h4 id="单步成员变更日志使用什么配置"><a href="#单步成员变更日志使用什么配置" class="headerlink" title="单步成员变更日志使用什么配置"></a>单步成员变更日志使用什么配置</h4><p>单步成员变更日志无论使用新成员配置Cnew还是老成员配置Cold都不会破坏Cnew与Cold的多数派至少有一个节点相交，因此单步成员变更日志既可以使用新成员配置Cnew也可以使用老成员配置Cold，两种方式各有利弊。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>单步成员变更日志使用Cold配置</td>
+<td>可避免单步成员变更的正确性问题，可以省略掉Leader上任后的no-op日志。增加成员时可能只需要更小的多数派集合</td>
+<td>减少成员时可能需要更大的多数派集合</td>
+</tr>
+<tr>
+<td>单步成员变更日志使用Cnew配置</td>
+<td>需要处理单步成员变更的正确性问题，减少成员时可能只需要更小的多数派集合</td>
+<td>增加成员时可能需要更大的多数派集合</td>
+</tr>
+</tbody></table>
+<p>Raft论文中单步成员变更日志使用新成员配置Cnew，etcd中单步成员变更日志使用老成员配置Cold。</p>
+<h4 id="单步成员变更日志什么时候生效"><a href="#单步成员变更日志什么时候生效" class="headerlink" title="单步成员变更日志什么时候生效"></a>单步成员变更日志什么时候生效</h4><table>
+<thead>
+<tr>
+<th></th>
+<th align="left">Leader</th>
+<th>Follower</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>单步成员变更，使用新成员配置</td>
+<td align="left">开始同步成员变更日志之前</td>
+<td>成员变更日志持久化完成后</td>
+</tr>
+<tr>
+<td>单步成员变更，使用老成员配置</td>
+<td align="left">理论上只需要在下一次成员变更开始之前生效，实际一般在成员变更日志提交后就生效</td>
+<td>理论上只需要在下一次成员变更开始之前生效，实际一般在成员变更日志提交后就生效</td>
+</tr>
+</tbody></table>
+<p>如果成员变更日志使用老成员配置，理论上只需要在下一次成员变更开始之前生效即可，但实际为了让新加入的节点尽快开始服务，一般在成员变更日志提交后就生效。</p>
+<p><font color=red>Raft论文中单步成员变更日志使用新成员配置Cnew，本地持久化完成就生效；etcd中单步成员变更日志使用老成员配置Cold，提交后再生效。</font></p>
+<hr>
+<p>本文链接:<a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/359206808">https://zhuanlan.zhihu.com/p/359206808</a></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/01/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/07raft%E5%8C%85--node%E5%92%8Crawnode/" rel="prev" title="etcd_raft源码解析-07raft包--node和rawnode">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-07raft包--node和rawnode
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/" rel="next" title="raft大论文翻译-04-1集群节点变更">
+      raft大论文翻译-04-1集群节点变更 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8D%95%E6%AD%A5%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">1.</span> <span class="nav-text">单步成员变更的问题</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%AD%A3%E7%A1%AE%E6%80%A7%E9%97%AE%E9%A2%98"><span class="nav-number">1.1.</span> <span class="nav-text">正确性问题</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8F%AF%E7%94%A8%E6%80%A7%E9%97%AE%E9%A2%98"><span class="nav-number">1.2.</span> <span class="nav-text">可用性问题</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8D%95%E6%AD%A5%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E7%9A%84%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5"><span class="nav-number">2.</span> <span class="nav-text">单步成员变更的工程实践</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8D%95%E6%AD%A5%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%97%E4%BD%BF%E7%94%A8%E4%BB%80%E4%B9%88%E9%85%8D%E7%BD%AE"><span class="nav-number">2.1.</span> <span class="nav-text">单步成员变更日志使用什么配置</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8D%95%E6%AD%A5%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%97%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E7%94%9F%E6%95%88"><span class="nav-number">2.2.</span> <span class="nav-text">单步成员变更日志什么时候生效</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

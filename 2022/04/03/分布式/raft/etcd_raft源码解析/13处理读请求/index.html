@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="背景对读请求的处理，可以像处理写请求那样，通过日志机制，在Majority节点上达成共识后返回给CLIENT结果。但是读请求并不修改状态，很自然的就能想到只读请求是否可以绕过RAFT的日志机制，这样性能上就能有所提升。 如果没有额外的预防措施，绕过日志可能会导致读请求得到过时的结果。比如，收到只读请求的Leader可能已经被分区隔离了，如果被隔离的Leader没有与集群中的其他节点沟通的情况下直接">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-13处理读请求">
+<meta property="og:url" content="http://example.com/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="背景对读请求的处理，可以像处理写请求那样，通过日志机制，在Majority节点上达成共识后返回给CLIENT结果。但是读请求并不修改状态，很自然的就能想到只读请求是否可以绕过RAFT的日志机制，这样性能上就能有所提升。 如果没有额外的预防措施，绕过日志可能会导致读请求得到过时的结果。比如，收到只读请求的Leader可能已经被分区隔离了，如果被隔离的Leader没有与集群中的其他节点沟通的情况下直接">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-04-02T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:38:42.837Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-13处理读请求 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-13处理读请求
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-04-03 00:00:00" itemprop="dateCreated datePublished" datetime="2022-04-03T00:00:00+08:00">2022-04-03</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:38:42" itemprop="dateModified" datetime="2022-06-28T09:38:42+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>对读请求的处理，可以像处理写请求那样，通过日志机制，在Majority节点上达成共识后返回给CLIENT结果。但是读请求并不修改状态，很自然的就能想到只读请求是否可以绕过RAFT的日志机制，这样性能上就能有所提升。</p>
+<p>如果没有额外的预防措施，<font color=red>绕过日志可能会导致读请求得到过时的结果。</font>比如，收到只读请求的Leader可能已经被分区隔离了，如果被隔离的Leader没有与集群中的其他节点沟通的情况下直接回复只读请求，CLIENT就可能得到一个过时的结果，这就不符合<font color=red>线性一致性（Linearizability ）</font>的约束了。</p>
+<span id="more"></span>
+<p>RAFT博士论文中提出了两种处理读请求的方法，这两种方法的宗旨都是：<font color=red>保证读请求不会返回过期数据的基础上</font>，尽可能的提升性能。</p>
+<h4 id="ReadIndex方法"><a href="#ReadIndex方法" class="headerlink" title="ReadIndex方法"></a>ReadIndex方法</h4><p>收到读请求后，Leader的动作如下：</p>
+<ol>
+<li>Leader需要知道当前最大的committed Index。Leader刚刚当选时，虽然它具有集群中最新的日志，但是它不知道当前最大的committed Index是多少。所以，刚当选的Leader需要以其当前Term提交一个空日志条目，等到该条目提交后，就可以保证Leader的committed Index是当前集群所有节点中最大的，该Leader才能处理读请求。</li>
+<li>Leader将其当前的committed Index保存为节点内部的变量ReadIndex，该ReadIndex会作为读请求返回的系统状态的版本的<font color=red>下限</font>。即读请求返回的系统状态<font color=red>至少</font>能反映出应用ReadIndex日志修改后系统状态。</li>
+<li>Leader需要确保自己没有被分区隔离。所以它会发起新一轮的心跳消息，等到收到集群中Majority节点的响应消息后，Leader就知道，<font color=red>在它发出心跳消息的那一刻，就不可能存在一个具有更大Term的新Leader（反证：如果发出心跳时，集群中存在一个更大Term的Leader，那肯定不会收到Majority节点的心跳响应），</font>所以就能保证，ReadIndex确实是发出心跳消息之前（或者可以说，是收到只读请求时），集群中所有节点最大的committed Index。<ul>
+<li>问：某个Follower先收到了其他Candidate的Vote消息并回复成功了，然后收到了该Leader的心跳消息，怎么办？答：先收到Vote消息并回复成功，说明该Follower的Term增加了，收到心跳消息后就直接忽略了；</li>
+</ul>
+</li>
+<li>Leader等到状态机运行到ReadIndex后，就能保证线性一致性了。状态机应用到 ReadIndex之后的状态都能使这个读请求满足线性一致，不管过了多久，也不管 Leader 有没有飘走。因为线性一致性的要求就是读请求返回最近一次写操作的结果，如果返回更加新的结果当然也是没问题的。</li>
+<li>此时，Leader向状态机发起读请求，并将结果返回给CLIENT。</li>
+</ol>
+<p>ReadIndex 跳过了日志机制，节省了磁盘开销，它能大幅提升读的吞吐，减小延时（但不显著）。</p>
+<hr>
+<h4 id="LeaseRead方法"><a href="#LeaseRead方法" class="headerlink" title="LeaseRead方法"></a>LeaseRead方法</h4><p>上面的方法在异步模型中保证了线性一致性，所谓异步模型，就是时钟，CPU，消息的传递都可以以任意的速度进行。这种级别的安全性就需要通信来保证：每一批读请求都需要发送一轮到过半节点的心跳消息，这就增加了处理请求的延迟。LeaseRead方法依赖时钟精度，而非消息，来保证线性一致性。这种方法采用的是租约机制。</p>
+<p>Leader在发送常规的心跳消息时记一个时间点start，<font color=red>一旦心跳得到集群中Majority节点的回应，Leader就可以将租约延长到 start + election_timeout &#x2F; clock_drift_bound(时钟漂移范围)。因为Follower在租约超期之前，肯定不会因选举超时而发起新的选举。</font>Leader在租约内可以无需通信，直接处理读请求。</p>
+<p>针对这种机制的解释如下：</p>
+<ul>
+<li>先抛开节点间的clock drift不谈，start是发送心跳消息的起始时间，Follower收到心跳消息的时间点记为<code>t_recvHeart</code>，那显然<code>start &lt; t_recvHeart</code>，收到Majority节点的心跳响应，就说明Follower至少在<code>t_recvHeart + election_timeout</code>内不会选举超时，也不会投票给其他节点，因为<code>start + election_timeout</code>肯定小于<code>t_recvHeart + election_timeout</code>，所以Leader将租约定为<code>start + election_timeout</code>肯定是安全的。</li>
+<li>考虑clock drift的话，由于不同节点的<code>CPU</code>时钟可能有不同程度的漂移（Computer clocks are subject to clock drift , they count time at different rates），这会导致在一个很小的时间窗口内，即使Leader认为其持有租约，但集群已经选举出了新的Leader。因此，一些系统在实现Lease Read时缩小了Leader持有租约的时间，选择了一个略小于 <code>election_timeout</code> 的时间，以减小时钟漂移带来的影响。</li>
+</ul>
+<p>租约机制需<font color=red>要保证节点之间的时钟差异有一个界限</font>（各个服务器之间 clock 走的频率不一样，有些太快，有些太慢，但这个差异总有一个界限。如果没有界限，这套 lease 机制就可能出问题），发现和维护这种时钟漂移界限可能会有额外的工作，但是如果这个假设被打破的话，则Leader就可能会回复CLIENT一个过期数据。</p>
+<hr>
+<h3 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h3><p><code>etcd/raft</code>中实现了ReadIndex方法和LeaseRead方法，不过实际上对于<code>etcd/raft</code>而言，他要做的仅仅就是在收到读请求时，把那一时刻集群中最大的<code>committIndex</code>返回给使用<code>Raft</code>的应用程序，即<code>etcd</code>，这就保证读操作符合线性一致性。</p>
+<p>线性一致性，就是要求读操作至少要返回，之前已经完成的写操作所能反映出的最新的系统状态。而<code>raft</code>找到并返回收到读请求那一刻集群中最大的<code>commitIndex</code>，就是为了找到已经完成（准确的说是从外部看已经完成的写操作）最近一次的写操作的日志条目，等到状态机应用了这条日志之后，再去读状态机当前的状态就是符合线性一致性的。</p>
+<p>所以，<code>etcd/raft</code>收到读请求，经过内部处理，通过<code>Ready</code>结构返回给<code>etcd</code>那一时刻最大的<code>commitIndex</code>后，<code>etcd</code>要等到状态机运转到<code>commitIndex</code>之后，再去读状态机的状态，返回给外部Client，完成读操作。</p>
+<hr>
+<h4 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h4><h5 id="ReadOnlyOption"><a href="#ReadOnlyOption" class="headerlink" title="ReadOnlyOption"></a>ReadOnlyOption</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ReadOnlyOption <span class="type">int</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> (</span><br><span class="line">	<span class="comment">// ReadOnlySafe guarantees the linearizability of the read only request by</span></span><br><span class="line">	<span class="comment">// communicating with the quorum. It is the default and suggested option.</span></span><br><span class="line">	ReadOnlySafe ReadOnlyOption = <span class="literal">iota</span></span><br><span class="line">	<span class="comment">// ReadOnlyLeaseBased ensures linearizability of the read only request by</span></span><br><span class="line">	<span class="comment">// relying on the leader lease. It can be affected by clock drift.</span></span><br><span class="line">	<span class="comment">// If the clock drift is unbounded, leader might keep the lease longer than it</span></span><br><span class="line">	<span class="comment">// should (clock can move backward/pause without any bound). ReadIndex is not safe</span></span><br><span class="line">	<span class="comment">// in that case.</span></span><br><span class="line">	ReadOnlyLeaseBased</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p><code>raft.go</code>中的<code>ReadOnlyOption</code>表示处理读请求采用的方法。目前读请求有两种方法：</p>
+<ul>
+<li>一种是<code>ReadOnlySafe</code>，对应论文中的ReadIndex方法。可以保证线性一致性，是默认的读请求处理方法。</li>
+<li>一种是<code>ReadOnlyLeaseBased</code>，对应于论文中的LeaseRead方法。使用Leader的租约来保证线性一致性，但是这依赖于节点间的clock drift是否有一个界限，没有的话则不能保证一致性。使用这种方法时，必须保证支持<code>CheckQuorum</code>选项。</li>
+</ul>
+<hr>
+<h5 id="readOnly结构"><a href="#readOnly结构" class="headerlink" title="readOnly结构"></a>readOnly结构</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> readIndexStatus <span class="keyword">struct</span> &#123;</span><br><span class="line">	req   pb.Message</span><br><span class="line">	index <span class="type">uint64</span></span><br><span class="line">	acks <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="type">bool</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> readOnly <span class="keyword">struct</span> &#123;</span><br><span class="line">	option           ReadOnlyOption</span><br><span class="line">	pendingReadIndex <span class="keyword">map</span>[<span class="type">string</span>]*readIndexStatus</span><br><span class="line">	readIndexQueue   []<span class="type">string</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">newReadOnly</span><span class="params">(option ReadOnlyOption)</span></span> *readOnly</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> addRequest(index <span class="type">uint64</span>, m pb.Message)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> recvAck(id <span class="type">uint64</span>, context []<span class="type">byte</span>) <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> advance(m pb.Message) []*readIndexStatus</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> lastPendingRequestCtx() <span class="type">string</span></span><br></pre></td></tr></table></figure>
+
+<p><code>read_only.go</code>中定义的<code>readOnly</code>结构，主要是<code>ReadOnlySafe</code>方法处理读请求时使用的结构。它主要用于在发送心跳消息前记录读请求相关信息，收到心跳响应之后检查是否收到了Majority节点的响应。</p>
+<p><code>readIndexStatus</code>结构是记录读请求以及用于收到心跳回复后的Majority检查。其中的成员有：</p>
+<ul>
+<li><code>req</code>：<code>etcd</code>发来的<font color=red>读请求数据（实际上就是一个标识每个读请求的<code>requestId</code>）</font>；</li>
+<li><code>index</code>：发心跳之时，<code>Leader</code>本身的<code>commitIndex</code>；</li>
+<li><code>acks</code>：记录收到了哪些<code>Follower</code>的心跳响应；</li>
+</ul>
+<p><code>readOnly</code>结构的关键属性和方法如下：</p>
+<ul>
+<li><code>option</code>：表示处理读请求的方式；</li>
+<li><code>pendingReadIndex</code>：在发送心跳消息的时候，以<code>etcd</code>发来的读请求数据为key，以<code>readIndexStatus</code>结构为value记录到<code>pendingReadIndex</code>中；收到<code>Follower</code>的心跳响应之后，在<code>readIndexStatus.acks</code>中记录，并检查是否收到了Majority节点的响应，以便进行下一步动作；</li>
+<li><code>readIndexQueue</code>：发送心跳消息时，将<code>etcd</code>发来的读请求数据放到该队列中。这就保证了处理读请求的有序性；收到Majority节点的心跳响应之后，将相应的（包括队列中排在对应请求之前的读请求）读请求数据出队，返回给<code>etcd</code>相应的数据；</li>
+<li><code>addRequest</code>方法：参数<code>index</code>就表示<code>Leader</code>的<code>commitIndex</code>；<code>m</code>就是<code>etcd</code>的读请求数据封装后的消息。该方法以<code>etcd</code>读请求数据为key，新建一个<code>readIndexStatus</code>结构记录到<code>readOnly.pendingReadIndex</code>中，并将读请求数据放到<code>readOnly.readIndexQueue</code>中进行排队；</li>
+<li><code>recvAck</code>方法：收到<code>Follower</code>发来的心跳响应之后调用该方法。参数<code>id</code>表示<code>Follower</code>的<code>id</code>；<code>context</code>就表示发给该<code>Follower</code>心跳消息是附带的<code>etcd</code>请求数据。该方法就是以<code>context</code>为key，在<code>readOnly.pendingReadIndex</code>中寻找对应的<code>readIndexStatus</code>结构，并将其中的<code>acks[id]</code>置为<code>true</code>；</li>
+<li><code>advance</code>方法：当明确已经收到针对某个<code>etcd</code>读请求的Majority个心跳响应之后，调用该方法。参数<code>m</code>就是对<code>etcd</code>读请求数据的封装。该方法就是从头轮训<code>readOnly.readIndexQueue</code>队列，针对其中的<code>etcd</code>读请求数据，在<code>readOnly.pendingReadIndex</code>中寻找对应的<code>readIndexStatus</code>结构，将其添加到<code>rss</code>结果队列中，直到找到对应的<code>etcd</code>读请求数据之后，才结束循环，并返回<code>rss</code>。<ul>
+<li>该函数的处理逻辑是：假如依次收到了<code>A, B, C</code>三个读请求，这三个读请求就会发送<code>3</code>次心跳消息，并将三次读请求按序排队。假如收到了<code>C</code>对应的Majority个心跳回复（<code>A</code>和<code>B</code>的还不够Majority），那<code>advance</code>方法会把<code>A, B, C</code>三个读请求都返回，表示这三个读请求都可以处理了。这是因为能收到<code>C</code>的Majority个响应，肯定能保证发送<code>A</code>和<code>B</code>时，没有其他<code>Leader</code>当选（反证法即可证明）。</li>
+</ul>
+</li>
+<li><code>lastPendingRequestCtx</code>方法：找到<code>readOnly.readIndexQueue</code>队列中最后一个元素，即最新的<code>etcd</code>读请求数据。</li>
+</ul>
+<hr>
+<h5 id="ReadState结构"><a href="#ReadState结构" class="headerlink" title="ReadState结构"></a>ReadState结构</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// It&#x27;s caller&#x27;s responsibility to call ReadIndex first before getting this state from ready, it&#x27;s </span></span><br><span class="line"><span class="comment">// also caller&#x27;s duty to differentiate if this state is what it requests through RequestCtx, </span></span><br><span class="line"><span class="comment">// eg. given a unique id as RequestCtx</span></span><br><span class="line"><span class="keyword">type</span> ReadState <span class="keyword">struct</span> &#123;</span><br><span class="line">	Index      <span class="type">uint64</span></span><br><span class="line">	RequestCtx []<span class="type">byte</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>read_only.go</code>中定义的<code>ReadState</code>结构，是<code>etcd/raft</code>针对读请求，要返回给<code>etcd</code>的结构，会被封装在<code>Ready</code>结构中。</p>
+<p>该结构就包含两个信息：</p>
+<ul>
+<li><code>Index</code>：收到读请求时最大的<code>commitIndex</code>；</li>
+<li><code>RequestCtx</code>：<code>etcd</code>的读请求数据。这样<code>etcd</code>就能判断<code>ReadState</code>结构对应的是哪个读请求。</li>
+</ul>
+<hr>
+<h4 id="ReadIndex方法的实现"><a href="#ReadIndex方法的实现" class="headerlink" title="ReadIndex方法的实现"></a>ReadIndex方法的实现</h4><h5 id="node模块接收读请求"><a href="#node模块接收读请求" class="headerlink" title="node模块接收读请求"></a>node模块接收读请求</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ReadIndex(ctx context.Context, rctx []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> step(ctx context.Context, m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> stepWithWaitOption(ctx context.Context, m pb.Message, wait <span class="type">bool</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br></pre></td></tr></table></figure>
+
+<p><code>etcd</code>收到<code>Client</code>发来的读请求之后，首先就是调用<code>node.ReadIndex</code>方法，这是<code>etcd/raft</code>处理读请求的入口。</p>
+<p><code>node.ReadIndex</code>方法就是把读请求<code>rctx</code>封装成<code>pb.MsgReadIndex</code>消息，然后经过<code>node.step、node.stepWithWaitOption</code>的调用发送到<code>node.recvc</code>管道。</p>
+<p><code>node.run</code>方法在<code>node.recvc</code>管道上收到该消息后，调用<code>raft.Step</code>方法进行处理。</p>
+<h5 id="Leader发送心跳消息"><a href="#Leader发送心跳消息" class="headerlink" title="Leader发送心跳消息"></a>Leader发送心跳消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepLeader</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepFollower</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> committedEntryInCurrentTerm() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">sendMsgReadIndexResponse</span><span class="params">(r *raft, m pb.Message)</span></span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> addRequest(index <span class="type">uint64</span>, m pb.Message)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> bcastHeartbeatWithCtx(ctx []<span class="type">byte</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>raft.Step</code>方法中，针对<code>pb.MsgReadIndex</code>消息的处理都是通过调用<code>stepLeader/stepFollower</code>函数完成的：</p>
+<ul>
+<li>如果是<code>Follower</code>收到了读请求，则在<code>stepFollower</code>函数需要将<code>pb.MsgReadIndex</code>消息转发给<code>Leader</code>；</li>
+<li>而<code>Leader</code>收到读请求，则在<code>stepLeader</code>中处理<code>pb.MsgReadIndex</code>消息；</li>
+</ul>
+<p>在<code>stepLeader</code>函数中，针对<code>pb.MsgReadIndex</code>消息的处理逻辑是：</p>
+<ul>
+<li>如果集群当前的配置中只有<code>Leader</code>一个节点，则直接调用<code>raft.responseToReadIndexReq</code>方法后返回。该方法是<code>raft</code>内部处理读请求的最后一步，在这里就是将当前<code>Leader</code>的<code>commitIndex</code>封装成<code>ReadState</code>结构，添加到<code>raft.readStates</code>中。后续在<code>node.run</code>这个goroutine中，会把<code>raft.readStates</code>封装到<code>Ready</code>结构中，返回给<code>Client</code>；</li>
+<li>调用<code>raft.committedEntryInCurrentTerm</code>，判断当前的<code>Leader</code>是否已经以自己的Term提交过日志了。该方法的检测方法很简单，就是判断当前<code>Leader</code>的<code>commitIndex</code>的Term是不是自己的Term。如果该方法返回<code>false</code>，那现在就不能处理读请求，所以需要将当前的<code>pb.MsgReadIndex</code>消息先缓存到<code>raft.pendingReadIndexMessages</code>列表中。而<code>raft.pendingReadIndexMessages</code>列表中的消息处理时机是：<ul>
+<li>在<code>Leader</code>刚当选时调用的<code>raft.becomeLeader</code>方法中，会在本地日志中追加空日志条目，然后接下来在<code>raft.bcastAppend</code>中通过<code>pb.MsgApp</code>将该日志广播给<code>Follower</code>；</li>
+<li>等收到<code>Follower</code>对于<code>pb.MsgApp</code>的成功响应消息，即<code>pb.MsgAppResp</code>消息时，在<code>stepLeader</code>函数中，先调用<code>raft.maybeCommit</code>方法，查看是否有Majority节点成功Append了这条空日志条目；如果确实如此的话，就调用<code>releasePendingReadIndexMessages</code>函数，将<code>raft.pendingReadIndexMessages</code>列表中的<code>pb.MsgReadIndex</code>消息发出去；</li>
+</ul>
+</li>
+<li>到了这里，就说明当前Leader本身的<code>commitIndex</code>就是收到读请求时最大的<code>commitIndex</code>。接下来要通过心跳消息来确定当前<code>Leader</code>依然是集群中的<code>Leader</code>。这一步通过调用<code>sendMsgReadIndexResponse</code>函数实现，该函数就是发送心跳消息。针对<code>ReadOnlySafe</code>选项而言，该函数的逻辑是：<ul>
+<li>调用<code>readOnly.addRequest</code>方法，保存当前的<code>commitIndex</code>以及<code>etcd</code>发来的请求数据。这里以<code>etcd</code>读请求数据作为key，以新建的<code>readIndexStatus</code>结构作为value，添加到<code>readOnly.pendingReadIndex</code>这个map中，然后把<code>etcd</code>请求数据记录到<code>readOnly.readIndexQueue</code>这个队列中；</li>
+<li>然后调用<code>readOnly.recvAck</code>方法，表示自己收到了心跳消息。<code>readOnly.recvAck</code>方法就是收到心跳响应消息之后，需要在<code>readOnly.pendingReadIndex</code>这个map中记录的<code>readIndexStatus</code>结构中，将响应消息的来源<code>id</code>记录到<code>acks</code>中，以便用于统计有多少Follower收到并成功恢复了心跳消息；</li>
+<li>最后，调用<code>raft.bcastHeartbeatWithCtx</code>方法，向所有<code>Follower</code>广播心跳消息，注意，这里发送的心跳消息与普通心跳不同，这里附带了<code>etcd</code>的请求数据，以便收到响应后找到对应的<code>readIndexStatus</code>结构。</li>
+</ul>
+</li>
+</ul>
+<h5 id="Follower响应心跳消息，Leader完成读请求"><a href="#Follower响应心跳消息，Leader完成读请求" class="headerlink" title="Follower响应心跳消息，Leader完成读请求"></a>Follower响应心跳消息，Leader完成读请求</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> handleHeartbeat(m pb.Message)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepLeader</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> recvAck(id <span class="type">uint64</span>, context []<span class="type">byte</span>) <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ro *readOnly)</span></span> advance(m pb.Message) []*readIndexStatus</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> responseToReadIndexReq(req pb.Message, readIndex <span class="type">uint64</span>) pb.Message</span><br></pre></td></tr></table></figure>
+
+<p><code>Follower</code>收到心跳消息后，调用<code>handleHeartbeat</code>发送响应消息<code>pb.MsgHeartbeatResp</code>，并且其中附带了心跳消息中的读请求数据。</p>
+<p><code>Leader</code>收到心跳响应之后，走完常规的处理流程之后，针对读请求有如下代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> r.readOnly.option != ReadOnlySafe || <span class="built_in">len</span>(m.Context) == <span class="number">0</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> r.prs.Voters.VoteResult(r.readOnly.recvAck(m.From, m.Context)) != quorum.VoteWon &#123;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">rss := r.readOnly.advance(m)</span><br><span class="line"><span class="keyword">for</span> _, rs := <span class="keyword">range</span> rss &#123;</span><br><span class="line">	<span class="keyword">if</span> resp := r.responseToReadIndexReq(rs.req, rs.index); resp.To != None &#123;</span><br><span class="line">		r.send(resp)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这部分的逻辑就是：</p>
+<ul>
+<li>如果当前<code>readOnly.option</code>不是<code>ReadOnlySafe</code>，即不是<code>ReadIndex</code>方式处理读请求，或者消息中的<code>Context</code>为空，即这是普通的心跳响应消息，而非针对读请求的心跳响应，则无需继续处理，直接返回；</li>
+<li>然后调用<code>readOnly.recvAck</code>，根据消息中的<code>Context</code>，在<code>readOnly.pendingReadIndex</code>中找到对应的<code>readIndexStatus</code>结构，将响应消息的来源<code>id</code>记录到其中的<code>acks</code>。</li>
+<li>然后统计有多少<code>Follower</code>收到并成功恢复了心跳消息。如果有Majority个<code>Follower</code>都响应的心跳消息，那就证明当前<code>Leader</code>还是<code>Leader</code>。所以可以继续往下处理；<font color=red>疑问：超时了怎么办？</font></li>
+<li>调用<code>readOnly.advance</code>方法，在<code>ro.readIndexQueue</code>中，把当前心跳响应对应的读请求，以及所有在它之前的读请求的<code>ReadIndex</code>结构都返回。同时清理<code>ro.pendingReadIndex</code>和<code>ro.readIndexQueue</code>。</li>
+<li>最后，调用<code>raft.responseToReadIndexReq</code>方法：<ul>
+<li>如果读请求是<code>Leader</code>自己收到的，则将<code>ReadIndex</code>结构中的<code>commitIndex</code>以及<code>etcd</code>请求数据，封装成<code>ReadStates</code>结构，追加到<code>raft.readStates</code>队列中，等待将其封装到<code>Ready</code>结构并返回给<code>etcd</code>；</li>
+<li>这里如果这个读请求是<code>Follower</code>转发给<code>Leader</code>的，则<code>Leader</code>要把<code>commitIndex</code>和<code>etcd</code>请求数据，封装成<code>pb.MsgReadIndexResp</code>消息，回复给<code>Follower</code>。<code>Follower</code>收到后，在把他们封装成<code>ReadState</code>结构，并添加到<code>raft.readStates</code>队列中；</li>
+</ul>
+</li>
+</ul>
+<p>至此，<code>etcd/raft</code>内部就完成了读请求的处理。</p>
+<hr>
+<h4 id="LeaseRead方法的实现"><a href="#LeaseRead方法的实现" class="headerlink" title="LeaseRead方法的实现"></a>LeaseRead方法的实现</h4><p><code>etcd/raft</code>中实现的<code>LeaseRead</code>方法非常简单，他没有额外的机制来检查clock drift是否有bound，而是默认就直接使用<code>Leader</code>心跳维护的<code>Lease</code>，即通过<code>raft.tickHeartbeat</code>方法中，每隔<code>heartbeatTimeout</code>个tick发送一次心跳消息来维护Lease。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ReadIndex(ctx context.Context, rctx []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> step(ctx context.Context, m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> stepWithWaitOption(ctx context.Context, m pb.Message, wait <span class="type">bool</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepLeader</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepFollower</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> committedEntryInCurrentTerm() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">sendMsgReadIndexResponse</span><span class="params">(r *raft, m pb.Message)</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> responseToReadIndexReq(req pb.Message, readIndex <span class="type">uint64</span>) pb.Message</span><br></pre></td></tr></table></figure>
+
+<p>LeaseRead的具体实现，直到<code>sendMsgReadIndexResponse</code>这里，跟ReadIndex方法都是一样的。而在<code>sendMsgReadIndexResponse</code>函数中，针对<code>ReadOnlyLeaseBased</code>选项，直接调用<code>raft.responseToReadIndexReq</code>方法，将当前的<code>commitIndex</code>，连同<code>etcd</code>的读请求数据，封装成<code>ReadStates</code>结构，追加到<code>raft.readStates</code>队列中，等待将其封装到<code>Ready</code>结构并返回给<code>etcd</code>；</p>
+<hr>
+<h4 id="etcd中raft之外的逻辑"><a href="#etcd中raft之外的逻辑" class="headerlink" title="etcd中raft之外的逻辑"></a>etcd中raft之外的逻辑</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *EtcdServer)</span></span> LinearizableReadNotify(ctx context.Context) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *EtcdServer)</span></span> linearizableReadNotify(ctx context.Context) <span class="type">error</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *EtcdServer)</span></span> linearizableReadLoop()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(s *EtcdServer)</span></span> requestCurrentIndex(leaderChangedNotifier &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;, requestId <span class="type">uint64</span>) (<span class="type">uint64</span>, <span class="type">error</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raftNode)</span></span> start(rh *raftReadyHandler)</span><br></pre></td></tr></table></figure>
+
+<p><code>EtcdServer.LinearizableReadNotify</code>函数是<code>etcd</code>中读请求的入口，实际上该函数并不处理具体的读请求，这里它的作用类似于内存屏障。</p>
+<p>外部<code>Client</code>发起读请求到<code>etcd</code>后，首先调用<code>EtcdServer.LinearizableReadNotify</code>函数，该函数主要就是保证读请求的线性一致性。该函数的作用就是：</p>
+<ul>
+<li>确认<code>Leader</code>当前的最大<code>commitIndex</code>；确认当前<code>Leader</code>仍然是集群中的<code>Leader</code>；</li>
+<li>然后等待状态机执行日志到<code>commitIndex</code>之后的日志，就是收到读请求之时，当前集群中最大的<code>commitIndex</code>，说白了就是收到读请求时，最后更新状态机状态的操作索引；</li>
+<li>然后等待状态机应用日志的<code>appliedIndex</code>超过了<code>commitIndex</code>，这就能保证，该接口返回的时候，状态机的状态肯定已经是比较新的了（至少状态肯定对应的是收到读请求操作之后的操作了），这就满足了线性一致性的要求；</li>
+<li>之所以说它像内存屏障，就是因为该接口返回后，可以保证状态机已经完成了写操作，这个时候在处理读请求，就符合线性一致性的要求了；</li>
+</ul>
+<p>具体的处理读请求的流程是：</p>
+<ol>
+<li><code>EtcdServer.linearizableReadNotify</code>中向<code>EtcdServer.readwaitc</code>发送一个信号，然后等待<code>EtcdServer.readNotifier</code>上的通知；</li>
+<li>在<code>EtcdServer.linearizableReadLoop</code>这个goroutine中，收到<code>EtcdServer.readwaitc</code>管道上的信号之后，调用<code>EtcdServer.requestCurrentIndex</code>方法。该方法<font color=red>以一个递增的<code>requestId</code>，作为读请求数据</font>调用<code>EtcdServer.sendReadIndex</code>，其内部会调用到<code>raft.ReadIndex</code>，开始<code>etcd/raft</code>内部的处理流程；然后在<code>EtcdServer.requestCurrentIndex</code>方法中，等待<code>EtcdServer.r.readStateC</code>上到来的<code>ReadState</code>；</li>
+<li>在<code>raftNode.start</code>中的goroutine中，收到<code>etcd/raft</code>模块返回<code>Ready</code>结构后，向<code>EtcdServer.r.readStateC</code>管道发送<code>Ready</code>中的<code>ReadState</code>；</li>
+<li>在<code>EtcdServerrequestCurrentIndex</code>中，收到<code>EtcdServer.r.readStateC</code>上到来的<code>ReadState</code>后，返回其中的<code>commitIndex</code>，这就是收到读请求时，集群中最大的<code>commitIndex</code>；</li>
+<li>在<code>EtcdServer.linearizableReadLoop</code>这个goroutine中，得到读请求对应的<code>commitIndex</code>后，阻塞等待状态机的<code>appliedIndex</code>，即应用条目的Index超过<code>commitIndex</code>；最后向<code>EtcdServer.readNotifier</code>发通知；</li>
+<li>在<code>EtcdServerlinearizableReadNotify</code>中，收到<code>EtcdServer.readNotifier</code>上的通知之后，就可以保证此时状态机中的状态已经是收到读请求之前最新的了，所以该接口的调用者接下来就可以直接访问状态机获取要读取的状态了。</li>
+</ol>
+<hr>
+<h3 id="参考："><a href="#参考：" class="headerlink" title="参考："></a>参考：</h3><ul>
+<li><a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/31050303">https://zhuanlan.zhihu.com/p/31050303</a></li>
+<li><a target="_blank" rel="noopener" href="https://z.itpub.net/article/detail/29B4D408D967AE015AF40C2C47F7E5AE">https://z.itpub.net/article/detail/29B4D408D967AE015AF40C2C47F7E5AE</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/etcd-io/etcd/issues/741">https://github.com/etcd-io/etcd/issues/741</a></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/" rel="prev" title="etcd_raft源码解析-12CheckQuorum和心跳消息处理">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-12CheckQuorum和心跳消息处理
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/" rel="next" title="etcd_raft源码解析-14领导权转移">
+      etcd_raft源码解析-14领导权转移 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#ReadIndex%E6%96%B9%E6%B3%95"><span class="nav-number">1.1.</span> <span class="nav-text">ReadIndex方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#LeaseRead%E6%96%B9%E6%B3%95"><span class="nav-number">1.2.</span> <span class="nav-text">LeaseRead方法</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%9E%E7%8E%B0"><span class="nav-number">2.</span> <span class="nav-text">实现</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">2.1.</span> <span class="nav-text">数据结构</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#ReadOnlyOption"><span class="nav-number">2.1.1.</span> <span class="nav-text">ReadOnlyOption</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#readOnly%E7%BB%93%E6%9E%84"><span class="nav-number">2.1.2.</span> <span class="nav-text">readOnly结构</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#ReadState%E7%BB%93%E6%9E%84"><span class="nav-number">2.1.3.</span> <span class="nav-text">ReadState结构</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ReadIndex%E6%96%B9%E6%B3%95%E7%9A%84%E5%AE%9E%E7%8E%B0"><span class="nav-number">2.2.</span> <span class="nav-text">ReadIndex方法的实现</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#node%E6%A8%A1%E5%9D%97%E6%8E%A5%E6%94%B6%E8%AF%BB%E8%AF%B7%E6%B1%82"><span class="nav-number">2.2.1.</span> <span class="nav-text">node模块接收读请求</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Leader%E5%8F%91%E9%80%81%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF"><span class="nav-number">2.2.2.</span> <span class="nav-text">Leader发送心跳消息</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Follower%E5%93%8D%E5%BA%94%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%EF%BC%8CLeader%E5%AE%8C%E6%88%90%E8%AF%BB%E8%AF%B7%E6%B1%82"><span class="nav-number">2.2.3.</span> <span class="nav-text">Follower响应心跳消息，Leader完成读请求</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#LeaseRead%E6%96%B9%E6%B3%95%E7%9A%84%E5%AE%9E%E7%8E%B0"><span class="nav-number">2.3.</span> <span class="nav-text">LeaseRead方法的实现</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#etcd%E4%B8%ADraft%E4%B9%8B%E5%A4%96%E7%9A%84%E9%80%BB%E8%BE%91"><span class="nav-number">2.4.</span> <span class="nav-text">etcd中raft之外的逻辑</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%82%E8%80%83%EF%BC%9A"><span class="nav-number">3.</span> <span class="nav-text">参考：</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

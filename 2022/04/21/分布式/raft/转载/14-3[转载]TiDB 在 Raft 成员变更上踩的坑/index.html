@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="个人理解：本文最核心的观点，就是针对2n这样偶数节点组成的集群，除了过半节点之外，人为增加一种Quorum，即将两个n节点组成的集合中的其中一个作为Quorum，只要集群中所有节点都遵守这个约定，则2n节点的集群发生分区形成2个n节点集合时，其中之一依然可以继续提供服务，而不是像之前那样直接不可用。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="【转载】TiDB 在 Raft 成员变更上踩的坑">
+<meta property="og:url" content="http://example.com/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3[%E8%BD%AC%E8%BD%BD]TiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="个人理解：本文最核心的观点，就是针对2n这样偶数节点组成的集群，除了过半节点之外，人为增加一种Quorum，即将两个n节点组成的集合中的其中一个作为Quorum，只要集群中所有节点都遵守这个约定，则2n节点的集群发生分区形成2个n节点集合时，其中之一依然可以继续提供服务，而不是像之前那样直接不可用。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-04-20T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-29T05:51:25.232Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3[%E8%BD%AC%E8%BD%BD]TiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>【转载】TiDB 在 Raft 成员变更上踩的坑 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3[%E8%BD%AC%E8%BD%BD]TiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          【转载】TiDB 在 Raft 成员变更上踩的坑
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-04-21 00:00:00" itemprop="dateCreated datePublished" datetime="2022-04-21T00:00:00+08:00">2022-04-21</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-29 13:51:25" itemprop="dateModified" datetime="2022-06-29T13:51:25+08:00">2022-06-29</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/" itemprop="url" rel="index"><span itemprop="name">转载</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><em><font color=red>个人理解</font>：本文最核心的观点，就是针对<code>2n</code>这样偶数节点组成的集群，除了过半节点之外，人为增加一种Quorum，即将两个<code>n</code>节点组成的集合中的其中一个作为Quorum，只要集群中所有节点都遵守这个约定，则<code>2n</code>节点的集群发生分区形成<code>2</code>个<code>n</code>节点集合时，其中之一依然可以继续提供服务，而不是像之前那样直接不可用。</em></p>
+<span id="more"></span>
+<h3 id="问题"><a href="#问题" class="headerlink" title="问题"></a>问题</h3><p>上次跟好基 黄东旭 在咖啡厅撩天的时候谈笑风生地探讨了一个 <a target="_blank" rel="noopener" href="https://pingcap.com/en/">TiDB</a> 使用 <a target="_blank" rel="noopener" href="https://raft.github.io/">Raft</a> 时遇到的问题:</p>
+<p>TiKV 层的 Raft 实现, 使用的是 Raft <a target="_blank" rel="noopener" href="https://gist.github.com/ongardie/a11f32b70581e20d6bcd">单步变更</a> 算法(每次添加或删除一个节点), 例如副本由 <code>abc</code> 变成 <code>bcd</code> 过程中, 先加入 <code>d</code>, 变成 <code>abcd</code> , 再去掉 <code>a</code> 变成最终配置 <code>bcd</code>.</p>
+<p>这中间经历的4节点的状态 <code>abcd</code>, 有可能在出现二分的网络割裂(<code>ad | bc</code>)时导致整个集群无法选出leader. 这种网络割裂在跨机房部署时容易出现, 例如 a, b, c 三个节点部署在3个机房:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"> a      b      c</span><br><span class="line">----   ----   ----</span><br><span class="line">DC-1   DC-2   DC-3</span><br><span class="line"></span><br><span class="line">        | add `d` in DC-1</span><br><span class="line">        v</span><br><span class="line"></span><br><span class="line"> a      b      c     partitioned     a   |  b      c</span><br><span class="line"> d                   DAMN IT !!!     d   |</span><br><span class="line">----   ----   ----   ------------&gt;  ---- | ----   ----</span><br><span class="line">DC-1   DC-2   DC-3                  DC-1 | DC-2   DC-3</span><br><span class="line"></span><br><span class="line">        | remove `a`,</span><br><span class="line">        | WELL DONE !!!</span><br><span class="line">        v</span><br><span class="line"></span><br><span class="line">        b      c</span><br><span class="line"> d</span><br><span class="line">----   ----   ----</span><br><span class="line">DC-1   DC-2   DC-3</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>正常情况下, 任意一个机房和外界连接中断, 都可以用剩下的2个机房选出leader继续工作.</li>
+<li>在成员变更过程中, 例如上面需要将DC-1中的 a 节点迁移到 d 节点, 中间状态 DC-1 有 ad 2个节点. 这时如果 DC-1 跟外界联系中断, 由于4节点的 majority 需要至少3个节点, 导致 DC-1 内部无法选出 leader, DC-2 和 DC-3 也不能一起选出一个leader.</li>
+</ul>
+<p>在4节点的中间状态, 任一 majority 都必须包含 DC-1, 从而 DC-1 就成了系统的<strong>故障单点</strong>.</p>
+<p>当时给东旭一个提权重的方式解决这个问题. 后来想来这可能是一个分布式生产环境中比较常见的问题, 于是做下整理, 这个版本比当时给东旭的解决方案简化了一下, 加了一些简单的证明.</p>
+<hr>
+<p>这个问题的根本原因在于, <a target="_blank" rel="noopener" href="https://raft.github.io/">Raft</a> 单步变更算法对 quorum 定义得过于死板, 仅用了 majority. 解决问题的关键就在于打破这个限制, 我们将从 quorum 的视角解释为何 Raft 的单步变更是一个 <strong>看起来很香的鸡肋</strong>. 然后再从工程的角度找一个简单又容易的实现方案, 也就是joint consensus.</p>
+<p>从 quorum 的视角分析系统的方法, 可以参考我之前这篇文章: <a target="_blank" rel="noopener" href="https://blog.openacid.com/algo/quorum/">多数派读写的少数派实现</a> .</p>
+<h3 id="分析和尝试"><a href="#分析和尝试" class="headerlink" title="分析和尝试"></a>分析和尝试</h3><p>先看看在这个问题中, 整个系统的 quorum 集合都有哪些:</p>
+<ul>
+<li>初始状态 abc 的 quorum 的集合是 abc 所有的 majority: M(abc) &#x3D; {ab, ac, bc}, (abc虽然也是一个quorum, 但可用ab ∪ bc得到, 就不必列出了, 我们只需要列出 quorum 集合中无法由并集求出的那些集合);</li>
+<li>最终状态 bcd 的 quorum 的集合 M(bcd) &#x3D; {bc, cd, bd};</li>
+<li>单步变更的中间状态 abcd 的 quorum 集合也是一个 majority 集合: M(abcd) &#x3D; {abc, abd, acd, bcd};</li>
+</ul>
+<p>单步变更的过程是也就是 quorum 集合变化的过程:</p>
+<p><strong>M(abc) → M(abcd) → M(bcd)</strong></p>
+<p>在我们这个网络割裂造成的可用性问题中, 直接原因是中间状态的 quorum 要求至少3个节点, 如果网络割裂成<code>ad | bc</code>时, ad 或 bc 都不是一个 quorum. 导致无法选主.</p>
+<p>那么要解决这个问题似乎也很简单: 在4节点的中间状态中, 试试也 <strong>允许 bc 作为一个合法的 quorum</strong> 看行不行? 重新定义4节点 abcd 的 quorum 集合是:</p>
+<p>Q(abcd) &#x3D; M(abcd) ∪ {bc}</p>
+<p>即, <strong>如果一条日志复制到 bc 或 abcd 的一个 majority, 都可以commit.</strong></p>
+<blockquote>
+<p>因为 bc 和 M(abcd) 中每个 quorum 都有交集, 加入 bc 后的 Q(abcd) 还是一个完整的 quorum 集合, 那就可以在新的中间状态安全的运行 paxos 或 Raft. 一致性仍然得到了保证!</p>
+</blockquote>
+<p>而整个变更过程也变成了: M(abc) → M(abcd) ∪ {bc} → M(bcd).</p>
+<p>另外, <strong>如果 Raft 保证 M(abc) → M(abcd) 的单步变更正确性, 那它也可以保证 M(abc) → M(abcd) ∪ {bc} 的正确性</strong>.</p>
+<blockquote>
+<p>这是因为 Raft 单步变更的正确性保证是: 两个节点集合 C₁ 到 C₂ 的变更中, C₁ 的一个 quorum 跟 C₂ 的一个 quorum 都有交集.</p>
+<p>同理 M(abcd) ∪ {bc} → M(bcd) 也能保证正确.</p>
+</blockquote>
+<p>这样我们就从治标的层面上解决了变更过程中的网络割裂造成的可用性问题.</p>
+<p>然后再深入一点, 4节点的中间状态的 majority 具有这种可用性缺陷的原因在于, <strong>majority 集合 M(abcd) 不是 4节点的最大的 quorum 集合</strong>, majority 在节点数是 <strong>奇数</strong> 的情况下还算勉强可以用, 解决了大多数问题. 而在节点数是 <strong>偶数</strong> 的时候, <strong>majority 没有能力描述系统最大的 quorum 集合</strong>.</p>
+<p><strong>majority 是 Raft 设计上的第一个不足</strong>. Raft 选择 majority 的同时, 就自宫的降低了自己的可用性.</p>
+<h4 id="4节点系统的-majority-的缺陷"><a href="#4节点系统的-majority-的缺陷" class="headerlink" title="4节点系统的 majority 的缺陷"></a>4节点系统的 majority 的缺陷</h4><p>4节点系统中, 除了4个3节点的 quorum, 还可以至多包含3个2节点的quorum:</p>
+<p>我们可以为4节点系统设计一个改进版的 quorum 集合 Q’(abcd) &#x3D; M(abcd) ∪ <strong>{ab, bc, ac}</strong>, 可以看到 Q’(abcd) 中任意2个元素都有交集, 运行 paxos 或 Raft 是完全没有问题的.</p>
+<p>很多分布式系统的论文描述都以奇数个节点作为前提假设. 因为奇数节点可用性的性价比更高, 而忽略了偶数节点数的情况的介绍.</p>
+<h4 id="majority-的扩张"><a href="#majority-的扩张" class="headerlink" title="majority 的扩张"></a>majority 的扩张</h4><p>综上, 我们可以改进下集群的 quorum 配置, 来提升系统的可用性(解决二分网络割裂问题). 假设节点集合是C, 例如 C &#x3D; {a,b,c}</p>
+<ul>
+<li><p>对奇数节点, n &#x3D; 2k+1, 还是沿用 <strong>多数派</strong> 节点的集合, 大部分场合都可以很好的工作:</p>
+<p>[Q_{odd}(C) &#x3D; M(C) &#x3D; { q : q \subseteq C, |q| &gt; |C|&#x2F;2 }]</p>
+</li>
+<li><p>对偶数节点, n &#x3D; 2k, <strong>因为n&#x2F;2个节点跟n&#x2F;2+1个节点一定有交集</strong>, 我们可以向 M(C) 中加入几个大小为 n&#x2F;2 的节点集合, 再保证所有加入的 n&#x2F;2 个节点的集合都有交集, 就可以构建一个扩张的 quorum 集合了.</p>
+<p>以本文的场景为例,</p>
+<ul>
+<li>可以设置 Q’ &#x3D; M(abcd) ∪ {ab, bc, ca}, Q’中任意2个元素都有交集;</li>
+<li>也可以是 Q’ &#x3D; M(abcd) ∪ {bc, cd, bd};</li>
+<li>但不能是 Q’ &#x3D; M(abcd) ∪ {ab, bc, cd}, 因为 ab 和 cd 没有交集;</li>
+</ul>
+<p>要找到一个更好的偶节点的 quorum 集合, 一个方法是可以把偶数节点的集群看做是一个奇数节点集群加上一个节点x: (D &#x3D; C \cup {x})</p>
+<p>于是偶数节点的 quorum 集合就可以是 M(D) 的一个扩张:</p>
+<p>[Q_{even}(D)_x &#x3D; M(D) \cup M(D \setminus {x})]</p>
+<p>当然这个x可以随意选择, 例如在abcd的例子中, 如果选x &#x3D; d, 那么 Q’ &#x3D; M(abcd) ∪ {ab, bc, ca}; 如果选x &#x3D; a, 那么 Q’ &#x3D; M(abcd) ∪ {bc, cd, bd}. 这2个4节点 quorum 集合比 M(abcd) 包含更多的 quorum, 因此都可以提供比 M(abcd) 更好的可用性, 在本文开始提出的问题中, 都可以解决本文开头提到的网络割裂的问题.</p>
+</li>
+</ul>
+<h3 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h3><p>看了这几个例子之后, 我们发现, 成员变更的中间状态不需要必须是 majority 的 quorum 集合, 只要满足某些变更的正确性条件, 并包含bc就可以了.</p>
+<p>例如, 在变更的中间状态,</p>
+<ul>
+<li>可以不选 M(abcd) ∪ {ab, bc, ac},</li>
+<li>选 {abc, abd, acd, bcd, bc} 也可以,</li>
+<li>去掉abc, 选{abd, acd, bcd, bc} 也可以.</li>
+</ul>
+<p>而且, 似乎那个看起来复杂(实则更简单的) joint consensus 也可以.</p>
+<h3 id="成员变更的正确性条件"><a href="#成员变更的正确性条件" class="headerlink" title="成员变更的正确性条件"></a>成员变更的正确性条件</h3><p>我们都用 quorum 集合的方式, 替代节点集合方式来描述系统. 就像 <a target="_blank" rel="noopener" href="https://blog.openacid.com/algo/quorum/">多数派读写的少数派实现</a> 中描述的. 例如:</p>
+<ul>
+<li>3节点 {abc}, 选择 majority 作为 quorum 集合, 则可以定义这个系统是 Q(abc) &#x3D; {ab,bc,ca}</li>
+<li>4节点 {abcd}, 选择 majority 作为 quorum 集合, 则定义这个系统是 Q(abcd) &#x3D; {abc,abd,acd,bcd},</li>
+<li>4节点 {abcd}, 选择 majority 的一个扩张作为 quorum 集合, 可以被定义为 Q’(abcd) &#x3D; {abc,abd,acd,bcd,ab,bc,ac},</li>
+</ul>
+<p>要选择一个正确且高效的成员变更算法, 需要满足几个条件. 假设系统要从 Q₁ 变更到 Q₂:</p>
+<ul>
+<li>提交的变更必须可见, 换句话说, 如果系统中有一个已提交的变更, 未提交的变更必须能被识别出来.</li>
+<li>并发的变更只有一个能成功, 因此多个变更进程必须选择一个相同的 Q 作为提交变更的 quorum 集合. 多个进程共识的数据只有 Q₁, 因此变更必须提交到 Q₁ 或 Q₁ 的一个确定的扩张.</li>
+<li>变更必须提交到 Q₂ 中的一个 quorum 中.</li>
+</ul>
+<blockquote>
+<p>然鹅, Raft 最初的单步变更算法没有满足上面的第1条, 后来作者做了修正, 我们最后来聊.</p>
+</blockquote>
+<h3 id="一定要用joint-consensus"><a href="#一定要用joint-consensus" class="headerlink" title="一定要用joint consensus"></a>一定要用joint consensus</h3><p>joint consensus 完全满足上面的正确性保证, 且我们将看到, 它刚好在网络割裂的问题上有很好的表现.</p>
+<p>从abc变更到bcd的过程中, joint consensus的中间状态 是通过 M(abc) 和 M(bcd) 的乘积构建的: Q &#x3D; M(abc) x M(bcd); 即, 一个joint quorum 同时包含 M(abc) 的一个 quorum 也同时包含 M(bcd) 的 quorum.</p>
+<p>在我们的例子里, M(abc) &#x3D; {ab,bc,ca}, M(bcd) &#x3D; {bc, cd, bd}, 因此:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">M(abc) x M(bcd) = &#123;</span><br><span class="line">    ab ∪ bc,</span><br><span class="line">    ab ∪ cd,</span><br><span class="line">    ab ∪ bd,</span><br><span class="line">    bc ∪ bc,</span><br><span class="line">    bc ∪ cd,</span><br><span class="line">    bc ∪ bd,</span><br><span class="line">    ac ∪ bc,</span><br><span class="line">    ac ∪ cd,</span><br><span class="line">    ac ∪ bd,</span><br><span class="line">&#125; = &#123;</span><br><span class="line">    abc,</span><br><span class="line">    abcd,</span><br><span class="line">    abd,</span><br><span class="line">    acd,</span><br><span class="line">    bc,</span><br><span class="line">    bcd,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>刚好就是M(abcd) ∪ {bc}</strong></p>
+<p>太优秀了有木有!!!</p>
+<p>容易看出, joint consensus 不仅满足了成员变更的正确性条件, 而且刚好满足了我们的所有要求:</p>
+<ul>
+<li>容忍1个节点宕机;</li>
+<li>一定包含{bc}, 容忍<code>ad | bc</code>的网络隔离.</li>
+<li>另外, 整个变更过程, 不论有没有切换leader, 都可以通过2条日志的commit来完成.</li>
+</ul>
+<p>太优秀了有木有!!!</p>
+<p>太优秀了有木有!!!</p>
+<h3 id="Raft-单步变更的bug"><a href="#Raft-单步变更的bug" class="headerlink" title="Raft 单步变更的bug"></a>Raft 单步变更的bug</h3><p>不仅 Raft 的单步变更无法更详细的指定偶数节点集群的 quorum 集合, 更严重的是, 它在最初提出时是有 bug 的. 看似巧妙实则幼稚的单步变更, 在修正后就跟 joint consensus 相比没有任何优势了.</p>
+<p>单步变更在 leader 切换和成员变更同时进行时会出现bug. 这个 bug 在2015年就已经被作者指出了:</p>
+<blockquote>
+<p>Unfortunately, I need to announce a bug in the dissertation version of membership changes (the single-server changes, not joint consensus). The bug is potentially severe, but the fix I’m proposing is easy to implement.</p>
+</blockquote>
+<p>以下是一个单步变更出 bug 的例子, 原成员是4节点abcd, 2个进程分别要加入u和加入v, 如果中间出现换主, 就会丢失一个已提交的变更:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">C₀ = &#123;a, b, c, d&#125;</span><br><span class="line">Cᵤ = C₁ ∪ &#123;u&#125;</span><br><span class="line">Cᵥ = C₁ ∪ &#123;v&#125;</span><br><span class="line"></span><br><span class="line">Lᵢ: Leader in term `i`</span><br><span class="line">Fᵢ: Follower in term `i`</span><br><span class="line">☒ : crash</span><br><span class="line"></span><br><span class="line">    |</span><br><span class="line"> u  |         Cᵤ                  F₂  Cᵤ</span><br><span class="line">--- | ----------------------------------</span><br><span class="line"> a  | C₀  L₀  Cᵤ  ☒               L₂  Cᵤ</span><br><span class="line"> b  | C₀  F₀          F₁          F₂  Cᵤ</span><br><span class="line"> c  | C₀  F₀          F₁  Cᵥ          Cᵤ</span><br><span class="line"> d  | C₀              L₁  Cᵥ  ☒       Cᵤ</span><br><span class="line">--- | ----------------------------------</span><br><span class="line"> v  |                     Cᵥ                  time</span><br><span class="line">    +--------------------------------------------&gt;</span><br><span class="line">          t₁  t₂  t₃  t₄  t₅  t₆  t₇  t₈</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>t₁: <code>abcd</code> 4节点在 term 0 选出leader&#x3D;<code>a</code>, 和2个follower <code>b</code>, <code>c</code>;</li>
+<li>t₂: <code>a</code> 广播一个变更日志<code>Cᵤ</code>, 使用新配置<code>Cᵤ</code>, 只发送到<code>a</code>和<code>u</code>, 未成功提交;</li>
+<li>t₃: <code>a</code> 宕机</li>
+<li>t₄: <code>d</code> 在 term 1 被选为leader, 2个follower是<code>b</code>,<code>c</code>;</li>
+<li>t₅: <code>d</code> 广播另一个变更日志<code>Cᵥ</code>, 使用新配置<code>Cᵥ</code>, 成功提交到<code>c</code>,<code>d</code>,<code>v</code>;</li>
+<li>t₆: <code>d</code> 宕机</li>
+<li>t₇: <code>a</code> 在term 2 重新选为leader, 通过它本地看到的新配置<code>Cᵤ</code>, 和2个follower <code>u</code>, <code>b</code>;</li>
+<li>t₈: <code>a</code> 同步本地的日志给所有人, 造成已提交的<code>Cᵥ</code>丢失.</li>
+</ul>
+<p>作者给出了这个问题的修正方法, 修正步骤很简单, 跟Raft的commit条件如出一辙: <strong>新leader必须提交一条自己的term的日志, 才允许接变更日志</strong>:</p>
+<blockquote>
+<p>The solution I’m proposing is exactly like the dissertation describes except that a leader may not append a new configuration entry until it has committed an entry from its current term.</p>
+</blockquote>
+<p>在上面这个例子中, 对应的就是L₁必须提交一条NoOp的日志: 以便L₂能发现自己的日志是旧的, 阻止L₂选为leader.</p>
+<p>但是, 你品, 你细品…</p>
+<p>品完后笔者一拍大腿: 这个修正实际上就是将单步变更升级成了joint consensus, 本质上都变成了: 一条变更在旧的配置中必须通过quorum互斥, 只能有1个变更被认为是committed. 单步变更需要一条业务日志或一条NoOp日志完成这件事情, joint consensus直接完成了这件事情:</p>
+<p><strong>要保证正确性, 每次单步变更需要2次日志提交</strong>.</p>
+<hr>
+<p>单步变更之所以被提出, 起初是为了简化一些场景, 但实际上正确的单步变更没有任何简化, 反而更复杂了:</p>
+<p>例如在 abc 到 bcd 的变更中, 使用单步变更算法, 需要2~4条日志, 如果用joint consensus, 只需要2条日志.</p>
+<p>有人会说, 单步变更最少也只需要2条日志, 并且是大多数情况下都只需要2条日志. 但代码不是拼概率的, 任何一个小概率分支, 都必须被代码逻辑覆盖到. 即使这个分支被执行的几率是有万分之一. 由此导致的结果就是, 为了保证正确性, 单步变更必须使用跟joint consensus 几乎同样复杂的逻辑, 实现2步变更的逻辑, 而执行效率上, 没有任何优势.</p>
+<p>Raft 作为 paxos 一个实现 (谁跟我杠paxos跟Raft不一样我跟谁急. 它的term, log seq对应ballot num, commit 对应 accept 和 learn, 集群变更是一个特殊的paxos 实例), 是理论到工程实现的一个漂亮的桥梁, 也是因为Raft实现的太漂亮, 导致一个设计失误, 也被广泛传播了.</p>
+<p>东旭也表示 TiDB 下一步就会将单步变更升级为joint consensus, 彻底解决单步变更带来的可用性问题以及工程实现上的麻烦.</p>
+<p>顺祝PingCAP的好基友们新的一年里事业迎风破浪, :DDD</p>
+<p>本文链接: <a target="_blank" rel="noopener" href="https://blog.openacid.com/distributed/raft-bug/">https://blog.openacid.com/distributed/raft-bug/</a></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/" rel="prev" title="etcd_raft源码解析-14领导权转移">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-14领导权转移
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/" rel="next" title="etcd_raft源码解析-15Ready的处理">
+      etcd_raft源码解析-15Ready的处理 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98"><span class="nav-number">1.</span> <span class="nav-text">问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%86%E6%9E%90%E5%92%8C%E5%B0%9D%E8%AF%95"><span class="nav-number">2.</span> <span class="nav-text">分析和尝试</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#4%E8%8A%82%E7%82%B9%E7%B3%BB%E7%BB%9F%E7%9A%84-majority-%E7%9A%84%E7%BC%BA%E9%99%B7"><span class="nav-number">2.1.</span> <span class="nav-text">4节点系统的 majority 的缺陷</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#majority-%E7%9A%84%E6%89%A9%E5%BC%A0"><span class="nav-number">2.2.</span> <span class="nav-text">majority 的扩张</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="nav-number">3.</span> <span class="nav-text">解决方案</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E7%9A%84%E6%AD%A3%E7%A1%AE%E6%80%A7%E6%9D%A1%E4%BB%B6"><span class="nav-number">4.</span> <span class="nav-text">成员变更的正确性条件</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E5%AE%9A%E8%A6%81%E7%94%A8joint-consensus"><span class="nav-number">5.</span> <span class="nav-text">一定要用joint consensus</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Raft-%E5%8D%95%E6%AD%A5%E5%8F%98%E6%9B%B4%E7%9A%84bug"><span class="nav-number">6.</span> <span class="nav-text">Raft 单步变更的bug</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

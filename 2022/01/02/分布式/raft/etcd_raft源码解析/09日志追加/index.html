@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="背景下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志追加的内容，节选自“3.5 Log replication”和“3.6.2 Committing entries from previous terms”。 选出Leader后，它就可以处理Client的请求。Client的请求中包含了要在复制状态机（the replicated">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-09日志追加">
+<meta property="og:url" content="http://example.com/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="背景下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志追加的内容，节选自“3.5 Log replication”和“3.6.2 Committing entries from previous terms”。 选出Leader后，它就可以处理Client的请求。Client的请求中包含了要在复制状态机（the replicated">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-01-01T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:39:26.668Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-09日志追加 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-09日志追加
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-01-02 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-02T00:00:00+08:00">2022-01-02</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:26" itemprop="dateModified" datetime="2022-06-28T09:39:26+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志追加的内容，节选自“3.5 Log replication”和“3.6.2 Committing entries from previous terms”。</p>
+<p>选出Leader后，它就可以处理Client的请求。Client的请求中包含了要在复制状态机（the replicated state machine）中执行的命令。Leader将该命令作为新的条目追加到其日志中，然后向所有Follower发送AppendEntries RPC使他们复制该条目。当该条目安全的复制到大多数Follower上之后，Leader将该条目应用到状态机，并且将执行结果回复给Client。如果Follower崩溃或者运行的太慢，或者网络中丢包了，Leader会不断的重发AppendEntries（即使Leader已经回复Client了），直到所有Follower最终都保存了该条目为止。</p>
+<span id="more"></span>
+<p>日志条目中包含一条状态机命令，以及Leader创建该条目时的Term值。该Term用于检查节点间日志是否一致，并且用于保证表3.2中的一些安全属性。每个日志条目还有一个Index，标识其在日志中的位置。</p>
+<p>一旦创建日志条目的Leader在过半节点上复制了该条目，就会提交该条目。这也会提交Leader日志中之前的所有条目，包括前任Leader创建的条目。<font color=red>Leader跟踪记录已提交日志的最大Index，即commitIndex，并且把该Index包含在AppendEntries（包括心跳消息）中，这样集群中的其他节点最终也会知道该Index。</font>实际上，所谓标记某条目已提交，就是通过递增commitIndex实现的。</p>
+<p>我们设计了Raft的日志机制，以便集群中不同节点上的日志能够保持一致。这种机制简化了系统行为，使其更好预测，更重要的是，这是确保安全性的重要组件。<font color=red>Raft保证下面的属性，这些属性共同构成图3.2中的日志匹配属性</font>：</p>
+<ul>
+<li>不同节点的日志中，如果两个条目的Index和Term都相同，那它们保存了相同的命令；</li>
+<li>不同节点的日志中，如果两个条目的Index和Term都相同，那在它们之前的日志条目也是完全相同的；</li>
+</ul>
+<p><font color=red>第一个属性是这样保证的：Leader在特定的Index和特定Term下只会创建一个条目，而且从来不会改变日志中的条目的位置；第二个属性是靠处理AppendEntries RPC时执行的一致性检查来保证的。</font>当Leader发送AppendEntries  RPC时，RPC中包含了preLogIndex和preLogTerm，它们表示Leader本地日志中，位于RPC中包含的新条目之前一个条目的Index和Term。如果Follower在其本地日志中找不到相同的Index和Term，就会拒绝该RPC。所以，只要AppendEntries成功返回，Leader就知道Follower的日志中，在RPC中的新条目，以及之前的条目，都跟自己是一样的。</p>
+<p>正常运行时，Leader和Follower的日志保持一致，所以AppendEntries的一致性检查不会失败。但是，一旦Leader崩溃就可能导致日志不一致（旧Leader可能还没有完全复制其日志中的所有条目）。这种不一致会随着一系列的Leader和Follower的崩溃而加剧。</p>
+<p><font color=red>Raft中，处理这种不一致的方式，是Leader强迫Follower复制自己的日志。这表示Follower日志中的冲突条目会被Leader中的日志条目覆盖。</font></p>
+<p><font color=red>为了使Follower的日志与自己的保证一致，Leader必须找到两个节点日志中一致的Index最大的条目，删除Follower日志中该条目之后的所有日志，然后将自己日志中该条目之后的所有条目发给Follower。这些动作发生在AppendEntries的一致性检查过程中。</font>Leader为每个Follower维护一个nextIndex，表示Leader会发送给Follower的下一条日志条目的Index。Leader掌权时，会把所有nextIndex初始化为其本地日志中最后一个条目的Index加1。如果某个Follower的日志与Leader不一致，那AppendEntries的一致性检查就会失败，Follower对该AppendEntries回复“拒绝”后，Leader减少该Follower的nextIndex的值，重发AppendEntries RPC。最终nextIndex会减少到Leader和Follower的日志匹配的点。在这之后，AppendEntries就会成功，从而删除Follower中冲突的日志条目，并把Leader的日志追加到Follower中。<font color=red>一旦AppendEntries成功后，Follower的日志就与Leader保持一致了，并在当前任期内一直保持一致。</font></p>
+<p>为了节省带宽，在发现与Follower的日志匹配点之前，Leader可以发送没有条目的AppendEntries RPC。然后一旦nextIndex紧跟在matchIndex之后时，说明找到了匹配点，Leader才开发发送实际的条目。</p>
+<p>Leader知道如果一个当前任期创建条目在内复制到了过半节点上，那就可以提交该条目。<font color=red>如果Leader在提交条目之前崩溃了，那后续的Leader会尝试继续完成该条目的复制。然而，如果某个之前任期创建的条目已经复制到过半节点上了，Leader也不能立即将其提交。</font></p>
+<p>考虑下面的场景：</p>
+<ul>
+<li>(a)S1是Leader，把Index2_Term2的条目复制到了部分节点上；</li>
+<li>(b)S1崩溃了，S3以Term 3赢得了S3、S4以及自己的选票，成为了Leader，并且创建了Index2_Term3的条目；</li>
+<li>(c)S5崩溃了，S1重启了，以Term 4成为新Leader，继续复制日志，并把Index2_Term2的条目复制到了过半节点上。</li>
+<li>现在分两种情况：<ul>
+<li>(d1)如果S1没有复制新条目，则Index2_Term2的条目就是S1、S2、S3的最后一个条目，此时S1崩溃了，S5的日志比较新，又重新当选了，继续复制Index2_Term3的条目，它就覆盖了S1、S2和S3上的Index2_Term2条目；</li>
+<li>(d2)如果S1在崩溃之前以自己的Term复制并提交了新条目，即Index3_Term4，则S5不会当选，并且Index3_Term4之前的Index2_Term2也顺便被提交了。</li>
+</ul>
+</li>
+</ul>
+<p><font color=red>如果在(d1)场景下S1直接提交了Index2_Term2条目，则S5当选后用Index3_Term4覆盖了已提交的条目，这违反了图3.2中的状态机安全性，造成了不同节点的状态机应用了不同的日志条目。为了避免出现这种情况，Raft不能仅通过计算副本数来提交之前任期创建的条目。针对当前任期创建的条目，通过计算副本数进行提交才是安全可行的，根据日志匹配属性，一旦当前任期中的条目以这种方法（计算副本数）提交了，那之前的条目也就间接的提交了。</font></p>
+<hr>
+<h3 id="日志追加使用的RPC消息"><a href="#日志追加使用的RPC消息" class="headerlink" title="日志追加使用的RPC消息"></a>日志追加使用的RPC消息</h3><p>外部模块向<code>raft模块</code>提交提案，如果收到提案的是<code>Leader</code>，则其将提案转化为日志条目，然后将日志条目追加到自己以及所有<code>Follower</code>的日志中；如果收到提案的是<code>Follower</code>，则它需要将提案消息转发给<code>Leader</code>；</p>
+<p><code>pb.MsgProp</code>消息就表示提案消息，其格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	Type: pb.MsgProp, </span><br><span class="line">	Entries: []pb.Entry&#123;&#123;Data: data&#125;&#125;,</span><br><span class="line">	From: id,</span><br><span class="line">	To: leaderId,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>这种类型的消息没有设置<code>Term</code>，或者说它的<code>Term</code>值被置为<code>0</code>，表示本地数据。即使是在<code>Follower</code>收到提案，需要将<code>pb.MsgProp</code>消息转发给<code>Leader</code>时，在<code>raft.send</code>函数中，针对<code>pb.MsgProp</code>消息，也不会设置<code>Term</code>。</li>
+<li>如果是<code>Leader</code>直接收到提案，则其中的<code>From</code>字段是在<code>node.run</code>中收到<code>pb.MsgProp</code>消息时设置为节点自己的<code>id</code>；如果是<code>Follower</code>收到提案转发<code>pb.MsgProp</code>消息给<code>Leader</code>时，在<code>raft.send</code>函数中，会设置<code>From</code>为自己的<code>id</code>；</li>
+<li>如果是<code>Leader</code>直接收到提案，则其中的<code>To</code>字段不会设置；如果是<code>Follower</code>收到提案需要转发<code>pb.MsgProp</code>消息给<code>Leader</code>时，在<code>stepFollower</code>函数中，设置<code>To</code>字段为其保存的<code>Leader</code>的<code>id</code>；</li>
+</ul>
+<p><code>Leader</code>收到提案后，需要将其转换成日志条目，并通过<code>AppendEntries</code>消息将日志条目追加到<code>Follower</code>中。这里所谓的<code>AppendEntries</code>消息，就是<code>pb.MsgApp</code>消息。<code>pb.MsgApp</code>的格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	Type: pb.MsgApp, </span><br><span class="line">	Entries: ents, <span class="comment">//日志条目</span></span><br><span class="line">	From: id, <span class="comment">//Leader自己的id</span></span><br><span class="line">	To: id, <span class="comment">//Follower的id</span></span><br><span class="line">	Index: Progress.Next<span class="number">-1</span>, <span class="comment">//Follower对应的Progress中的Next-1，对应论文中的prevLogIndex</span></span><br><span class="line">	LogTerm: term, <span class="comment">//Index对应的Term，对应论文中的prevLogTerm</span></span><br><span class="line">	Commit: raftLog.committed <span class="comment">//Leader本地日志的committed Index</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>Follower</code>收到<code>pb.MsgApp</code>消息，追加完日志后会回复<code>pb.MsgAppResp</code>响应消息。如果追加日志成功，则回复的<code>pb.MsgAppResp</code>消息格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	To: m.From, <span class="comment">//发送AppendEntry消息的Leader的id</span></span><br><span class="line">	Type: pb.MsgAppResp, </span><br><span class="line">	Index: mlastIndex, <span class="comment">//Follower已经复制的日志条目的最大Index</span></span><br><span class="line">	From: id, <span class="comment">//Follower自己的id</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果追加日志失败，则回复的<code>pb.MsgAppResp</code>消息格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">pb.Message&#123;</span><br><span class="line">	To:         m.From,  <span class="comment">//发送AppendEntry消息的Leader的id</span></span><br><span class="line">	Type:       pb.MsgAppResp,</span><br><span class="line">	Index:      m.Index, <span class="comment">//pb.MsgApp消息中的Index，即prevLogIndex</span></span><br><span class="line">	Reject:     <span class="literal">true</span>, <span class="comment">//表示追加日志失败</span></span><br><span class="line">	RejectHint: hintIndex, <span class="comment">//通过raftLog.findConflictByTerm(min(m.Index, raftLog.lastIndex()), m.LogTerm) 计算得到的日志Index，Leader收到后根据该值决定下次发送的日志条目</span></span><br><span class="line">	LogTerm:    hintTerm, <span class="comment">//RejectHint对应的日志Term</span></span><br><span class="line">&#125; </span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="具体流程"><a href="#具体流程" class="headerlink" title="具体流程"></a>具体流程</h3><h4 id="发起并处理提案"><a href="#发起并处理提案" class="headerlink" title="发起并处理提案"></a>发起并处理提案</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Propose(ctx context.Context, data []<span class="type">byte</span>) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> stepWait(ctx context.Context, m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> stepWithWaitOption(ctx context.Context, m pb.Message, wait <span class="type">bool</span>) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>外部模块通过<code>node.Propose</code>方法发起提案。该方法根据<code>data</code>，组装<code>pb.MsgProp</code>消息，调用<code>n.stepWait</code>方法发出去。这里组装的<code>pb.MsgProp</code>消息中只包含了<code>Type</code>和<code>Entries</code>字段。</p>
+<p><code>stepWait</code>方法，以<code>wait</code>为<code>true</code>，通过<code>stepWithWaitOption</code>实现，所以这种消息是需要等待处理结果的。</p>
+<p><code>stepWithWaitOption</code>方法中，针对<code>pb.MsgProp</code>消息，首先将<code>pb.MsgProp</code>消息和一个接收应答的通道<code>pm.result</code>，封装成一个<code>msgWithResult</code>结构，将其发给<code>node.propc</code>通道，然后等待<code>pm.result</code>上的回复；</p>
+<hr>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br></pre></td></tr></table></figure>
+
+<p>在<code>node.run</code>方法中，接收到<code>node.propc</code>通道上的消息后，从中解析出<code>pb.MsgProp</code>消息以及发送应答的通道<code>pm.result</code>。设置<code>pb.MsgProp</code>中的<code>From</code>字段为自己的<code>id</code>，然后调用<code>raft.Step</code>方法处理<code>pb.MsgPro</code>p消息，然后将返回的<code>err</code>发送到<code>pm.result</code>中，最后关闭<code>pm.result</code>。</p>
+<hr>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepFollower</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepLeader</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>在<code>raft.Step</code>方法中，针对<code>pb.MsgProp</code>消息，都是通过最后<code>raft.step</code>回调函数处理的。</p>
+<p>如果是<code>Follower</code>，则<code>raft.step</code>就是<code>stepFollower</code>，该函数中针对<code>pb.MsgProp</code>消息的处理逻辑是：</p>
+<ul>
+<li>检查当前是否存在<code>Leader</code>，如果没有，则直接返回<code>ErrProposalDropped</code>错误；</li>
+<li>如果配置项<code>raft.disableProposalForwarding</code>为<code>true</code>，表示不可以转发提案给<code>Leader</code>，所以返回<code>ErrProposalDropped</code>错误；</li>
+<li>最后，设置消息中的<code>To</code>字段，然后调用<code>raft.send</code>函数发给<code>Leader</code>；</li>
+</ul>
+<p>如果是<code>Leader</code>，则<code>raft.step</code>就是<code>stepLeader</code>，该函数中针对<code>pb.MsgProp</code>消息的处理逻辑是：</p>
+<ul>
+<li>如果消息中的<code>Entries</code>为空，则调用<code>raft.logger.Panicf</code>，记录错误信息；</li>
+<li>如果<code>raft.prs.Progress[r.id]</code>为<code>nil</code>，说明当前节点不是集群中的节点（比如该节点之前是<code>Leader</code>，现在被移除了），返回<code>ErrProposalDropped</code>错误；</li>
+<li>如果<code>raft.leadTransferee</code>不是<code>None</code>，说明正在进行领导权转移，因此直接丢弃，返回<code>ErrProposalDropped</code>错误；</li>
+<li>接下来轮训<code>m.Entries</code>中的每条消息，针对消息中的配置变更消息进行检查和处理，比如不能允许多个配置变更并行执行，联合共识过程中保证收到正确的配置变更消息，具体参考《成员变更》；</li>
+<li>然后调用<code>raft.appendEntry</code>，将<code>m.Entries</code>追加到自己的日志中，如果该函数返回<code>false</code>，则返回<code>ErrProposalDropped</code>错误。该方法的具体流程参考下面；</li>
+<li>最后，调用<code>raft.bcastAppend</code>方法，向<code>Follower</code>追加日志。返回<code>nil</code>；</li>
+</ul>
+<hr>
+<h4 id="追加日志"><a href="#追加日志" class="headerlink" title="追加日志"></a>追加日志</h4><h5 id="Leader追加本地日志"><a href="#Leader追加本地日志" class="headerlink" title="Leader追加本地日志"></a>Leader追加本地日志</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> appendEntry(es ...pb.Entry) (accepted <span class="type">bool</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> maybeCommit() <span class="type">bool</span></span><br></pre></td></tr></table></figure>
+
+<p>该方法向本地日志中追加新的日志条目。逻辑是：</p>
+<ul>
+<li>首先调用<code>raft.raftLog.lastIndex</code>方法，获取本地日志（<code>raft.unstable</code>或<code>raft.storage</code>）中当前最后一个条目的<code>Index</code>，然后依次为<code>es</code>中的每个条目赋予新的<code>Term</code>和<code>Index</code>，其中<code>Term</code>就是当前<code>Leader</code>自己的<code>Term</code>，而<code>Index</code>，是<code>lastIndex+1+i</code>；</li>
+<li>调用<code>raft.increaseUncommittedSize(es)</code>，检查当前未提交的日志条目的总大小是否超过了限制，如果是的话则返回<code>false</code>；关于大小限制相关的逻辑，参考《Ready的处理及其他》</li>
+<li>然后调用<code>r.raftLog.append(es...)</code>，将<code>es</code>追加到本地日志（实际上就是<code>raft.unstable</code>）中，该方法返回最新的<code>lastIndex：li</code>；</li>
+<li>调用<code>raft.prs.Progress[r.id].MaybeUpdate(li)</code>，更新<code>Progress</code>中自己的<code>Progress.Match</code>信息；</li>
+<li>最后调用<code>raft.maybeCommit</code>方法，尝试更新本地<code>commitIndex</code>，即<code>raft.raftLog.committed</code>。该方法就是先调用<code>raft.prs.Committed</code>，得到已经成功复制到集群中过半节点的最大日志<code>Index</code>（即轮训<code>raft.prs</code>中每个节点的<code>Progress.Match</code>，找到过半节点的最大<code>Progress.Match</code>），然后调用<code>raft.raftlog.maybeCommit</code>方法，调整本地的<code>commitIndex</code>；</li>
+</ul>
+<hr>
+<h5 id="Leader向Follower发送pb-MsgApp消息"><a href="#Leader向Follower发送pb-MsgApp消息" class="headerlink" title="Leader向Follower发送pb.MsgApp消息"></a>Leader向Follower发送<code>pb.MsgApp</code>消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> maybeSendAppend(to <span class="type">uint64</span>, sendIfEmpty <span class="type">bool</span>) <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> sendAppend(to <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> bcastAppend()</span><br></pre></td></tr></table></figure>
+
+<p><code>raft.maybeSendAppend</code>方法由<code>Leader</code>调用，尝试向<code>Follower</code>发送日志条目或快照。日志条目对应的是<code>pb.MsgApp</code>消息，快照对应的是<code>pb.MsgSnap</code>消息（参考《日志压缩》）。</p>
+<ul>
+<li>参数<code>to</code>表示目标<code>Follower</code>的<code>id</code>；<code>sendIfEmpty</code>表示是否允许发送空的<code>pb.MsgApp</code>消息，这种空消息在新<code>Leader</code>上任后传递<code>commitIndex</code>时很有用；</li>
+<li>该方法返回<code>true</code>表示会向<code>Follower</code>发送<code>pb.MsgSnap</code>或<code>pb.MsgApp</code>消息，<code>false</code>表示不会向<code>Follower</code>发送任何消息；</li>
+</ul>
+<p><code>raft.maybeSendAppend</code>方法的逻辑如下：</p>
+<ul>
+<li>首先从<code>r.prs.Progress[to]</code>中得到<code>Follower</code>对应的<code>Progress：pr</code>，接下来都是根据该<code>Progress</code>中的信息决定发送的消息内容；</li>
+<li><code>pr.next</code>表示接下来要追加到<code>Follower</code>的日志起始索引。因此首先调用<code>r.raftLog.term(pr.Next - 1)</code>，获取前一个日志条目的<code>Term</code>，即<code>preLogTerm</code>，然后调用<code>r.raftLog.entries(pr.Next, r.maxMsgSize)</code>，获取要发送的日志条目；</li>
+<li>如果获取到的日志条目为空，并且参数<code>sendIfEmpty</code>为<code>false</code>，则直接返回<code>false</code>，表示本次没有日志条目可以发送给<code>Follower</code>；</li>
+<li>如果<code>r.raftLog.term(pr.Next - 1)</code>或<code>r.raftLog.entries(pr.Next, r.maxMsgSize)</code>返回的<code>err</code>不为<code>nil</code>，表示<code>pr.Next</code>已经没有对应的日志条目了，需要发送快照了，具体参考《日志压缩》；</li>
+<li>如果获取<code>term</code>或者日志条目时没有错误，则将获取到的日志条目组装到<code>pb.MsgApp</code>消息中：<ul>
+<li>将消息中的<code>Index</code>（即论文中的<code>prevLogIndex</code>）置为<code>pr.Next-1</code>，<code>LogTerm</code>（即论文中的<code>prevLogTerm</code>）置为<code>term</code>；</li>
+<li>消息中的<code>Commit</code>，就是本地<code>commitIndex</code>，即<code>raft.raftLog.committed</code>，实际上这也是整个集群的<code>commitIndex</code>。<code>Leader</code>向<code>Follower</code>发的消息中，大多都带有<code>commitIndex</code>，以便<code>Follower</code>能够及时更新<code>commitIndex</code>；</li>
+</ul>
+</li>
+<li>最后调用<code>send</code>发送消息。在<code>send</code>之前，如果日志条目不为空，则根据<code>pr</code>的状态更新<code>pr</code>的属性：<ul>
+<li>如果<code>Progress</code>状态是<code>tracker.StateReplicate</code>，则调用<code>pr.OptimisticUpdate</code>和<code>pr.Inflights.Add</code>，将<code>pr.Next</code>设置最后一条日志条目的索引，并将该索引添加到<code>pr.Inflights</code>中；</li>
+<li>如果<code>Progress</code>状态是<code>tracker.StateProbe</code>，则置<code>pr.ProbeSent</code> 为<code>true</code>；</li>
+<li>其他状态，直接<code>panic</code>；</li>
+</ul>
+</li>
+</ul>
+<p><code>raft.sendAppend</code>方法就是以<code>sendIfEmpty</code>为<code>true</code>调用<code>maybeSendAppend</code>，尝试向<code>Follower</code>发送<code>pb.MsgApp</code>或<code>pb.MsgSnap</code>消息。</p>
+<p><code>raft.bcastAppend</code>方法就是调用<code>ProgressTracker.Visit</code>方法，针对集群中除了自己以外的其他节点，调用<code>sendAppend</code>发送<code>AppendEntry</code>消息。</p>
+<hr>
+<h5 id="Follower处理pb-MsgApp消息，回复pb-MsgAppResp消息"><a href="#Follower处理pb-MsgApp消息，回复pb-MsgAppResp消息" class="headerlink" title="Follower处理pb.MsgApp消息，回复pb.MsgAppResp消息"></a>Follower处理<code>pb.MsgApp</code>消息，回复<code>pb.MsgAppResp</code>消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> handleAppendEntries(m pb.Message)</span><br></pre></td></tr></table></figure>
+
+<p><code>Follower</code>收到<code>pb.MsgApp</code>消息后，调用<code>raft.handleAppendEntries</code>方法进行处理，该方法就是根据不同的情况发送<code>pb.MsgAppResp</code>响应消息：</p>
+<ul>
+<li>如果消息中的<code>Index</code>（即<code>prevLogIndex</code>）小于<code>Follower</code>本地的<code>commitIndex</code>，则直接回复<code>pb.MsgAppResp</code>成功消息，设置其中的<code>Index</code>为<code>commitIndex</code>；</li>
+<li>接下来调用<code>raft.raftLog.maybeAppend</code>进行追加日志，并根据消息中的<code>Commit</code>字段尝试更新本地<code>commitIndex</code>。该方法如果返回<code>true</code>，则返回的<code>Index</code>就是<code>m.Entries</code>中最后一条日志的<code>Index</code>，所以将其作为<code>pb.MsgAppResp</code>消息中的<code>Index</code>字段，回复给<code>Leader</code>；</li>
+<li>如果<code>raft.raftLog.maybeAppend</code>返回<code>false</code>，说明追加失败，需要回复<code>Reject</code>为<code>true</code>的<code>pb.MsgAppResp</code>消息给<code>Leader</code>。该消息中需要附带<code>RejectHint</code>和对应的<code>LogTerm</code>，以便<code>Leader</code>决定下次重试的日志条目。具体是：<ul>
+<li>调用<code>raft.raftLog.findConflictByTerm(hintIndex, m.LogTerm)</code>，这里的<code>hintIndex</code>就是<code>min(m.Index, r.raftLog.lastIndex())</code>，这就表示要在<code>Follower</code>当前的日志中，找到<code>Term</code>小于等于<code>m.LogTerm</code>，<code>Index</code>小于等于<code>min(m.Index, lastIndex)</code>的最大<code>Index</code>，作为<code>MsgAppResp</code>消息中的<code>RejectHint</code>字段，并根据该字段得到对应的<code>Term</code>作为消息中的<code>LogTerm</code>，回复给<code>Leader</code>；</li>
+<li>关于<code>findConflictByTerm</code>更详细的解释参考《raft包–log》中的解释；</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h5 id="Leader处理pb-MsgAppResp响应消息"><a href="#Leader处理pb-MsgAppResp响应消息" class="headerlink" title="Leader处理pb.MsgAppResp响应消息"></a>Leader处理<code>pb.MsgAppResp</code>响应消息</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepLeader</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>该方法是<code>Leader</code>在收到各种消息后的处理逻辑。当收到的是<code>pb.MsgAppResp</code>消息时，其处理逻辑是：</p>
+<ul>
+<li>如果回复中的<code>Reject</code>为<code>true</code>，说明是<code>Follower</code>对于<code>pb.MsgApp</code>的失败回复：<ul>
+<li>在<code>m.LogTerm</code>大于<code>0</code>的情况下（<code>Follower</code>的日志为空时就会出现<code>LogTerm</code>为<code>0</code>的情况），调用<code>r.raftLog.findConflictByTerm(m.RejectHint, m.LogTerm)</code>，得到<code>nextProbeIdx</code>；如果<code>m.LogTerm</code>为<code>0</code>，则<code>nextProbeIdx</code>就是<code>m.RejectHint</code>；</li>
+<li>然后调用<code>pr.MaybeDecrTo(m.Index, nextProbeIdx)</code>，重新设置对应<code>Follower</code>的<code>pr.Next</code>，即下次要发送的日志条目起始索引；如果该函数返回<code>false</code>，表示<code>m.Index</code>是过期的回复消息，不再处理；否则调用<code>r.sendAppend</code>尝试再次发送<code>pb.MsgApp</code>消息；如果<code>pr</code>当前是<code>StateReplicate</code>状态，则直接调用<code>pr.BecomeProbe</code>转为<code>StateProbe</code>状态；</li>
+</ul>
+</li>
+<li>如果回复的<code>Reject</code>为<code>false</code>，则<code>pb.MsgApp</code>成功了：<ul>
+<li>此时<code>m.Index</code>实际上就是<code>Follower</code>已经复制的日志条目的最大<code>Index</code>，所以这里先调用<code>pr.MaybeUpdate(m.Index)</code>更新<code>pr.Match</code>。该函数返回<code>false</code>表示过期消息，不再继续处理。返回成功的情况下才继续下面的处理：</li>
+<li>如果<code>Progress</code>当前状态是<code>tracker.StateProbe</code>，则调用<code>pr.BecomeReplicate</code>将状态转移到<code>StateReplicate</code>，并把<code>pr.Next</code>置为<code>pr.Match+1</code>；</li>
+<li>如果<code>Progress</code>当前状态是<code>tracker.StateSnapshot</code>，并且新<code>pr.Match</code>大于等于<code>pr.PendingSnapshot</code>，则先调用<code>pr.BecomeProbe</code>转入<code>StateProbe</code>状态，然后调用<code>pr.BecomeReplicate</code>转入<code>StateReplicate</code>状态。新<code>pr.Match</code>就是回复中的<code>Index</code>，而<code>pr.PendingSnapshot</code>表示发送给<code>Follower</code>的<code>snapshot</code>的最后条目的<code>Index</code>，<code>pr.Match</code>大于等于<code>pr.PendingSnapshot</code>，就表示<code>Follower</code>应用了收到的<code>snapshot</code>；</li>
+<li>如果<code>Progress</code>当前状态已经是<code>StateReplicate</code>，则调用<code>Inflights.FreeLE</code>方法，调整<code>Inflights</code>内部状态，表示收到了<code>AppendEntry</code>对于<code>m.Index</code>的成功回复；</li>
+<li>接下来调用<code>raft.maybeCommit</code>方法，尝试更新本地<code>commitIndex</code>，即<code>raft.raftLog.committed</code>。该方法就是先调用<code>raft.prs.Committed</code>，得到已经成功复制到集群中过半节点的最大日志<code>Index</code>（即轮训<code>raft.prs</code>中每个节点的<code>Progress.Match</code>，找到过半节点的最大<code>Progress.Match</code>），然后调用<code>raft.raftlog.maybeCommit</code>方法，调整本地的<code>commitIndex</code>；</li>
+<li>如果<code>r.raftlog.maybeCommit</code>方法返回<code>true</code>，说明<code>commitIndex</code>得到了更新，因此需要及时通知给所有<code>Follower</code>更新<code>commitIndex</code>，所以，先调用<code>releasePendingReadIndexMessage</code>方法（<font color=red>参考《处理读请求》</font>），然后调用<code>raft.bcastAppend</code>，向集群所有<code>Follower</code>再次发送<code>pb.MsgApp</code>消息，主要是为了让其他<code>Follower</code>更新<code>commitIndex</code>；</li>
+<li>如果<code>r.raftlog.maybeCommit</code>方法返回<code>false</code>，并且之前该<code>Follower</code>对应的<code>Progress</code>是<code>Paused</code>的话，则调用<code>raft.sendAppend</code>针对该<code>Follower</code>消息发送<code>Paused</code>期间阻塞的<code>pb.MsgApp</code>消息，这里也是为了更新该<code>Follower</code>的<code>commitIndex</code>；</li>
+<li>接下来在循环中调用<code>raft.maybeSendAppend(m.From, false)</code>，直到该函数返回<code>false</code>。根据注释，之前的<code>raft.sendAppend</code>主要是为了更新<code>commitIndex</code>，而这里主要是为了尽可能多的发送包含日志条目的<code>pb.MsgApp</code>消息，因为收到了<code>pb.MsgApp</code>成功的回复后，该<code>Follower</code>对应的<code>Progress</code>状态就变成了<code>StateReplicate</code>；</li>
+<li>最后处理领导权转移流程，即如果该<code>Follower</code>就是<code>raft.leadTransferee</code>，即被转移的新<code>Leader</code>的话，而且该<code>Follower</code>的日志已经和当前<code>Leader</code>一样新，则调用<code>raft.sendTimeoutNow(m.From)</code>，发送选举定时器超时消息，使其开始选举；</li>
+</ul>
+</li>
+</ul>
+<hr>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/" rel="prev" title="etcd_raft源码解析-08选举和状态转换">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-08选举和状态转换
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" rel="next" title="raft大论文翻译-05日志压缩">
+      raft大论文翻译-05日志压缩 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0%E4%BD%BF%E7%94%A8%E7%9A%84RPC%E6%B6%88%E6%81%AF"><span class="nav-number">2.</span> <span class="nav-text">日志追加使用的RPC消息</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B7%E4%BD%93%E6%B5%81%E7%A8%8B"><span class="nav-number">3.</span> <span class="nav-text">具体流程</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8F%91%E8%B5%B7%E5%B9%B6%E5%A4%84%E7%90%86%E6%8F%90%E6%A1%88"><span class="nav-number">3.1.</span> <span class="nav-text">发起并处理提案</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E5%8A%A0%E6%97%A5%E5%BF%97"><span class="nav-number">3.2.</span> <span class="nav-text">追加日志</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#Leader%E8%BF%BD%E5%8A%A0%E6%9C%AC%E5%9C%B0%E6%97%A5%E5%BF%97"><span class="nav-number">3.2.1.</span> <span class="nav-text">Leader追加本地日志</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Leader%E5%90%91Follower%E5%8F%91%E9%80%81pb-MsgApp%E6%B6%88%E6%81%AF"><span class="nav-number">3.2.2.</span> <span class="nav-text">Leader向Follower发送pb.MsgApp消息</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Follower%E5%A4%84%E7%90%86pb-MsgApp%E6%B6%88%E6%81%AF%EF%BC%8C%E5%9B%9E%E5%A4%8Dpb-MsgAppResp%E6%B6%88%E6%81%AF"><span class="nav-number">3.2.3.</span> <span class="nav-text">Follower处理pb.MsgApp消息，回复pb.MsgAppResp消息</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Leader%E5%A4%84%E7%90%86pb-MsgAppResp%E5%93%8D%E5%BA%94%E6%B6%88%E6%81%AF"><span class="nav-number">3.2.4.</span> <span class="nav-text">Leader处理pb.MsgAppResp响应消息</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

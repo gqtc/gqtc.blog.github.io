@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="背景以下内容，主要来自于Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中的“4 Cluster membership changes”。 配置变更过程中，最重要的保证，就是协议的安全性，即集群中只能有一个 Leader，也就是要保证变更期间不能出现脑裂。因集群中所有节点不可能同时自动切换到新配置，所以在变更期间，需要防止集群分裂为两个不相交的Ma">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-11成员变更2-流程">
+<meta property="og:url" content="http://example.com/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="背景以下内容，主要来自于Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中的“4 Cluster membership changes”。 配置变更过程中，最重要的保证，就是协议的安全性，即集群中只能有一个 Leader，也就是要保证变更期间不能出现脑裂。因集群中所有节点不可能同时自动切换到新配置，所以在变更期间，需要防止集群分裂为两个不相交的Ma">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/14成员变更/v2-26c7a68e9aae047a910c2071bcff4831_720w.jpg">
+<meta property="article:published_time" content="2022-02-22T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:39:51.860Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/14成员变更/v2-26c7a68e9aae047a910c2071bcff4831_720w.jpg">
+
+<link rel="canonical" href="http://example.com/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-11成员变更2-流程 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-11成员变更2-流程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-02-23 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-23T00:00:00+08:00">2022-02-23</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:51" itemprop="dateModified" datetime="2022-06-28T09:39:51+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>以下内容，主要来自于Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中的“4 Cluster membership changes”。</p>
+<p>配置变更过程中，<font color=red>最重要的保证，就是协议的安全性，即集群中只能有一个 <code>Leader</code>，也就是要保证变更期间不能出现脑裂。</font>因集群中所有节点不可能同时自动切换到新配置，所以在变更期间，需要防止集群分裂为两个不相交的Majority集合。比如下图中的场景，集群中一部分节点使用<code>Cold</code>，另一部分节点使用<code>Cnew</code>，一旦发生网络分区，很有可能出现<code>Cold</code>集合和<code>Cnew</code>集合各自选出一个<code>Leader</code>来的情况。</p>
+<span id="more"></span>
+<img src="/img/14成员变更/v2-26c7a68e9aae047a910c2071bcff4831_720w.jpg" alt="img" style="zoom: 50%;" />
+
+<p>RAFT大论文和小论文中，对于配置变更提出了两种方法，一种是单节点变更，一种是联合共识。不管哪种方法，核心思想都是为了防止脑裂情况的出现：</p>
+<ul>
+<li>单节点变更：一次只能变更（添加、删除等）一个节点，这样就能保证<code>Cold</code>和<code>Cnew</code>的Majority肯定有交集，防止了集群被分裂成两个独立的Majority节点集合，从而避免了脑裂。</li>
+<li>联合共识：使用两阶段变更，第一阶段是<code>Cold</code>转为<code>Cnew,old</code>，第二阶段是<code>Cnew,old</code>转为<code>Cnew</code>。持有<code>Cnew,old</code>配置的节点，任何决策，比如日志追加和<code>Leader</code>选举等，必须是<code>Cnew</code>和<code>Cold</code>中Majority都达成共识。这样就保证了<code>Cnew,old</code>是<code>Cold</code>的超集，也是<code>Cnew</code>的超集，不会出现脑裂的情况。</li>
+</ul>
+<p>RAFT作者更加推崇单节点变更算法，在<code>etcd/raft</code>的实现中，最初只实现了单节点变更算法，在2019年的commit中，实现了联合共识算法，但是具体的实现细节又与论文中的描述略有不同。</p>
+<p>大论文中对单节点变更算法的实现中会遇到的问题有很详细的阐述。实际上很多问题都是共通的，这些问题在联合共识算法中也会遇到。下面是对大论文中单节点变更算法的总结：</p>
+<ul>
+<li><p><code>Leader</code>收到添加&#x2F;删除节点的配置变更请求时，将<code>Cnew</code>作为一条日志项，使用复制日志的方式将其通知给其他节点。<code>Cnew</code>日志只会复制到<code>Cnew</code>中的节点，而且使用<code>Cnew</code>中的Majority来决定<code>Cnew</code>日志是否提交。</p>
+</li>
+<li><p><font color=red>其他节点在收到该日志项并将其添加到本地日志之后，就认为其生效了.</font></p>
+</li>
+<li><p>如果多个配置变更同时进行，即使是单节点变更，也可能会造成上图中的脑裂场景。比如：</p>
+<ul>
+<li>初始集群配置，即<code>Cold</code>是<code>(1,2,3)</code>，<code>3</code>是<code>Leader</code>;</li>
+<li>现在要添加<code>4</code>，配置为<code>(1,2,3,4)</code>的<code>Cnew1</code>的日志只在<code>3</code>上生成了，尚未追加到其他节点；</li>
+<li>此时又开始添加<code>5</code>，然后配置为<code>(1,2,3,4,5)</code>的<code>Cnew2</code>日志追加到了<code>3,4,5</code>节点上。</li>
+<li>所以这一时刻，<code>(1,2)</code>使用的是<code>Cold</code>，而<code>(3,4,5)</code>使用的是<code>Cnew2</code>，这就很容易造成脑裂的场景。</li>
+<li>联合共识同样有这样的问题，所以必须保证当前配置变更完成后再进行下一次配置变更。</li>
+</ul>
+</li>
+<li><p><code>Cnew</code>日志被提交（commit，而非apply）后，就认为配置变更完成了，此时<code>Leader</code>就可以明确<code>Cnew</code>中的Majority节点已经使用了<code>Cnew</code>配置。从而可以开始新的配置变更了。</p>
+</li>
+<li><p>节点直接使用日志中最新的配置，而不是等到配置提交后才使用。这使得<code>Leader</code>在当前配置未提交时，不会开始新的配置变更，避免了配置变更并行的场景。只有当<code>Cold</code>中的Majority节点都已经感知到<code>Cnew</code>后，才开始进行新的配置变更才是安全的。不过这种机制可能会使得配置日志被删除（当<code>Leader</code>发生变更时），所以节点必须能回退到日志中上一个配置。如果节点等到<code>Cnew</code>日志提交后才使用<code>Cnew</code>的配置，那<code>Leader</code>是无法感知是否有Majority的节点已经使用<code>Cnew</code>配置了。</p>
+<p><font color=red>注</font>：因为节点使用日志中的最新配置，而非提交后的配置，只有当配置日志提交后，<code>Leader</code>才知道集群中Majority节点已经感知到新配置了，所以才能开始新的配置变更；而在<code>etcd/raft</code>的实现中，节点一直使用旧配置，直到配置日志apply后才使用新配置，因节点apply配置的时间不统一，<code>Leader</code>是无法感知是否有Majority个节点已经使用<code>Cnew</code>配置了。所以必须在选举时增加限制，即有已提交未应用的配置日志时，不允许参与选举；<font color=red>具体参考下面的“思考”一节</font></p>
+</li>
+<li><p>使用调用者（RPC发起者）的配置来实现共识，而非被调用者（RPC接收者）的配置。</p>
+</li>
+<li><p>新节点加入集群时，它本身肯定无任何日志，如果它直接成为集群的一员，那他的日志需要很长一段时间才能追上<code>Leader</code>，这段时间内，集群很容易处于不可用的状态。为了避免该问题，Raft在进行配置变更之前引入了新的日志追加阶段，这个阶段内，新节点会作为非投票成员，<code>Leader</code>会向新节点同步日志，而在投票或者日志复制时，不会把它当做形成Majority的条件。当新节点的日志追上集群后，配置变更才可以继续进行。</p>
+</li>
+<li><p>如果<code>Cnew</code>中要删除当前的<code>Leader</code>，则<code>Leader</code>要等到<code>Cnew</code>提交之后才能下线。只有到了这个时间点，新配置才可以在没有被移除的<code>Leader</code>参与的情况下继续运行集群：即<code>Cnew</code>中可以选举出新的<code>Leader</code>。</p>
+</li>
+<li><p>当<code>Leader</code>创建好<code>Cnew</code>日志后，<code>Cnew</code>之外的节点就再也收不到心跳包了，所以该节点最终会超时，并且开始新的选举，从而破坏当期的集群。一旦<code>Leader</code>创建了<code>Cnew</code>日志后，被移除的节点就已经具有破坏性了。Raft的解决方法是使用心跳来检测有效<code>Leader</code>的存在（租约）。在Raft中，只要<code>Leader</code>能维持与<code>Follower</code>的心跳消息，该<code>Leader</code>就被认为是active的。因此，移除节点就无法破坏当前的<code>Leader</code>了。</p>
+</li>
+</ul>
+<hr>
+<h3 id="单节点变更的问题"><a href="#单节点变更的问题" class="headerlink" title="单节点变更的问题"></a>单节点变更的问题</h3><h4 id="覆盖已提交的日志"><a href="#覆盖已提交的日志" class="headerlink" title="覆盖已提交的日志"></a>覆盖已提交的日志</h4><p>对于单节点变更算法，实际上还有一个BUG，Raft作者在<a href="%5Bhttps://groups.google.com/g/raft-dev/c/t4xj6dJTP6E%5D(https://link.zhihu.com/?target=https://groups.google.com/g/raft-dev/c/t4xj6dJTP6E%22%20%5Ct%20%22_blank)">Raft-dev</a>详细的说明了这个问题。考虑下面的场景：</p>
+<ul>
+<li>t₀：节点<code>a b c d</code>的成员配置为<code>C₀</code>；</li>
+<li>t₁：节点<code>a b c d</code>在Term 0选出<code>a</code>为<code>Leader</code>，<code>b</code>和<code>c</code>为<code>Follower</code>；</li>
+<li>t₂：节点<code>a</code>同步成员变更日志<code>Cᵤ</code>，只同步到<code>a</code>和<code>u</code>，未成功提交，但是对于<code>a</code>和<code>u</code>而言，集群的配置已经变成了<code>abcdu</code>；</li>
+<li>t₃：节点<code>a</code>宕机；</li>
+<li>t₄：节点<code>d</code>在Term 1被选为<code>Leader</code>，<code>b</code>和<code>c</code>为<code>Follower</code>；</li>
+<li>t₅：节点<code>d</code>同步成员变更日志<code>Cᵥ</code>，同步到<code>cdv</code>，成功提交；所以，对于<code>cdv</code>而言，集群的配置变成了<code>abcdv</code>；</li>
+<li>t₆：节点<code>d</code>同步普通日志E，同步到<code>cdv</code>，成功提交；</li>
+<li>t₇：节点<code>d</code>宕机；</li>
+<li>t₈：节点<code>a</code>在Term 2重新选为<code>Leader</code>，<code>u</code>和<code>b</code>为<code>Follower</code>；<code>a</code>重启后，其内部记录的集群配置是<code>abcdu</code>；而<code>b</code>始终没有收到任何配置变更消息，所以其内部记录的集群配饰还是<code>abcd</code>，<code>a</code>发起选举后，<code>u</code>和<code>b</code>投票给了<code>a</code>，对于<code>a</code>而言，他认为自己拿到了<code>abcdu</code>中的<code>3</code>票，所以成为了新<code>Leader</code>；但是实际上当前已经提交的集群配置是<code>abcdv</code>；</li>
+<li>t₉：节点<code>a</code>同步本地的日志<code>Cᵤ</code>给所有人，造成已提交的<code>Cᵥ</code>和<code>E</code>丢失。</li>
+</ul>
+<p>产生该问题的原因，有以下两点：</p>
+<ul>
+<li>节点在将配置变更条目添加到本地日志之后，就认为其生效了；</li>
+<li>上一任<code>Leader</code>的成员变更日志<code>Cnew1</code>还没有同步到多数派就宕机了，新<code>Leader</code>没有收到<code>Cnew1</code>，并且一上任就进行成员变更<code>Cnew2</code>，使用新的成员配置提交日志；</li>
+<li>上一任<code>Leader</code>重新上任之后，还是按照<code>Cnew1</code>继续成员变更，可能形成另外一个多数派集合，产生脑裂，将已提交的日志覆盖，造成数据丢失。</li>
+</ul>
+<p>Raft作者在发现这个问题之后，也给出了修复方法。修复方法很简单, 跟Raft的日志Commit条件类似：新任<code>Leader</code>必须在当前Term提交一条no-op日志之后，才允许同步成员变更日志。也即<code>Leader</code>在当前Term还未提交日志之前，不允许同步成员变更日志。</p>
+<p><font color=red>对应上面这个例子，就是<code>d</code>当选<code>Leader</code>后必须先提交一条no-op日志，该no-op只有复制到<code>C₀</code>中Majority之后才能提交。然后<code>L₁</code>才能开始同步<code>Cᵥ</code>和<code>E</code>，这样，当<code>a</code>竞选<code>L₂</code>时，因日志不够新，所以当不了新<code>Leader</code>。</font>具体场景如下：</p>
+<ul>
+<li>t₀：节点<code>a b c d</code>的成员配置为<code>C₀</code>；</li>
+<li>t₁：节点<code>a b c d</code>在Term 0选出<code>a</code>为<code>Leader</code>，<code>b</code>和<code>c</code>为<code>Follower</code>；</li>
+<li>t₂：节点<code>a</code>同步成员变更日志<code>Cᵤ</code>，只同步到<code>a</code>和<code>u</code>，未成功提交，但是对于<code>a</code>和<code>u</code>而言，集群的配置已经变成了<code>abcdu</code>；</li>
+<li>t₃：节点<code>a</code>宕机；</li>
+<li>t₄：节点<code>d</code>在Term 1被选为<code>Leader</code>，<code>b</code>和<code>c</code>为<code>Follower</code>；</li>
+<li>t₅：<code>d</code>提交一个no-op日志，此时<code>d</code>认为的集群配置是<code>abcd</code>，所以该no-op日志肯定到达了Majority节点，即<code>bcd</code>；</li>
+<li>t₆：节点<code>d</code>同步成员变更日志<code>Cᵥ</code>，同步到<code>cdv</code>，成功提交；所以，对于<code>cdv</code>而言，集群的配置变成了<code>abcdv</code>；</li>
+<li>t₇：节点<code>d</code>同步普通日志E，同步到<code>cdv</code>，成功提交；</li>
+<li>t₈：节点<code>d</code>宕机；</li>
+<li>t₉：<code>a</code>重启后，其内部记录的集群配置是<code>abcdu</code>；<code>a</code>发起选举，因<code>a</code>的日志肯定要比<code>bcd</code>旧（没有no-op日志），所以它最多能得到<code>u</code>的支持，从而当不了<code>Leader</code>；</li>
+</ul>
+<h4 id="可用性问题"><a href="#可用性问题" class="headerlink" title="可用性问题"></a>可用性问题</h4><p>单步成员变更每次只能增加或者减少一个成员，在做成员替换的时候需要分两次变更，第一次变更先将新成员加入进来，第二次变更再将老成员删除，中间如果如果网络分区，有可能会导致服务不可用。</p>
+<p>比如原集群包含<code>3</code>个节点<code>abc</code>，现在要将<code>a</code>替换为<code>d</code>，则使用单节点变更算法的话，需要两次单节点变更：<code>abc -&gt; abcd -&gt; bcd</code>。</p>
+<p>考虑<code>a、b、c</code>三个成员部署在三个机房，<code>d</code>跟<code>a</code>在同一个机房。则当集群为<code>abcd</code>时，有可能在出现二分的网络分区<code>(ad | bc)</code>导致整个集群不可用。</p>
+<p>如果使用联合共识算法的话，则不存在正确性和可用性问题。</p>
+<hr>
+<h3 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h3><h4 id="配置变更提案"><a href="#配置变更提案" class="headerlink" title="配置变更提案"></a>配置变更提案</h4><p>使用Raft库的客户端，需要调用<code>node.ProposeConfChange</code>方法来发起一个配置变更的提案，这是配置变更的<font color=red>起点</font>。</p>
+<p>和其他的提案一样，配置变更提案可能被丢弃，比如如果上一次的配置变更尚未完全应用，则本次配置变更提案会直接被丢弃。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//ProposeConfChange方法可以接受pb.ConfChange消息（已废弃），也可以接受pb.ConfChangeV2消息。</span></span><br><span class="line"><span class="comment">//pb.ConfChangeV2消息支持任意节点变更的联合共识配置变更算法。</span></span><br><span class="line"><span class="comment">//使用ConfChangeV2消息必须保证集群中所有节点都认识V2的API。</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ProposeConfChange(ctx context.Context, cc pb.ConfChangeI) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">confChangeToMsg</span><span class="params">(c pb.ConfChangeI)</span></span> (pb.Message, <span class="type">error</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">MarshalConfChange</span><span class="params">(c ConfChangeI)</span></span> (EntryType, []<span class="type">byte</span>, <span class="type">error</span>)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Step(ctx context.Context, m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> step(ctx context.Context, m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> stepWithWaitOption(ctx context.Context, m pb.Message, wait <span class="type">bool</span>) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p><code>node.PropseConfChange</code>可以接收<code>pb.ConfChange</code>结构体（早期版本消息，当前已废弃）或 <code>pb.ConfChangeV2</code>结构体作为参数。为了兼容这两种消息，<code>raftpb/confichange.go</code>中提供了<code>ConfChangeI</code>接口：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ConfChangeI <span class="keyword">interface</span> &#123;</span><br><span class="line">	AsV2() ConfChangeV2</span><br><span class="line">	AsV1() (ConfChange, <span class="type">bool</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>然后为<code>ConfChangeV2</code>和<code>ConfChange</code>结构添加<code>AsV1</code>和<code>AsV2</code>方法，从而它们都实现了该接口。<code>ConfChange</code>结构可以封装成<code>ConfChangeV2</code>结构，但是<code>ConfChangeV2</code>结构无法转换成<code>ConfChange</code>结构。</p>
+<p><code>ProposeConfChange</code>内部会首先调用<code>confChangeToMsg</code>函数，将<code>ConfChange</code>或<code>ConfChangeV2</code>结构转换成<code>pb.MsgProp</code>消息，即封装成普通的提案消息，这种提案消息的格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">pb.Message&#123;</span><br><span class="line">	Type: pb.MsgProp,</span><br><span class="line">    Entries: []pb.Entry&#123;&#123;Type: typ, Data: data&#125;&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>其中<code>pb.Entry</code>的<code>Type</code>和<code>Data</code>就是<code>confChangeToMsg</code>中调用<code>raftpb.MarshalConfChange</code>实现的。该函数中判断：</p>
+<ul>
+<li>如果是<code>ConfChange</code>结构，则调用<code>ConfChange.Marshal()</code>得到具体的<code>Data</code>，而<code>Type</code>为<code>EntryConfChange</code>；</li>
+<li>如果是<code>ConfChangeV2</code>结构，则调用<code>ConfChangeV2.Marshal()</code>得到具体的<code>Data</code>，而<code>Type</code>为<code>EntryConfChangeV2</code>。</li>
+</ul>
+<p>配置变更提案消息，经过<code>node.Step -&gt; node.step -&gt; node.stepWithWaitOption</code> 的调用后，发送到<code>node.propc</code>通道。</p>
+<hr>
+<h4 id="处理配置变更提案"><a href="#处理配置变更提案" class="headerlink" title="处理配置变更提案"></a>处理配置变更提案</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run() </span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> Step(m pb.Message) <span class="type">error</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">stepLeader</span><span class="params">(r *raft, m pb.Message)</span></span> <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p><code>node.run</code>中，从<code>node.propc</code>通道中获取配置变更提案消息，跟普通的提案消息一样，调用<code>raft.Step</code>，最终在<code>stepLeader</code>回调函数中进行处理。</p>
+<p>在<code>stepLeader</code>中，针对提案消息中的每一个提案Entry，如果它是配置变更提案消息，即<code>pb.Entry</code>中的<code>Type</code>是<code>pb.ConfChange</code>或<code>pb.EntryConfChangeV2</code>，会做以下检查：</p>
+<ul>
+<li>根据<code>Type</code>，调用相应的<code>Unmarshal</code>方法将消息数据重新解码成对应的<code>ConfChange</code>或<code>ConfChangeV2</code>结构，如果解码失败，则直接panic；</li>
+<li>当收到配置变更提案时，就会把<code>raft.pendingConfIndex</code>设置为当前条目对应的Index，所以当<code>raft.pendingConfIndex</code>大于<code>raft.raftLog.applied</code>时，表示尚有未应用的配置变更日志，这种情况下又收到了新的配置变更提案时，即<code>alreadyPending</code>为<code>true</code>，会被拒绝；</li>
+<li>在联合共识算法中，第一阶段是从<code>Cold</code>过渡到<code>Cnew,old</code>，第二阶段是从<code>Cnew,old</code>过渡到<code>Cnew</code>，从<code>Cnew,old</code>过渡到<code>Cnew</code>，需要一个空的<code>ConfChangeV2</code>结构来驱动。如果当前判断<code>len(r.prs.Config.Voters[1])</code>大于<code>0</code>，表明已经处于<code>Cnew,old</code>阶段，即<code>alreadyJoint</code>为<code>true</code>，此时如果收到的<code>ConfChangeV2</code>结构非空，即<code>wantsLeaveJoint</code>为<code>true</code>，会被拒绝；</li>
+<li>如果<code>alreadyJoint</code>为<code>false</code>的情况下，收到了空<code>ConfChangeV2</code>结构，即<code>wantsLeaveJoint</code> 为<code>true</code>，也会被拒绝；</li>
+</ul>
+<p>如果配置变更提案被拒绝，则将日志条目中的<code>Type</code>置为<code>pb.EntryNormal</code>，即普通的提案消息，相当于把配置变更提案忽略掉；如果没被拒绝，则将<code>raft.pendingConfIndex</code>设置为当前最后日志条目的Index；</p>
+<p>剩下的流程，就跟普通的日志追加一样了，即现将日志条目追加到本地中，然后通过<code>pb.MsgProp</code>消息发送给所有<code>Follower</code>；<code>Follower</code>收到<code>pb.MsgProp</code>消息后，将日志条目追加到本地，回复给<code>Leader</code>；<code>Leader</code>收到回复，增加<code>commitIndex</code>，通过<code>Ready</code>通道将已经Commit的日志发送给Raft外部的Client，以便将其应用到状态机中。</p>
+<hr>
+<h4 id="状态机应用配置变更"><a href="#状态机应用配置变更" class="headerlink" title="状态机应用配置变更"></a>状态机应用配置变更</h4><p>在Raft库外部，当应用Raft库的Client收到<code>Ready</code>中的日志后，针对已提交日志中的<code>pb.EntryConfChange</code>或<code>pb.EntryConfChangeV2</code>类型的条目，调用<code>node.ApplyConfChange</code>，对配置变更进行应用。</p>
+<p>比如在<code>raftexample/raft.go</code>的<code>raftNode.publishEntries</code>方法中，就会调用<code>node.ApplyConfChange</code>应用配置变更。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> ApplyConfChange(cc pb.ConfChangeI) *pb.ConfState</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> applyConfChange(cc pb.ConfChangeV2) pb.ConfState</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> switchToConfig(cfg tracker.Config, prs tracker.ProgressMap) pb.ConfState</span><br></pre></td></tr></table></figure>
+
+<p>在<code>node.ApplyConfChange</code>方法中，调用<code>pb.ConfChangeI</code>接口的<code>AsV2</code>方法，得到一个<code>ConfChangeV2</code>结构（即使原来是<code>ConfChange</code>结构，也可以封装成<code>ConfChangeV2</code>），将其发送到<code>n.confc</code>通道，然后等待<code>n.confstatec</code>上返回的最新的配置状态<code>pb.confState</code>。</p>
+<p>在<code>node.run</code>方法中，从<code>n.confc</code>通道上收到<code>ConfChangeV2</code>结构的<code>cc</code>后：</p>
+<ul>
+<li>调用<code>raft.applyConfChange(cc)</code>，该方法返回最新的配置状态<code>cs</code>。</li>
+<li>判断如果当前节点在应用最新的配置变更之前还有对应<code>Progress</code>结构，而配置变更后已经没有对应的<code>Progress</code>结构的话，说明本节点在配置变更中被清除出集群了，所以设置<code>propc</code>通道为<code>nil</code>，即不再接收任何的提案消息；</li>
+<li>将最新的配置状态发送到<code>n.confstatec</code>通道，这样Client端在<code>node.ApplyConfChange</code>中就能返回；</li>
+</ul>
+<p><code>raft.applyConfChange</code>是应用配置变更的核心函数。它的逻辑是：</p>
+<ul>
+<li>首先根据当前的<code>r.prs</code>和<code>r.raftlog.lastIndex</code>，构造新的<code>confchange.Changer</code>结构<code>changer</code>。然后调用<code>pb.ConfChangeV2</code>的<code>LeaveJoint</code>和<code>EnterJoint</code>方法判断当前使用什么配置变更算法以及所处的阶段，以此决定调用<code>changer.Simple</code>、<code>changer.EnterJoint</code>或<code>changer.LeaveJoint</code>方法，这些函数返回的<code>cfg</code>和<code>prs</code>都是<code>changer</code>的副本；</li>
+<li>接下来以这些副本为参数，调用<code>r.switchToConfig(cfg, prs)</code>，将这些配置副本应用到Raft中；</li>
+</ul>
+<p><code>switchToConfig</code>函数是应用配置变更的最后一步，其逻辑是：</p>
+<ul>
+<li>首先将参数<code>cfg</code>和<code>prs</code>作为当前节点最新的配置，即将<code>r,prs.Config</code>置为<code>cfg</code>，将<code>r.prs.Progress</code>置为<code>prs</code>；</li>
+<li>如果在<code>r.prs.Progress</code>中找不到当前节点对应的<code>Progress</code>了，说明本节点在新配置中被删除了；</li>
+<li>如果本节点没有删除，并且对应的<code>Progress</code>中<code>IsLearner</code>为<code>true</code>，说明本节点变成<code>Learnner</code>了；</li>
+<li>如果节点当前是<code>Leader</code>，并且节点被删除了，或者节点降级为<code>Learner</code>了，这种情况下，<code>Leader</code>需要下线，由其他<code>Follower</code>重新选举新的<code>Leader</code>，这里直接返回。<font color=red>注意</font>：代码中并未找到这种情况下<code>Leader</code>下线的具体逻辑，只是在<code>stepLeader</code>中，如果节点是被删除了，该节点不会对<code>pb.MsgProp</code>提案消息进行处理；但是下线的<code>Leader</code>好像还能发心跳；</li>
+<li>如果节点不是<code>Leader</code>，或者最新的配置中，<code>Leader</code>没有<code>Follower</code>，这种情况下直接返回，不用下面的处理；</li>
+<li>现在走到这里，说明本节点是<code>Leader</code>，并且有<code>Follower</code>，这种情况下，因为配置变更了，即有的节点可能被删除了，也可能新增了节点。所以：<ul>
+<li>调用<code>r.maybeCommit</code>，查看是否因为删除了节点，导致<code>committed Index</code>需要更新，如果该函数为<code>true</code>，所以调用<code>r.bcastAppend</code>通知其他<code>Follower</code>更新<code>commitIndex</code>；</li>
+<li>如果<code>r.maybeCommit</code>返回<code>false</code>，则针对所有<code>Follower</code>调用<code>r.maybeSendAppend</code>，以便将日志复制到新增节点上；</li>
+<li>如果当前正在进行领导权转移，并且被转移的节点被删除了，则调用<code>r.abortLeaderTransfer</code>终止领导权转移；</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h4 id="判断如何进行配置变更"><a href="#判断如何进行配置变更" class="headerlink" title="判断如何进行配置变更"></a>判断如何进行配置变更</h4><p>在<code>raft.applyConfChange</code>应用配置变更时，它需要根据配置选项和当前状态，决定是使用单节点变更算法，还是联合共识算法，如果使用联合共识的话，需要决定当前是需要从<code>Cold</code>到<code>Cnew,old</code>，还是要从<code>Cnew,old</code>到<code>Cnew</code>。</p>
+<p>相关的配置选项主要是<code>raft.pb.go</code>中定义的<code>ConfChangeTransition</code>，其定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ConfChangeTransition <span class="type">int32</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> (</span><br><span class="line">	<span class="comment">//优先使用单节点变更算法，即只要ConfChangeV2.Changes只包含一个变更动作，就使用但节点变更；</span></span><br><span class="line">	<span class="comment">//否则的话跟ConfChangeTransitionJointImplicit配置一样，即使用联合共识算法，并且自动过渡到Cnew；</span></span><br><span class="line">	<span class="comment">//大多数应用采用该配置</span></span><br><span class="line">	ConfChangeTransitionAuto ConfChangeTransition = <span class="number">0</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//使用联合共识算法，并且在RAFT库内自动的由Cnew,old过渡到Cnew状态。</span></span><br><span class="line">	<span class="comment">//这种配置适用于希望缩短联合状态，即Cnew,old的时间，并且不会在状态机中保存联合共识状态的应用程序</span></span><br><span class="line">	ConfChangeTransitionJointImplicit ConfChangeTransition = <span class="number">1</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//使用联合共识算法，并且由应用程序控制何时从Cnew,old过渡到Cnew状态。</span></span><br><span class="line">	<span class="comment">//这种配置适用于希望显式控制配置变更的应用程序。</span></span><br><span class="line">	ConfChangeTransitionJointExplicit ConfChangeTransition = <span class="number">2</span></span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>Raft中最初只实现了单节点变更算法，对应的是<code>pb.ConfChange</code>结构；后续为了实现联合共识，引入了<code>pb.ConfChangeV2</code>结构，该结构能兼容单节点变更算法和联合共识算法。实施什么算法，具体的判断逻辑是在<code>pb.ConfChangeV2</code>的<code>LeaveJoint</code>和<code>EnterJoint</code>方法中。</p>
+<p><code>pb.ConfChange</code>和<code>pb.ConfChangeV2</code>的具体定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ConfChangeType <span class="type">int32</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> (</span><br><span class="line">	ConfChangeAddNode        ConfChangeType = <span class="number">0</span></span><br><span class="line">	ConfChangeRemoveNode     ConfChangeType = <span class="number">1</span></span><br><span class="line">	ConfChangeUpdateNode     ConfChangeType = <span class="number">2</span></span><br><span class="line">	ConfChangeAddLearnerNode ConfChangeType = <span class="number">3</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> ConfChange <span class="keyword">struct</span> &#123;</span><br><span class="line">	Type    ConfChangeType <span class="string">`protobuf:&quot;varint,2,opt,name=type,enum=raftpb.ConfChangeType&quot; json:&quot;type&quot;`</span></span><br><span class="line">	NodeID  <span class="type">uint64</span>         <span class="string">`protobuf:&quot;varint,3,opt,name=node_id,json=nodeId&quot; json:&quot;node_id&quot;`</span></span><br><span class="line">	Context []<span class="type">byte</span>         <span class="string">`protobuf:&quot;bytes,4,opt,name=context&quot; json:&quot;context,omitempty&quot;`</span></span><br><span class="line">	<span class="comment">// NB: this is used only by etcd to thread through a unique identifier.</span></span><br><span class="line">	<span class="comment">// Ideally it should really use the Context instead. No counterpart to</span></span><br><span class="line">	<span class="comment">// this field exists in ConfChangeV2.</span></span><br><span class="line">	ID <span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,1,opt,name=id&quot; json:&quot;id&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> ConfChangeSingle <span class="keyword">struct</span> &#123;</span><br><span class="line">	Type   ConfChangeType <span class="string">`protobuf:&quot;varint,1,opt,name=type,enum=raftpb.ConfChangeType&quot; json:&quot;type&quot;`</span></span><br><span class="line">	NodeID <span class="type">uint64</span>         <span class="string">`protobuf:&quot;varint,2,opt,name=node_id,json=nodeId&quot; json:&quot;node_id&quot;`</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> ConfChangeV2 <span class="keyword">struct</span> &#123;</span><br><span class="line">	Transition ConfChangeTransition <span class="string">`protobuf:&quot;varint,1,opt,name=transition,enum=raftpb.ConfChangeTransition&quot; json:&quot;transition&quot;`</span></span><br><span class="line">	Changes    []ConfChangeSingle   <span class="string">`protobuf:&quot;bytes,2,rep,name=changes&quot; json:&quot;changes&quot;`</span></span><br><span class="line">	Context    []<span class="type">byte</span>               <span class="string">`protobuf:&quot;bytes,3,opt,name=context&quot; json:&quot;context,omitempty&quot;`</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到<code>pb.ConfChange</code>只支持单节点变更，而<code>pb.ConfChangeV2</code>则既支持单节点变更，也支持多节点变更。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c ConfChangeV2)</span></span> EnterJoint() (autoLeave <span class="type">bool</span>, ok <span class="type">bool</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c ConfChangeV2)</span></span> LeaveJoint() <span class="type">bool</span></span><br></pre></td></tr></table></figure>
+
+<p><code>ConfChangeV2.EnterJoint</code>方法根据当前的配置选项，决定使用单节点变更算法还是联合共识算法，并且如果使用联合共识算法，判断是否自动有<code>Cnew,old</code>过渡到<code>Cnew</code>状态。该方法返回两个<code>bool</code>值，第二个<code>bool</code>值表示是否采用联合共识算法，第一个<code>bool</code>值表示如果采用联合共识，是否自动过渡状态，如果第二个<code>bool</code>值为<code>false</code>，则第一个肯定是<code>false</code>。<code>ConfChangeV2.EnterJoint</code>方法的具体逻辑是：</p>
+<ul>
+<li>如果<code>c.Transition</code>等于<code>ConfChangeTransitionAuto</code> 并且 <code>len(c.Changes)</code> 小于等于<code>1</code>，则采用单节点变更算法，因此返回<code>false, false</code>；</li>
+<li>其他情况下，说明需要采用联合共识算法：<ul>
+<li>如果<code>c.Transition</code>为<code>ConfChangeTransitionAuto</code>或<code>ConfChangeTransitionJointImplicit</code>，则自动由<code>Cnew,old</code>过渡到<code>Cnew</code>状态；返回<code>true, true</code>，表示采用联合共识算法，并且当前可以由<code>Cold</code>过渡到<code>Cnew,old</code>，并且后续可以自动的由<code>Cnew,old</code>过渡到<code>Cnew</code>；</li>
+<li>如果<code>c.Transition</code>为<code>ConfChangeTransitionJointExplicit</code>，则需要手动过渡到<code>Cnew</code>状态；因此返回<code>false,true</code>，表示采用联合共识算法，并且当前可以由<code>Cold</code>过渡到<code>Cnew,old</code>，后续需要手动的由<code>Cnew,old</code>过渡到<code>Cnew</code>；</li>
+</ul>
+</li>
+</ul>
+<p><code>ConfChangeV2.LeaveJoint</code>方法用于判断是否需要由<code>Cnew,old</code>过渡到<code>Cnew</code>。判断依据很简单，只要当前的<code>c</code>是一个空的<code>pb.ConfChangeV2</code>结构，就返回<code>true</code>。</p>
+<hr>
+<h4 id="单节点变更"><a href="#单节点变更" class="headerlink" title="单节点变更"></a>单节点变更</h4><p>在<code>raft.applyConfChange</code>应用配置变更时，如果调用<code>ConfChangeV2.EnterJoint</code>返回<code>false,false</code>，说明需要进行单节点变更，这主要是通过调用<code>Changer.Simple</code>方法实现。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> Simple(ccs ...pb.ConfChangeSingle) (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p>单节点配置变更算法需要保证只变更一个节点。在<code>Changer.Simple</code>方法中，<code>outgoing</code>为空，直接在副本的<code>incoming</code>上中实施配置变更，<code>Changer.Simple</code>函数的逻辑如下：</p>
+<ul>
+<li>首先调用<code>Changer.checkAndCopy</code>方法得到<code>c.Tracker.Config</code>和<code>c.Tracker.Progress</code>的副本，后续的动作都是在副本上执行；</li>
+<li>如果当前处于联合共识阶段，则返回<code>&quot;can&#39;t apply simple config change in joint config&quot;</code>错误；</li>
+<li>在副本上调用<code>Changer.apply</code>，实施配置变更；这里主要是根据<code>ccs</code>中消息的类型，调用<code>Changer.makeVoter</code>、<code>Changer.makeLearner</code>或<code>Changer.remove</code>；</li>
+<li>调用<code>symdiff</code>，比较副本<code>cfg</code>和<code>c.Tracker.Voters</code>，如果差值大于<code>1</code>，则返回<code>&quot;more than one voter changed without entering joint config&quot;</code>错误；</li>
+<li>最后调用<code>checkAndReturn</code>对变更后的副本进行一致性检查，并返回副本；</li>
+</ul>
+<p>调用完<code>Changer.Simple</code>，得到变更后的<code>tracker.Config</code>和<code>tracker.ProgressMap</code>副本后，在<code>raft.applyConfChange</code>方法中，将副本传给<code>raft.switchToConfig</code>将副本应用，至此，单节点变更就完成了。</p>
+<hr>
+<h4 id="联合共识"><a href="#联合共识" class="headerlink" title="联合共识"></a>联合共识</h4><h5 id="EnterJoint"><a href="#EnterJoint" class="headerlink" title="EnterJoint"></a>EnterJoint</h5><p>在<code>raft.applyConfChange</code>应用配置变更时，如果调用<code>ConfChangeV2.EnterJoint</code>返回<code>true,true</code>或<code>false,true</code>，说明需要进行联合共识算法，并进行<code>Cold</code>到<code>Cnew,old</code>的过渡。这主要是通过调用<code>Changer.EnterJoint</code>方法实现。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> EnterJoint(autoLeave <span class="type">bool</span>, ccs ...pb.ConfChangeSingle) (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>Changer.EnterJoint</code>函数将当前配置(<code>incoming</code>)复制一份(<code>outgoing</code>)，然后在原配置(<code>incoming</code>)上执行变更动作。在<code>Changer.EnterJoint</code>函数中：</p>
+<ul>
+<li>首先调用<code>checkAndCopy</code>方法得到<code>c.Tracker.Config</code>和<code>c.Tracker.Progress</code>的副本，后续的动作都是在副本上执行；</li>
+<li>如果当前已经处于联合共识阶段，则返回<code>&quot;config is already joint&quot;</code>错误；</li>
+<li>如果当前<code>incoming</code>为空，则返回<code>&quot;can&#39;t make a zero-voter config joint&quot;</code>错误；</li>
+<li>复制<code>incoming</code>到<code>outgoing</code>中，即此时<code>incoming</code>与<code>outgoing</code>相同，然后调用<code>apply</code>函数，<code>apply</code>都作用在<code>incoming</code>上，<code>apply</code>之后，配置就变成了<code>Cnew,old</code>，<code>new</code>对应的是<code>incoming</code>，<code>old</code>对应的是<code>outgoing</code>；</li>
+<li>最后调用<code>checkAndReturn</code>进行一致性检查，并返回副本；</li>
+</ul>
+<p>调用完<code>Changer.EnterJoint</code>，得到变更后的<code>tracker.Config</code>和<code>tracker.ProgressMap</code>副本后，在<code>raft.applyConfChange</code>方法中，将副本传给<code>raft.switchToConfig</code>将副本应用，至此，配置变更到了<code>Cnew,old</code>。</p>
+<hr>
+<h5 id="LeaveJoint"><a href="#LeaveJoint" class="headerlink" title="LeaveJoint"></a>LeaveJoint</h5><p>在<code>raft.applyConfChange</code>应用配置变更时，如果调用<code>ConfChangeV2.EnterJoint</code>返回<code>true,true</code>，第一个<code>true</code>表示可以自动的由<code>Cnew,old</code>过渡到<code>Cnew</code>，根据该值设置<code>Config.AutoLeave</code>。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> Advance()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(n *node)</span></span> run()</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Advance(rd Ready)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> advance(rd Ready)</span><br></pre></td></tr></table></figure>
+
+<p>外部Client处理完<code>Ready</code>中的日志条目之后，会调用<code>node.Advance</code>方法，以便通知Raft模块准备发送下一个<code>Ready</code>。<code>node.Advance</code>方法实际上就是向<code>n.advancec</code>管道中发一个<code>struct&#123;&#125;&#123;&#125;</code>，即发一个信号。</p>
+<p>在<code>node.run</code>方法中，收到<code>n.advancec</code>管道中的信号之后，以刚刚发出去的<code>Ready</code>结构为参数，调用<code>RawNode.Advance</code>方法。<code>RawNode.Advance</code>方法主要就是调用<code>raft.advance</code>方法实现。</p>
+<p><code>raft.advance</code>方法中，满足条件的情况下会向本地的日志中追加一条空的<code>ConfChangeV2</code>条目，以便开始<code>LeaveJoint</code>流程。具体逻辑是：</p>
+<ul>
+<li>首先从参数<code>Ready</code>结构中获取最新的<code>applyIndex</code>，即外部模块已经应用到状态机中的日志条目的最新的<code>applyIndex</code>: <code>newApplied</code>；</li>
+<li>然后从当前<code>r.raftLog.applied</code>中得到<code>oldApplied</code>；然后用<code>newApplied</code>更新<code>r.raftLog.applied</code>字段；</li>
+<li>同时满足下面几个条件的情况下，构造一个空的<code>pb.EntryConfChangeV2</code>类型的日志条目，调用<code>raft.appendEntry</code>将其追加到自己的本地日志中；并且更新<code>pendingConfIndex</code>为当前最后日志条目的Index：<ul>
+<li>当前节点是<code>Leader</code>；</li>
+<li>如果<code>r.prs.Config.AutoLeave</code>为True，说明使用的是联合共识的节点变更算法，且需要自动进入<code>LeaveJoint</code>阶段；</li>
+<li>当前的<code>pendingconfIndex</code>处于<code>[oldApplied, newApplied]</code>范围内，说明外部模块应用日志时已经对配置变更做了应用，所以现在已经是<code>EnterJoint</code>阶段；</li>
+</ul>
+</li>
+<li>注意，这里仅仅是将<code>pb.EntryConfChangeV2</code>日志条目追加到本地日志中，并没有立即同步到Follower上。</li>
+</ul>
+<p>经过<code>raft.advance</code>方法中针对配置变更的处理之后，接下来就像普通的日志追加流程一样，当<code>pb.EntryConfChangeV2</code>都同步到<code>Follower</code>中的大部分节点上之后，就可以提交，然后节点各自应用到状态机时，调用<code>raft.applyConfChange</code>应用配置变更，其中会调用<code>pb.ConfChangeV2.LeaveJoint</code>方法，判断当前是否可以由<code>Cnew,old</code>过渡到<code>Cnew</code>。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c ConfChangeV2)</span></span> LeaveJoint() <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> LeaveJoint() (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>ConfChangeV2.LeaveJoint</code>的逻辑很简单，就是判断当前的c是一个空的<code>pb.ConfChangeV2</code>结构，就返回<code>true</code>。</p>
+<p>然后调用<code>changer.LeaveJoint</code>，进行<code>Cnew,old</code>到<code>Cnew</code>的过渡，并最终完成联合共识的配置变更流程。<code>changer.LeaveJoint</code>的逻辑如下：</p>
+<ul>
+<li>首先调用<code>checkAndCopy</code>方法得到<code>c.Tracker.Config</code>和<code>c.Tracker.Progress</code>的副本，后续的动作都是在副本上执行；</li>
+<li>如果当前不处于<code>joint cunsensus</code>阶段，则返回<code>&quot;can&#39;t leave a non-joint config&quot;</code>错误；</li>
+<li>如果<code>outgoing</code>为空，则返回<code>&quot;configuration is not joint&quot;</code>错误；</li>
+<li>将<code>LearnersNext</code>中的<code>ID</code>记录到<code>Learners</code>中；然后将<code>LearnersNext</code>置为<code>nil</code>；</li>
+<li>轮训<code>outgoing</code>中的<code>ID</code>，如果其既不属于<code>incoming</code>，也不属于<code>Learners</code>，则说明该节点被删除了，因此将该节点对应的<code>Progress</code>结构从<code>prs</code>中清除；</li>
+<li>最后，将<code>outgoing</code>清除，将<code>AutoLeave</code>置为<code>false</code>；并调用<code>checkAndReturn</code>进行一致性检查，并返回副本；</li>
+</ul>
+<p>调用完<code>LeaveJoint</code>，得到变更后的<code>tracker.Config</code>和<code>tracker.ProgressMap</code>副本后，在<code>raft.applyConfChange</code>方法中，将副本传给<code>raft.switchToConfig</code>将副本应用，至此，配置变更到了<code>Cnew</code>。</p>
+<hr>
+<h4 id="配置变更信息的保存和使用"><a href="#配置变更信息的保存和使用" class="headerlink" title="配置变更信息的保存和使用"></a>配置变更信息的保存和使用</h4><p>当外部Client调用<code>node.ApplyConfChange</code>得到最新的集群配置状态<code>pb.ConfState</code>后，在创建<code>snapshot</code>时，会将其保存到<code>snapshot.Metadata.ConfState</code>中。<code>pb.ConfState</code>定义如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> ConfState <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// The voters in the incoming config. (If the configuration is not joint,</span></span><br><span class="line">	<span class="comment">// then the outgoing config is empty).</span></span><br><span class="line">	Voters []<span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,1,rep,name=voters&quot; json:&quot;voters,omitempty&quot;`</span></span><br><span class="line">	<span class="comment">// The learners in the incoming config.</span></span><br><span class="line">	Learners []<span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,2,rep,name=learners&quot; json:&quot;learners,omitempty&quot;`</span></span><br><span class="line">	<span class="comment">// The voters in the outgoing config.</span></span><br><span class="line">	VotersOutgoing []<span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,3,rep,name=voters_outgoing,json=votersOutgoing&quot; json:&quot;voters_outgoing,omitempty&quot;`</span></span><br><span class="line">	<span class="comment">// The nodes that will become learners when the outgoing config is removed.</span></span><br><span class="line">	<span class="comment">// These nodes are necessarily currently in nodes_joint (or they would have</span></span><br><span class="line">	<span class="comment">// been added to the incoming config right away).</span></span><br><span class="line">	LearnersNext []<span class="type">uint64</span> <span class="string">`protobuf:&quot;varint,4,rep,name=learners_next,json=learnersNext&quot; json:&quot;learners_next,omitempty&quot;`</span></span><br><span class="line">	<span class="comment">// If set, the config is joint and Raft will automatically transition into</span></span><br><span class="line">	<span class="comment">// the final config (i.e. remove the outgoing config) when this is safe.</span></span><br><span class="line">	AutoLeave <span class="type">bool</span> <span class="string">`protobuf:&quot;varint,5,opt,name=auto_leave,json=autoLeave&quot; json:&quot;auto_leave&quot;`</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当节点崩溃重启时，或者<code>Follower</code>收到<code>Leader</code>发来的<code>snapshot</code>时，会调用<code>raft.restore</code>恢复状态，其中就需要恢复集群配置。这部分主要在<code>restore.go</code>中实现。两者的恢复原理是一样的，下面以节点崩溃恢复为例。</p>
+<p>节点崩溃时，节点配置既有可能处于稳定态<code>Cnew</code>，也有可能处于联合共识过程中的<code>Cnew,old</code>状态。<code>Cnew,old</code>可以兼容稳定态<code>Cnew</code>。比如<code>NVS</code>中保存的配置信息是：<code>voters=(1 2 3) learners=(5) outgoing=(1 2 4 6) learners_next=(4)</code>，这就说明崩溃时处于<code>Cnew,old</code>状态，<code>Cold</code>是<code>(1 2 4 6)</code>，<code>Cnew</code>是<code>(1 2 3)</code>，<code>learners_next</code>是<code>(4)</code>，即<code>Cnew</code>是要从<code>Cold</code>中删除节点<code>6</code>，并将节点<code>4</code>降级为<code>Learner</code>，至于节点<code>5</code>，它有可能在配置变更前就是<code>Learner</code>，也有可能是配置变更时新增的新<code>Learner</code>，不过这不重要。</p>
+<p>针对上面的例子，节点重启后，当前状态为空，<font color=red>要恢复到节点崩溃时的状态，实际上就是根据<code>snapshot.Metadata.ConfState</code>，执行一系列的操作，恢复出<code>raft.ProgressTracker</code>的过程。</font>对于<code>outgoing</code>，要执行的动作序列是：<code>add 1; add 2; add 4; add 6</code>，针对voters，要执行的动作序列是：<code>remove 1; remove 2; remove 4; remove 6;  add 1; add 2; add 3; add-learner 5; add-learner 4</code>。</p>
+<h5 id="toConfChangeSingle"><a href="#toConfChangeSingle" class="headerlink" title="toConfChangeSingle"></a>toConfChangeSingle</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">toConfChangeSingle</span><span class="params">(cs pb.ConfState)</span></span> (out []pb.ConfChangeSingle, in []pb.ConfChangeSingle)</span><br></pre></td></tr></table></figure>
+
+<p><code>toConfChangeSingle</code>函数，就是针对<code>NVS</code>中保存的配置信息<code>pb.ConfState</code>，生成一系列的配置变更消息，确切的说是针对<code>incoming</code>和<code>outgoing</code>，生成两个<code>消息Slice</code>。它的逻辑如下：</p>
+<ul>
+<li>轮训<code>cs.VotersOutgoing</code>，针对其中的每个<code>节点ID</code>，将<code>pb.ConfChangeAddNode</code>消息添加到<code>out</code>中；</li>
+<li>轮训<code>cs.VotersOutgoing</code>，针对其中的每个<code>节点ID</code>，将<code>pb.ConfChangeRemoveNode</code>消息添加到<code>in</code>中；</li>
+<li>轮训<code>cs.Voters</code>，针对其中的每个<code>节点ID</code>，将<code>pb.ConfChangeAddNode</code>消息添加到<code>in</code>中；</li>
+<li>轮训<code>cs.Learners</code>，针对其中的每个<code>节点ID</code>，将<code>pb.ConfChangeAddLearnerNode</code>消息添加到<code>in</code>中；</li>
+<li>轮训<code>cs.LearnersNext</code>，针对其中的每个<code>节点ID</code>，将<code>pb.ConfChangeAddLearnerNode</code>消息添加到<code>in</code>中；</li>
+</ul>
+<hr>
+<h5 id="Restore"><a href="#Restore" class="headerlink" title="Restore"></a>Restore</h5><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Restore</span><span class="params">(chg Changer, cs pb.ConfState)</span></span> (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">chain</span><span class="params">(chg Changer, ops ...<span class="keyword">func</span>(Changer)</span></span> (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)) (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>Restore</code>函数就是恢复节点配置的函数，它会针对<code>toConfChangeSingle</code>生成的每一条消息，执行<code>Simple</code>或者<code>EnterJoint</code>配置变更。具体逻辑如下：</p>
+<ul>
+<li>调用<code>toConfChangeSingle(cs)</code>，生成<code>outgoing</code>和<code>incoming</code>消息Slice；</li>
+<li>如果<code>outgoing</code>为空，说明崩溃时不是在配置变更，因此，直接针对<code>incoming</code>中的每条消息，执行<code>Simple</code>动作即可；</li>
+<li>否则，说明崩溃时正处于<code>Cnew,old</code>状态。因此，需要首先针对<code>outgoing</code>的每条消息，执行<code>Simple</code>动作，恢复到进入配置变更之前的状态，然后针对<code>incoming</code>消息Slice，直接执行<code>EnterJoint</code>恢复到配置变更状态即可；</li>
+</ul>
+<hr>
+<h3 id="思考"><a href="#思考" class="headerlink" title="思考"></a>思考</h3><p>问：<code>etcd/raft</code>的实现中，节点什么时候使用新配置，即按照新配来决定<code>Leader</code>选举和日志追加？</p>
+<p>答：不管是<code>Leader</code>选举，还是日志追加，都是<font color=red>以<code>raft.ProgressTracker</code>中的配置来进行判断的</font>。根据实现，变更日志应用之后，经过<code>Changer</code>的<code>Simple/EnterJoint/LeaveJoint</code>的修改，以及<code>raft.switchToConfig</code>的应用之后，<code>raft.ProgressTracker</code>才得以修改（具体就是<code>raft.ProgressTracker</code>中的<code>tracker.Config</code>和<code>tracker.ProgressMap</code>）。</p>
+<p>问：<code>etcd/raft</code>的实现中，是否会有脑裂的情况，即会不会造成集群中出现不相交的Majority集合？</p>
+<p>答：先考虑一次配置变更，不考虑多个配置变更的场景。不管是单节点配置变更，还是联合共识算法，它们的本质都是保证一次变更前后的两种配置，它们的Majority集合肯定有交集：</p>
+<ul>
+<li>单节点变更：变更由<code>Cold</code>过渡到<code>Cnew</code>一次性完成，而单节点变更本身的约束，保证了<code>Cold</code>和<code>Cnew</code>之间肯定有交集。</li>
+<li>联合共识算法：变更过程分两步完成，第一步是<code>Cold</code>到<code>Cnew,old</code>，第二步是<code>Cnew,old</code>到<code>Cnew</code>。不管哪一步的变更，它们的新旧配置的Majority也肯定有交集。</li>
+</ul>
+<p>所以，只看一次变更的场景，不会出现脑裂的情况，因为<font color=red>相邻的两个配置，即变更前后的配置的Majority集合肯定有交集。</font></p>
+<p>现在考虑多次变更的场景，一旦涉及多次变更，则集群中的配置可能出现不相邻的情况，即集群中一部分节点采用<code>Cold</code>，一部分节点采用<code>Cnew</code>，还有采用<code>Cnew&#39;</code>的，那采用<code>Cold</code>和<code>Cnew&#39;</code>的节点间一旦出现分区，就有可能出现脑裂的情况。</p>
+<p>首先看一下<code>etcd/raft</code>为保证多次变更不出现脑裂，做了哪些约束：</p>
+<ol>
+<li>在<code>stepLeader</code>函数中，处理<code>pb.MsgProp</code>提案消息时，判断提案是配置变更提案后，会把<code>raft.pendingConfIndex</code>置为该提案的Index，后续再收到配置变更的提案时，只要之前的<code>raft.pendingConfIndex</code>还小于<code>raft.raftLog.applied</code>，说明上一个配置变更尚未应用，则直接拒绝本次的配置变更；在<code>raft.advance</code>方法中，追加驱动<code>LeaveJoint</code>的<code>pb.EntryConfChangeV2</code>的条目时也是这样的处理；</li>
+<li><code>Candidate</code>节点竞选成功变成<code>Leader</code>之后，在<code>raft.becomeLeader</code>方法中，直接将<code>raft.pendingConfIndex</code>设置为当前日志的最后条目的Index，即最后条目应用之前，都不会接收新的配置变更提案。这样保证了之前如果有配置变更条目未应用的话，不会开始新的配置变更；</li>
+<li>在<code>raft.hup</code>方法中，通过调用<code>numOfPendingConf</code>，判断如果当前本节点的已提交未应用的日志条目中，如果有配置变更条目的话，则无法参加选举成为新<code>Leader</code>；</li>
+</ol>
+<p>有了上面的约束后，可以保证不会出现多次配置变更造成脑裂的情况。考虑集群配置<code>abc-&gt;abcd-&gt;abcde</code>的变更场景：</p>
+<ul>
+<li><code>abc</code>三节点组成的集群，<code>c</code>是<code>Leader</code>；即此时<code>Cold=&#123;abc&#125;</code>；</li>
+<li><code>c</code>收到配置变更提案，需要增加<code>d</code>，即<code>Cnew=&#123;abcd&#125;</code>；</li>
+<li><code>Cnew</code>提交之前，所有节点（<code>abc</code>）都是采用的<code>Cold</code>，不会出现脑裂；</li>
+<li><code>Cnew</code>在<code>c</code>上提交后，未应用之前，所有节点采用的都是<code>Cold</code>，不会出现脑裂；</li>
+<li><code>Cnew</code>在一些节点上提交了，则集群中一些节点采用的是<code>Cnew</code>，另外一些采用的是<code>Cold</code>，因<code>Cnew</code>和<code>Cold</code>是连续的，肯定有交集，所以不会出现脑裂；</li>
+<li>现在<code>c</code>收到了新的配置变更提案，需要增加<code>e</code>，即<code>Cnew&#39;=&#123;abcde&#125;</code>；现在<code>c</code>需要将<code>Cnew&#39;</code>这条日志复制到<code>Cnew</code>的Majority节点上；</li>
+<li><code>Cnew&#39;</code>在提交之前，所有节点采用的是<code>Cold</code>或<code>Cnew</code>，不会出现脑裂；</li>
+<li><font color=red><code>Cnew&#39;</code>得以提交，说明<code>Cnew&#39;</code>这条日志，至少复制到了<code>Cnew</code>的Majority节点上，这些收到了<code>Cnew&#39;</code>条目的节点，他们的<code>commitIndex</code>肯定也得到了了更新（<code>pb.MsgApp</code>中附带了<code>commitIndex</code>），因而这些节点上肯定都提交了<code>Cnew</code>；</font>因<code>Cnew=&#123;abcd&#125;</code>，假设<code>bcd</code>是这个Majority集合；</li>
+<li><code>Cnew&#39;</code>提交之后，在一些节点上应用了，所以目前集群中一些节点采用的<code>Cnew</code>，一些节点采用的是<code>Cnew&#39;</code>，还有一些节点采用的是<code>Cold</code>；</li>
+<li>对于采用<code>Cold</code>配置的节点，说明它未应用<code>Cnew</code>，甚至可能未提交<code>Cnew</code>；其中未提交<code>Cnew</code>的节点，它肯定没有收到<code>Cnew&#39;</code>，没有收到<code>Cnew&#39;</code>的节点，即使是在<code>Cold</code>的配置中肯定也无法形成Majority，它的日志不够新，所以它肯定当不了<code>Leader</code>；而对于已提交未应用<code>Cnew</code>的节点，因为上面的第<code>3</code>条约束，它也无法当选<code>Leader</code>；</li>
+<li>所以，集群中只有<code>Cnew</code>和<code>Cnew&#39;</code>的节点才能竞选成为<code>Leader</code>，因为<code>Cnew</code>和<code>Cnew&#39;</code>是连续的，Majority有交集的，所以不会出现脑裂。</li>
+</ul>
+<hr>
+<h3 id="其他实现细节"><a href="#其他实现细节" class="headerlink" title="其他实现细节"></a>其他实现细节</h3><h4 id="becomeLeader时设置pendingConfIndex"><a href="#becomeLeader时设置pendingConfIndex" class="headerlink" title="becomeLeader时设置pendingConfIndex"></a><code>becomeLeader</code>时设置<code>pendingConfIndex</code></h4><p><code>becomeLeader</code>中，有下面的逻辑：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Conservatively set the pendingConfIndex to the last index in the</span></span><br><span class="line"><span class="comment">// log. There may or may not be a pending config change, but it&#x27;s</span></span><br><span class="line"><span class="comment">// safe to delay any future proposals until we commit all our</span></span><br><span class="line"><span class="comment">// pending log entries, and scanning the entire tail of the log</span></span><br><span class="line"><span class="comment">// could be expensive.</span></span><br><span class="line">r.pendingConfIndex = r.raftLog.lastIndex()</span><br></pre></td></tr></table></figure>
+
+<p>这里直接将<code>raft.pendingConfIndex</code>设置到当前最后日志条目的最后Index，目的就是为了防止多个配置变更同时进行。这种逻辑最早可以追溯到<code>2014</code>年的<code>commit</code>：<code>d293c4915</code>，以及后续的<code>ff6705b94b</code>，当时的实现方式是轮训当前本地日志中的所有条目，发现有配置变更类型的日志，就将一个<code>bool</code>类型的<code>pendingConf</code>变量置为<code>true</code>。</p>
+<p>到了<code>2017</code>年的<code>commit</code>：<code>8d8f3195e</code>，以及后续的<code>20422c5b4</code>中，才将<code>pendingConf</code>改成了现在的<code>pendingConfIndex</code>，并且在<code>becomeLeader</code>中直接将其设置为最后日志条目的索引，目的是为了节省轮训日志的时间。根据注释，作者发现新<code>Leader</code>花费太多时间在轮训日志上，导致没有及时的发送心跳消息，从而导致了新一轮的选举。<code>8d8f3195e</code>的<code>commit</code>注释如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Scanning the uncommitted portion of the raft log to determine whether there are any pending config changes can be expensive. In cockroachdb/cockroach#18601, we&#x27;ve seen that a new leader can spend so</span><br><span class="line">much time scanning its log post-election that it fails to send its first heartbeats in time to prevent a second election from starting immediately.</span><br><span class="line"></span><br><span class="line">Instead of tracking whether a pending config change exists with a boolean, this commit tracks the latest log index at which a pending config change *could* exist. This is a less expensive solution to</span><br><span class="line">the problem, and the impact of false positives should be minimal since a newly-elected leader should be able to quickly commit the tail ofits log.</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h4 id="Follower竞选拉票前判断是否有已commit未apply的配置变更日志条目"><a href="#Follower竞选拉票前判断是否有已commit未apply的配置变更日志条目" class="headerlink" title="Follower竞选拉票前判断是否有已commit未apply的配置变更日志条目"></a><code>Follower</code>竞选拉票前判断是否有已commit未apply的配置变更日志条目</h4><p>在<code>raft.hub</code>方法中，有下面的逻辑：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">ents, err := r.raftLog.slice(r.raftLog.applied+<span class="number">1</span>, r.raftLog.committed+<span class="number">1</span>, noLimit)</span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	r.logger.Panicf(<span class="string">&quot;unexpected error getting unapplied entries (%v)&quot;</span>, err)</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">if</span> n := numOfPendingConf(ents); n != <span class="number">0</span> &amp;&amp; r.raftLog.committed &gt; r.raftLog.applied &#123;</span><br><span class="line">	r.logger.Warningf(<span class="string">&quot;%x cannot campaign at term %d since there are still %d pending configuration changes to apply&quot;</span>, r.id, r.Term, n)</span><br><span class="line">	<span class="keyword">return</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>即如果当前<code>Follower</code>中，存在已经commit，但是尚未apply的配置变更日志，则该<code>Follower</code>无法成为<code>Leader</code>。这是在<code>d0e4fe56a5dbe0d</code>中的<code>commit</code>。</p>
+<p>这么做的原因参考“思考”一节。</p>
+<hr>
+<h4 id="重要的commit"><a href="#重要的commit" class="headerlink" title="重要的commit"></a>重要的commit</h4><h5 id="配置变更功能的第一次提交2014-06-06：c03fbf68d6"><a href="#配置变更功能的第一次提交2014-06-06：c03fbf68d6" class="headerlink" title="配置变更功能的第一次提交2014-06-06：c03fbf68d6"></a>配置变更功能的第一次提交2014-06-06：c03fbf68d6</h5><pre><code>raft: add conf safety
+
+To make configuration change safe without adding configuration protocol:
+
+1. We only allow to add/remove one node at a time.
+
+2. We only allow one uncommitted configuration entry in the log.
+
+These two rules can make sure there is no disjoint quorums in both current cluster and the
+future(after applied any number of committed entries or uncommitted entries in log) clusters.
+
+We add a type field in Entry structure for two reasons:
+
+1. Statemachine needs to know if there is a pending configuration change.
+
+2. Configuration entry should be executed by raft package rather application who is using raft.
+</code></pre>
+<h5 id="在becomeLeader中，避免扫描日志2017-12-30：8d8f3195e；2018-06-27：20422c5b4"><a href="#在becomeLeader中，避免扫描日志2017-12-30：8d8f3195e；2018-06-27：20422c5b4" class="headerlink" title="在becomeLeader中，避免扫描日志2017-12-30：8d8f3195e；2018-06-27：20422c5b4"></a>在becomeLeader中，避免扫描日志2017-12-30：8d8f3195e；2018-06-27：<code>20422c5b4</code></h5><h5 id="支持联合共识算法2019-07-16：aa158f36b"><a href="#支持联合共识算法2019-07-16：aa158f36b" class="headerlink" title="支持联合共识算法2019-07-16：aa158f36b"></a>支持联合共识算法2019-07-16：aa158f36b</h5><pre><code>raft: internally support joint consensus
+
+This commit introduces machinery to safely apply joint consensus configuration changes to Raft.
+
+The main contribution is the new package, `confchange`, which offers the primitives `Simple`, `EnterJoint`, and `LeaveJoint`.
+
+The first two take a list of configuration changes. `Simple` only declares success if these configuration changes (applied atomically) change the set of voters by at most one (i.e. it&#39;s fine to add or remove any number of learners, but change only one voter). `EnterJoint` makes the configuration joint and then applies the changes to it, in preparation of the caller returning later and transitioning out of the joint config into the final desired configuration via `LeaveJoint()`.
+
+This commit streamlines the conversion between voters and learners, which is now generally allowed whenever the above conditions are upheld (i.e. it&#39;s not possible to demote a voter and add a new voter in the context of a Simple configuration change, but it is possible via EnterJoint). Previously, we had the artificial restriction that a voter could not be demoted to a learner, but had to be removed first. Even though demoting a learner is generally less useful than promoting a learner (the latter is used to catch up future voters), demotions could see use in improved handling of temporary node unavailability, where it is desired to remove voting power from a down node, but to
+preserve its data should it return.
+
+An additional change that was made in this commit is to prevent the use of empty commit quorums, which was previously possible but for no good reason; this: Closes #10884.
+
+The work left to do in a future PR is to actually expose joint configurations to the applications using Raft. This will entail mostly API design and the addition of suitable testing, which to be carried out ergonomically is likely to motivate a larger refactor.
+
+Touches #7625.
+</code></pre>
+<h5 id="支持pb-EntryConfChangeV2接口2019-07-23：b67303c6a240708"><a href="#支持pb-EntryConfChangeV2接口2019-07-23：b67303c6a240708" class="headerlink" title="支持pb.EntryConfChangeV2接口2019-07-23：b67303c6a240708"></a>支持pb.EntryConfChangeV2接口2019-07-23：b67303c6a240708</h5><pre><code>raft: allow use of joint quorums
+
+This change introduces joint quorums by changing the Node and RawNode API to accept pb.ConfChangeV2 (on top of pb.ConfChange).
+
+pb.ConfChange continues to work as today: it allows carrying out a single configuration change. A pb.ConfChange proposal gets added to the Raft log as such and is thus also observed by the app during Ready handling, and fed back to ApplyConfChange.
+
+ConfChangeV2 allows joint configuration changes but will continue to carry out configuration changes in &quot;one phase&quot; (i.e. without ever entering a joint config) when this is possible.
+</code></pre>
+<h5 id="竞选拉票前检查是否有未应用的配置变更2020-07-23：d0e4fe56a5dbe0d"><a href="#竞选拉票前检查是否有未应用的配置变更2020-07-23：d0e4fe56a5dbe0d" class="headerlink" title="竞选拉票前检查是否有未应用的配置变更2020-07-23：d0e4fe56a5dbe0d"></a>竞选拉票前检查是否有未应用的配置变更2020-07-23：d0e4fe56a5dbe0d</h5><pre><code> raft: check pending conf change before campaign (#12134)
+
+* raft: check conf change before campaign
+
+Signed-off-by: Jay Lee &lt;BusyJayLee@gmail.com&gt;
+
+* raft: extract hup function
+
+Signed-off-by: Jay Lee &lt;BusyJayLee@gmail.com&gt;
+
+* raft: check pending conf change for transferleader
+
+Signed-off-by: Jay Lee &lt;BusyJayLee@gmail.com&gt;
+</code></pre>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" rel="prev" title="etcd_raft源码解析-11成员变更1-confchange包">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-11成员变更1-confchange包
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/" rel="next" title="etcd_raft源码解析-12CheckQuorum和心跳消息处理">
+      etcd_raft源码解析-12CheckQuorum和心跳消息处理 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">2.</span> <span class="nav-text">单节点变更的问题</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%A6%86%E7%9B%96%E5%B7%B2%E6%8F%90%E4%BA%A4%E7%9A%84%E6%97%A5%E5%BF%97"><span class="nav-number">2.1.</span> <span class="nav-text">覆盖已提交的日志</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8F%AF%E7%94%A8%E6%80%A7%E9%97%AE%E9%A2%98"><span class="nav-number">2.2.</span> <span class="nav-text">可用性问题</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%9E%E7%8E%B0"><span class="nav-number">3.</span> <span class="nav-text">实现</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E6%8F%90%E6%A1%88"><span class="nav-number">3.1.</span> <span class="nav-text">配置变更提案</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%84%E7%90%86%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E6%8F%90%E6%A1%88"><span class="nav-number">3.2.</span> <span class="nav-text">处理配置变更提案</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%8A%B6%E6%80%81%E6%9C%BA%E5%BA%94%E7%94%A8%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4"><span class="nav-number">3.3.</span> <span class="nav-text">状态机应用配置变更</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%A4%E6%96%AD%E5%A6%82%E4%BD%95%E8%BF%9B%E8%A1%8C%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4"><span class="nav-number">3.4.</span> <span class="nav-text">判断如何进行配置变更</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4"><span class="nav-number">3.5.</span> <span class="nav-text">单节点变更</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%81%94%E5%90%88%E5%85%B1%E8%AF%86"><span class="nav-number">3.6.</span> <span class="nav-text">联合共识</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#EnterJoint"><span class="nav-number">3.6.1.</span> <span class="nav-text">EnterJoint</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#LeaveJoint"><span class="nav-number">3.6.2.</span> <span class="nav-text">LeaveJoint</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E4%BF%A1%E6%81%AF%E7%9A%84%E4%BF%9D%E5%AD%98%E5%92%8C%E4%BD%BF%E7%94%A8"><span class="nav-number">3.7.</span> <span class="nav-text">配置变更信息的保存和使用</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#toConfChangeSingle"><span class="nav-number">3.7.1.</span> <span class="nav-text">toConfChangeSingle</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Restore"><span class="nav-number">3.7.2.</span> <span class="nav-text">Restore</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%80%9D%E8%80%83"><span class="nav-number">4.</span> <span class="nav-text">思考</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B6%E4%BB%96%E5%AE%9E%E7%8E%B0%E7%BB%86%E8%8A%82"><span class="nav-number">5.</span> <span class="nav-text">其他实现细节</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#becomeLeader%E6%97%B6%E8%AE%BE%E7%BD%AEpendingConfIndex"><span class="nav-number">5.1.</span> <span class="nav-text">becomeLeader时设置pendingConfIndex</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Follower%E7%AB%9E%E9%80%89%E6%8B%89%E7%A5%A8%E5%89%8D%E5%88%A4%E6%96%AD%E6%98%AF%E5%90%A6%E6%9C%89%E5%B7%B2commit%E6%9C%AAapply%E7%9A%84%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%97%E6%9D%A1%E7%9B%AE"><span class="nav-number">5.2.</span> <span class="nav-text">Follower竞选拉票前判断是否有已commit未apply的配置变更日志条目</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%87%8D%E8%A6%81%E7%9A%84commit"><span class="nav-number">5.3.</span> <span class="nav-text">重要的commit</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E5%8A%9F%E8%83%BD%E7%9A%84%E7%AC%AC%E4%B8%80%E6%AC%A1%E6%8F%90%E4%BA%A42014-06-06%EF%BC%9Ac03fbf68d6"><span class="nav-number">5.3.1.</span> <span class="nav-text">配置变更功能的第一次提交2014-06-06：c03fbf68d6</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9C%A8becomeLeader%E4%B8%AD%EF%BC%8C%E9%81%BF%E5%85%8D%E6%89%AB%E6%8F%8F%E6%97%A5%E5%BF%972017-12-30%EF%BC%9A8d8f3195e%EF%BC%9B2018-06-27%EF%BC%9A20422c5b4"><span class="nav-number">5.3.2.</span> <span class="nav-text">在becomeLeader中，避免扫描日志2017-12-30：8d8f3195e；2018-06-27：20422c5b4</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%94%AF%E6%8C%81%E8%81%94%E5%90%88%E5%85%B1%E8%AF%86%E7%AE%97%E6%B3%952019-07-16%EF%BC%9Aaa158f36b"><span class="nav-number">5.3.3.</span> <span class="nav-text">支持联合共识算法2019-07-16：aa158f36b</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%94%AF%E6%8C%81pb-EntryConfChangeV2%E6%8E%A5%E5%8F%A32019-07-23%EF%BC%9Ab67303c6a240708"><span class="nav-number">5.3.4.</span> <span class="nav-text">支持pb.EntryConfChangeV2接口2019-07-23：b67303c6a240708</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%AB%9E%E9%80%89%E6%8B%89%E7%A5%A8%E5%89%8D%E6%A3%80%E6%9F%A5%E6%98%AF%E5%90%A6%E6%9C%89%E6%9C%AA%E5%BA%94%E7%94%A8%E7%9A%84%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B42020-07-23%EF%BC%9Ad0e4fe56a5dbe0d"><span class="nav-number">5.3.5.</span> <span class="nav-text">竞选拉票前检查是否有未应用的配置变更2020-07-23：d0e4fe56a5dbe0d</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

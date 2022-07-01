@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="背景下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志压缩的内容，主要节选自“5.1 Snapshotting memory-based state machines”。 在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-10日志压缩">
+<meta property="og:url" content="http://example.com/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="背景下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志压缩的内容，主要节选自“5.1 Snapshotting memory-based state machines”。 在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-01-26T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:39:35.557Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-10日志压缩 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-10日志压缩
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-01-27 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-27T00:00:00+08:00">2022-01-27</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:35" itemprop="dateModified" datetime="2022-06-28T09:39:35+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志压缩的内容，主要节选自“5.1 Snapshotting memory-based state machines”。</p>
+<p>在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：<font color=red>服务器要么空间不足，要么启动时间过长。</font>因此，任何实际系统都需要某种形式的日志压缩方法。</p>
+<span id="more"></span>
+<p>日志压缩的一般思路是，随着时间的推移，日志中的许多信息就会变得过时，从而可以丢弃。一旦日志条目被提交并应用到状态机，就不再需要用于到达当前状态的中间状态和操作，从而可以将它们压缩掉。</p>
+<p>与Raft的核心算法和成员变更算法不同，<font color=red>不同的系统在日志压缩方面会有不同的需求</font>。在各种方法中，<font color=red>日志压缩的大部分责任都落在状态机上，状态机负责将状态写入磁盘并压缩状态。</font>对于基于内存的状态机而言，快照（Snapshotting ）是概念上是最简单的方法。在该方法中，整个当前系统状态会写入稳定存储上的快照文件中，然后丢弃该点之前的整个日志。</p>
+<p>日志压缩的各种方法有几个共同的核心概念：</p>
+<ul>
+<li>首先，<font color=red>每个服务器独立压缩已提交的日志，而不是将压缩功能都集中在Leader身上。</font>这避免了Leader将快照数据传输给本身已有日志数据的Follower。这也有助于模块化：日志压缩的大部分复杂性都落在状态机中，而与Raft本身没有太多交互。</li>
+<li>其次，状态机和Raft之间的基本交互涉及将已提交的日志从Raft传输给状态机。在应用日志条目之后，状态机迟早会以一种可以恢复到当前系统状态的方式将这些条目反映到磁盘上。一旦这样做了，它会告诉Raft丢弃日志中相应的条目。<font color=red>在Raft丢弃日志条目之前，Raft自身必须保存一些描述这些日志条目的信息。具体而言，Raft必须保留其丢弃的最后一个条目的Index和Term；</font>这俩信息可用于将位于状态机的压缩的状态之后的日志部分保持在正确的OFFSET上，并保证AppendEntries的一致性检查可以继续工作（该RPC需要包含其中的第一个条目之前的条目的Index和Term信息）。<font color=red>Raft还需要保留丢弃日志中的成员配置信息，以支持集群成员配置变更。</font></li>
+<li>第三，一旦Raft丢弃了日志的部分条目，状态机将承担两个新的职责：如果服务器重新启动，状态机需要从磁盘加载与丢弃的日志条目对应的状态，然后才能应用Raft日志中的任何条目；此外，状态机需要生成一致的状态镜像文件，以便将其发送给慢Follower（其日志远远落后于领导者的日志）。</li>
+</ul>
+<p>快照方法适用于状态机的数据结构保存在内存中的场景。对于数据集为千兆字节或数十千兆字节的状态机来说，这是一个合理的选择。</p>
+<p>每个服务器都独立地进行快照，快照只覆盖日志中已提交且应用的条目。快照方法的大部分工作就是将状态机的当前状态进行序列化，而这是特定于状态机来实现的。</p>
+<p><font color=red>一旦状态机写完快照，就可以将日志截断。Raft首先保存重启所需的状态：快照中最后一个条目的Index和Term，以及快照中的最新成员配置，然后将Index之前的日志丢弃，之前保存的快照也可以丢弃，它们也没用了。</font></p>
+<p>Leader可能偶尔需要将其状态发送给慢Follower和新加入集群的服务器。在快照方法中，这个状态就是最新的快照文件，Leader使用RPC发送该快照。<font color=red>当Follower收到此RPC中包含的快照文件时，它必须决定如何处理其现有的日志项。</font></p>
+<ul>
+<li>通常，快照文件中会包含Follower日志中没有的新信息，在这种情况下，Follower丢弃其整个日志，将其直接用快照取代，日志中可能有与快照冲突的未提交条目，也直接被快照覆盖。</li>
+<li>相反，如果Follower接收到的快照，仅包含其日志条目的头部部分条目（由于重传或某些错误），则快照所能覆盖的那些日志条目将被删除，但快照之后的条目仍然有效，必须保留。</li>
+</ul>
+<p>创建快照可能需要很长时间，包括状态序列化和将其写入磁盘。因此，<font color=red>序列化和写入快照必须与正常操作同时进行，以避免出现可用性问题。</font>可以使用操作系统支持的写时拷贝技术（在编程环境允许的情况下）。例如，在Linux上，内存状态机可以使用fork来复制服务进程的整个地址空间。然后，在父进程继续为请求提供服务的同时，子进程可以将状态写入文件并退出。LogCabin目前使用的是fork，但是<font color=red>fork在涉及多线程，以及C++析构函数时需要慎重设计，要使其正确工作存在一些困难。但是，使用fork只需要少量代码，而且完全不需要修改状态机的数据结构，因此我们认为使用fork是正确的方法。</font></p>
+<p>服务器必须决定何时快照。如果服务器快照太频繁，则会浪费磁盘带宽和其他资源；如果快照频率太低，则可能会耗尽其存储容量，并会增加重启时重放（replay）日志所需的时间。使用上一个快照的大小而不是下一个快照的大小作为参照，可能会更加合理。一旦日志的大小超过前一个快照的大小乘以可配置的扩展因子，服务器就可以进行快照。</p>
+<hr>
+<h3 id="节点自行创建快照"><a href="#节点自行创建快照" class="headerlink" title="节点自行创建快照"></a>节点自行创建快照</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> CreateSnapshot(i <span class="type">uint64</span>, cs *pb.ConfState, data []<span class="type">byte</span>) (pb.Snapshot, <span class="type">error</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> Compact(compactIndex <span class="type">uint64</span>) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>创建快照的流程如下，主要涉及MemoryStorage中的方法，以下内容与《raft包–storage》有重复：</p>
+<ul>
+<li>外部模块在满足一定的条件后，会调用<code>MemoryStorage.CreateSnapshot</code>方法主动创建<code>MemoryStorage.snapshot</code>；<ul>
+<li>该方法的参数<code>i</code>表示新<code>snapshot</code>的<code>Metadata.Index</code>；参数<code>data</code>表示新<code>snapshot</code>的二进制数据（也就是说新<code>snapshot</code>的数据来源于外部模块，实际上就是当前系统状态的快照）；参数<code>cs</code>表示当前的集群成员配置；</li>
+<li>该方法会检查<code>i</code>是否在 <code>(MemoryStorage.snapshot.Metadata.Index, MemoryStorage.lastIndex() ]</code>范围内，然后才设置新的<code>snapshot</code>。即保证新快照文件必须能覆盖旧快照文件。</li>
+<li>该方法并没有对<code>MemoryStorage.ents</code>做任何改动。</li>
+</ul>
+</li>
+<li>然后外部模块将<code>snapshot</code>保存到<code>NVS</code>中；</li>
+<li>然后外部模块会调用<code>MemoryStorage.Compact</code>方法来摒弃一些<code>MemoryStorage.ents</code>中的日志条目，即<code>compactlndex</code>之前的日志。<ul>
+<li>需要注意的是，调用该方法的参数<code>compactlndex</code>并不一定等于调用<code>CreateSnapshot</code>时传递的<code>Metadata.Index</code>，其值有可能比当前的新<code>snapshot.Metadata.Index</code>要小，即保留一些已经压缩到<code>snapshot</code>中的日志条目。根据注释，这里是为了照顾一些比较慢的Follower，以便不发送非必要的<code>snapshot</code>，节省带宽。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h3 id="Leader向Follower发送快照"><a href="#Leader向Follower发送快照" class="headerlink" title="Leader向Follower发送快照"></a>Leader向Follower发送快照</h3><h4 id="消息格式"><a href="#消息格式" class="headerlink" title="消息格式"></a>消息格式</h4><p><code>Leader</code>通过<code>pb.MsgSnap</code>消息向<code>Follower</code>发送快照，该消息的格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	Type: pb.MsgSnap, </span><br><span class="line">	Snapshot: snapshot, <span class="comment">//raftLog.snapshot()得到的快照</span></span><br><span class="line">	From: id, <span class="comment">//Leader自己的id</span></span><br><span class="line">	To: id, <span class="comment">//Follower的id</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>Follower</code>收到<code>pb.MsgSnap</code>消息后，不管是否应用了该快照，都会回复<code>pb.MsgAppResp</code>消息，该消息的格式是：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pb.Message &#123;</span><br><span class="line">	To: m.From, <span class="comment">//发送AppendEntry消息的Leader的id</span></span><br><span class="line">	Type: pb.MsgAppResp, </span><br><span class="line">	Index: lastIndex or commitIndex, <span class="comment">//应用了快照则是raftLog.lastIndex()，否则是raftLog.committed</span></span><br><span class="line">	From: id, <span class="comment">//Follower自己的id</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h4 id="Leader发送pb-MsgSnap消息"><a href="#Leader发送pb-MsgSnap消息" class="headerlink" title="Leader发送pb.MsgSnap消息"></a>Leader发送<code>pb.MsgSnap</code>消息</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> maybeSendAppend(to <span class="type">uint64</span>, sendIfEmpty <span class="type">bool</span>) <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(pr *Progress)</span></span> BecomeSnapshot(snapshoti <span class="type">uint64</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *raftLog)</span></span> snapshot() (pb.Snapshot, <span class="type">error</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> Snapshot() (pb.Snapshot, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>Leader</code>在调用<code>raft.maybeSendAppend</code>尝试向某个<code>Follower</code>发送日志条目时，会先调用<code>raftLog.term(pr.Next - 1)</code>尝试得到<code>preLogTerm</code>，然后调用<code>raftLog.entries(pr.Next, r.maxMsgSize)</code>尝试得到要发送的日志条目。如果这两个调用返回了非空的错误，就认为向该<code>Follower</code>发送的条目已经不存在于日志中，因此需要向该<code>Follower</code>发送<code>pb.MsgSnap</code>消息。</p>
+<p>发送<code>pb.MsgSnap</code>消息时，需要先调用<code>raft.snapshot</code>方法获取快照。该方法首先看当前是否有<code>raftlog.unstable.snapshot</code>（即该<code>Leader</code>还是<code>Follower</code>时从前任<code>Leader</code>处收到的，并且尚未保存到<code>NVS</code>中的快照），没有的话在调用<code>MemoryStorage.Snapshot</code>得到<code>NVS</code>中的快照（这种的可能性应该更大一些）；</p>
+<p>剩下的就是组装<code>pb.MsgSnap</code>消息并发送了，发消息之前会调用<code>Progress.BecomeSnapshot</code>将状态置为<code>StateSnapshot</code>，并把<code>Progress.PendingSnapshot</code>置为快照中的<code>Metadata.Index</code>，后续收到<code>Follower</code>的回复时会用到该字段。</p>
+<hr>
+<h4 id="Follower处理pb-MsgSnap消息"><a href="#Follower处理pb-MsgSnap消息" class="headerlink" title="Follower处理pb.MsgSnap消息"></a>Follower处理<code>pb.MsgSnap</code>消息</h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> handleSnapshot(m pb.Message)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> restore(s pb.Snapshot) <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *raftLog)</span></span> restore(s pb.Snapshot)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(u *unstable)</span></span> restore(s pb.Snapshot)</span><br></pre></td></tr></table></figure>
+
+<p><code>Follower</code>收到<code>pb.MsgSnap</code>消息后，调用<code>handleSnapshot</code>方法处理，该方法就是调用<code>r.restore(m.Snapshot)</code>尝试应用收到的快照，该函数返回<code>true</code>表示应用了快照，否则返回<code>false</code>。不管<code>restore</code>返回<code>true</code>或<code>false</code>，都会回复<code>reject</code>为<code>false</code>的<code>pb.MsgAppResp</code>消息，区别在于：</p>
+<ul>
+<li><code>restore</code>返回<code>true</code>时，<code>pb.MsgAppResp</code>消息中的<code>Index</code>被置为最新的<code>r.raftLog.lastIndex()</code>，即快照中最后日志条目的<code>Index</code>；</li>
+<li><code>restore</code>返回<code>false</code>时，<code>pb.MsgAppResp</code>消息中的<code>Index</code>被置为<code>r.raftLog.committed</code>，即<code>Follower</code>当前的<code>commitIndex</code>。</li>
+</ul>
+<p><code>restrore</code>尝试应用快照恢复日志和成员配置。如果该方法返回<code>false</code>，说明没有应用快照，一般而言这表示快照是过期的，或者是发生了某种错误。该方法的逻辑如下：</p>
+<ul>
+<li><font color=red>如果快照中的最后日志条目的<code>Index</code>小于等于当前的<code>r.raftLog.committed</code>，说明快照是过期快照</font>，直接返回<code>false</code>；</li>
+<li>如果当前节点是<code>Leader</code>，则以<code>r.Term+1</code>调用<code>r.becomeFollower</code>，转为<code>Follower</code>，然后返回<code>false</code>。按照注释，这是一种<code>defense-in-depth</code>，正常来讲<code>Leader</code>不可能走到这一步，调用<code>restrore</code>时节点肯定是<code>Follower</code>状态。但是万一走到了，这里为了避免对集群造成破坏，直接转成<code>Follower</code>后返回；</li>
+<li>轮训快照中<code>Metadata.ConfState</code>中的<code>Voters, Learners</code>和<code>VotersOutgoing</code>这些id数组，这些<code>id</code>数组中包含了集群当前所有的节点<code>id</code>，如果在其中找不到当前<code>Follower</code>的<code>id</code>，则返回<code>false</code>；这还是一种<code>defense-in-depth</code>；</li>
+<li>调用<code>r.raftLog.matchTerm(s.Metadata.Index, s.Metadata.Term)</code>，该方法返回<code>true</code>，<font color=red>表示<code>Follower</code>当前的日志条目已完全包含了快照中的日志，无需应用快照</font>，所以更新<code>raftLog.committed</code>为<code>s.Metadata.Index</code>后，返回<code>false</code>；</li>
+<li>调用<code>r.raftLog.restore</code>应用快照。该方法会将<code>raftLog.committed</code>设置为<code>s.Metadata.Index</code>，并且将<code>raftLog.unstable.snapshot</code>设置为<code>s</code>，并将<code>raftLog.unstable.entries</code>置为<code>nil</code>。<font color=red>即把<code>snapshot</code>保存到<code>unstable</code>中，并清空其中的日志</font>；</li>
+<li>然后创建新的<code>r.prs</code>，即<code>ProgressTracker</code>，调用<code>confchange.Restore</code>，根据快照中的<code>Metadata.ConfState</code>设置当前集群的成员配置。<font color=red>具体可参考《配置变更》</font></li>
+<li>最后，调用<code>pr.MaybeUpdate(pr.Next-1)</code>，更新<code>Follower</code>自己的<code>Progress.Match</code>；最后返回<code>true</code>；</li>
+</ul>
+<hr>
+<h4 id="Leader处理pb-MsgAppResp响应消息"><a href="#Leader处理pb-MsgAppResp响应消息" class="headerlink" title="Leader处理pb.MsgAppResp响应消息"></a>Leader处理<code>pb.MsgAppResp</code>响应消息</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">func stepLeader(r *raft, m pb.Message) error</span><br></pre></td></tr></table></figure>
+
+<p><code>Leader</code>收到<code>Follower</code>对于<code>pb.MsgSnap</code>消息回复的<code>reject</code>为<code>false</code>的<code>pb.MsgAppResp</code>响应消息后，在<code>stepLeader</code>中的处理逻辑是：</p>
+<ul>
+<li>先调用<code>pr.MaybeUpdate(m.Index)</code>更新<code>pr.Match</code>。该函数返回<code>false</code>表示过期消息，不再继续处理。返回成功的情况下才继续下面的处理：</li>
+<li><code>Follower</code>对应的<code>Progress</code>当前状态肯定是<code>tracker.StateSnapshot</code>，如果新<code>pr.Match</code>大于等于<code>pr.PendingSnapshot</code>，则先调用<code>pr.BecomeProbe</code>转入<code>StateProbe</code>状态，然后调用<code>pr.BecomeReplicate</code>转入<code>StateReplicate</code>状态。</li>
+<li>新<code>pr.Match</code>就是回复消息中的<code>m.Index</code>，而<code>pr.PendingSnapshot</code>表示发送给<code>Follower</code>的<code>snapshot</code>的最后条目的<code>Index</code>，如果<code>pr.Match</code>大于<code>pr.PendingSnapshot</code>，说明<code>Follower</code>收到的快照无法完全覆盖其本地日志条目，从而没有应用快照，所以<code>Follower</code>返回的是其<code>commitIndex</code>；如果<code>pr.Match</code>等于<code>pr.PendingSnapshot</code>，说明<code>Follower</code>应用了快照。不管哪种情况，都可以将<code>Follower</code>对应的<code>Progress</code>转为<code>StateReplicate</code>状态，接下来就可以发送日志条目了；</li>
+</ul>
+<hr>
+<h4 id="Follower将快照保存到NVS"><a href="#Follower将快照保存到NVS" class="headerlink" title="Follower将快照保存到NVS"></a><code>Follower</code>将快照保存到<code>NVS</code></h4><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> readyWithoutAccept() Ready</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">newReady</span><span class="params">(r *raft, prevSoftSt *SoftState, prevHardSt pb.HardState)</span></span> Ready</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">IsEmptySnap</span><span class="params">(sp pb.Snapshot)</span></span> <span class="type">bool</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ms *MemoryStorage)</span></span> ApplySnapshot(snap pb.Snapshot) <span class="type">error</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(rn *RawNode)</span></span> Advance(rd Ready)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *raft)</span></span> advance(rd Ready)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(u *unstable)</span></span> stableSnapTo(i <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>当<code>raft模块</code>需要将<code>Ready</code>结构发送给外部模块处理时，首先会调用<code>RawNode.readyWithoutAccept -&gt; newReady</code>获取最新的<code>Ready</code>结构。<code>newReady</code>函数会在<code>raftLog.unstable.snapshot</code>不为<code>nil</code>的情况下将其保存到<code>Ready.Snapshot</code>中。</p>
+<p>外部模块收到<code>Ready</code>结构后，调用<code>IsEmptySnap</code>判断其中的<code>Ready.Snapshot</code>不为空的情况下，会首先将<code>Snapshot</code>保存到<code>NVS</code>中，然后调用<code>MemoryStorage.ApplySnapshot</code>方法，替换掉现有的<code>MemoryStorage.snapshot</code>，并将其中所有日志条目<code>MemoryStorage.ents</code>清空，只保留<code>ents[0]</code>的信息，设置<code>ents[0]</code>的<code>Index</code>和<code>Term</code>分别为最新的<code>snapshot.Metadata.Index</code>和<code>snapshot.Metadata.Term</code>。该方法在替换<code>MemoryStorage.snapshot</code>之前，需<font color=red>要保证新的<code>snapshot.Metadata.Index</code>必须大于旧的<code>snapshot.Metadata.Index</code></font>，否则就表示新<code>snapshot</code>不能完全覆盖旧<code>snapshot</code>，这种情况下直接报错；</p>
+<p>外部模块处理完<code>Ready</code>结构后，调用<code>raft.advance</code>方法。如果<code>Ready.Snapshot</code>不为空，则说明其中的<code>snapshot</code>已经保存到<code>NVS</code>中了，则以其为参数调用<code>raftlog.stableSnapTo</code>方法，最终调用到<code>unstable.stableSnapTo</code>方法 ，将<code>unstable.snapshot</code>置为<code>nil</code>。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" rel="prev" title="raft大论文翻译-05日志压缩">
+      <i class="fa fa-chevron-left"></i> raft大论文翻译-05日志压缩
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" rel="next" title="raft大论文翻译-06与Client的交互">
+      raft大论文翻译-06与Client的交互 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%8A%82%E7%82%B9%E8%87%AA%E8%A1%8C%E5%88%9B%E5%BB%BA%E5%BF%AB%E7%85%A7"><span class="nav-number">2.</span> <span class="nav-text">节点自行创建快照</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Leader%E5%90%91Follower%E5%8F%91%E9%80%81%E5%BF%AB%E7%85%A7"><span class="nav-number">3.</span> <span class="nav-text">Leader向Follower发送快照</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%B6%88%E6%81%AF%E6%A0%BC%E5%BC%8F"><span class="nav-number">3.1.</span> <span class="nav-text">消息格式</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Leader%E5%8F%91%E9%80%81pb-MsgSnap%E6%B6%88%E6%81%AF"><span class="nav-number">3.2.</span> <span class="nav-text">Leader发送pb.MsgSnap消息</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Follower%E5%A4%84%E7%90%86pb-MsgSnap%E6%B6%88%E6%81%AF"><span class="nav-number">3.3.</span> <span class="nav-text">Follower处理pb.MsgSnap消息</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Leader%E5%A4%84%E7%90%86pb-MsgAppResp%E5%93%8D%E5%BA%94%E6%B6%88%E6%81%AF"><span class="nav-number">3.4.</span> <span class="nav-text">Leader处理pb.MsgAppResp响应消息</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Follower%E5%B0%86%E5%BF%AB%E7%85%A7%E4%BF%9D%E5%AD%98%E5%88%B0NVS"><span class="nav-number">3.5.</span> <span class="nav-text">Follower将快照保存到NVS</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

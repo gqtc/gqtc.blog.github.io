@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Chapter 5 Log compaction在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长。随着日志增多，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：服务器要么空间不足，要么启动时间过长。因此，任何实际系统都需要某种形式的日志压缩方法。 Raft’s log grows during normal operation">
+<meta property="og:type" content="article">
+<meta property="og:title" content="raft大论文翻译-05日志压缩">
+<meta property="og:url" content="http://example.com/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Chapter 5 Log compaction在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长。随着日志增多，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：服务器要么空间不足，要么启动时间过长。因此，任何实际系统都需要某种形式的日志压缩方法。 Raft’s log grows during normal operation">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/15RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220415170837048.png">
+<meta property="og:image" content="http://example.com/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210924082907442.png">
+<meta property="og:image" content="http://example.com/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210927082637519.png">
+<meta property="og:image" content="http://example.com/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210927083723980.png">
+<meta property="og:image" content="http://example.com/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210928183432186.png">
+<meta property="og:image" content="http://example.com/img/15RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220416091413088.png">
+<meta property="og:image" content="http://example.com/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210928183359525.png">
+<meta property="og:image" content="http://example.com/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210928181911418.png">
+<meta property="article:published_time" content="2022-01-07T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T04:32:32.962Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/15RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220415170837048.png">
+
+<link rel="canonical" href="http://example.com/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>raft大论文翻译-05日志压缩 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          raft大论文翻译-05日志压缩
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-01-08 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-08T00:00:00+08:00">2022-01-08</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 12:32:32" itemprop="dateModified" datetime="2022-06-28T12:32:32+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="Chapter-5-Log-compaction"><a href="#Chapter-5-Log-compaction" class="headerlink" title="Chapter 5 Log compaction"></a>Chapter 5 Log compaction</h2><p>在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长。随着日志增多，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：<font color=red>服务器要么空间不足，要么启动时间过长。</font>因此，任何实际系统都需要某种形式的日志压缩方法。</p>
+<p>Raft’s log grows during normal operation as it incorporates more client requests. As it grows larger, it occupies more space and takes more time to replay. Without some way to compact the log, this will eventually cause availability problems: servers will either run out of space, or they will take too long to start. Thus, some form of log compaction is necessary for any practical system.</p>
+<span id="more"></span>
+<p>日志压缩的一般思路是，随着时间的推移，日志中的许多信息就会变得过时，从而可以丢弃。例如，如果稍后的操作将x设置为3，则之前将x设置为2的操作日志就是过时日志。一旦日志条目被提交并应用到状态机，就不再需要用于到达当前状态的中间状态和操作，从而可以将它们压缩掉。</p>
+<p>The general idea of log compaction is that much of the information in the log becomes obsolete over time and can be discarded. For example, an operation that sets x to 2 is obsolete if a later operation sets x to 3. Once log entries have been committed and applied to the state machine, the intermediate states and operations used to arrive at the current state are no longer needed, and they can be compacted away.</p>
+<p>与Raft的核心算法和成员变更算法不同，<font color=red>不同的系统在日志压缩方面会有不同的需求</font>。由于以下两个原因，没有一种万能的日志压缩解决方案。首先，不同的系统可能会选择在不同程度上权衡简单性和性能。其次，状态机与日志压缩密切相关，状态机的大小各有不同，而且状态机是基于磁盘还是基于易失性内存也有很大的不同。</p>
+<p>Unlike the core Raft algorithm and membership changes, different systems will have different needs when it comes to log compaction. There is no one-size-fits-all solution to log compaction for a couple of reasons. First, different systems may choose to trade off simplicity and performance to varying degrees. Second, the state machine must be intimately involved in log compaction, and state machines differ substantially in size and in whether they are based on disk or volatile memory.</p>
+<p>本章会讨论各种日志压缩方法。在各种方法中，<font color=red>日志压缩的大部分责任都落在状态机上，状态机负责将状态写入磁盘并压缩状态。</font>状态机可以通过不同的方式实现这一点，本章对其进行了描述，并在图5.1中进行了总结：</p>
+<ul>
+<li>对于基于内存的状态机而言，快照（Snapshotting ）是概念上是最简单的方法。在该方法中，整个当前系统状态会写入稳定存储上的快照文件中，然后丢弃该点之前的整个日志。在Chubby[11,15]和ZooKeeper[38]中使用了快照技术，我们在Logcard中也实现了快照。5.1节中会深入介绍快照方法。</li>
+<li>对于基于磁盘的状态机，在磁盘上维护系统状态的最新副本是正常操作的一部分。因此，只要状态机将写操作反映到磁盘上，Raft日志就可以被丢弃，并且快照文件仅在向其他服务器发送一致的磁盘映像时使用（5.2节描述）。</li>
+<li>5.3节介绍了日志压缩的增量方法，如日志清理和日志结构合并树（ log-structured merge trees）。这些方法可以高效地写入磁盘，并且随着时间的推移，它们可以更加均匀地利用资源。</li>
+<li>最后，5.4节讨论了一种将快照直接存储在日志中的压缩方法。虽然该方法容易实现，但其只适用于非常小的状态机。</li>
+</ul>
+<p>The goal of this chapter is to discuss a variety of approaches to log compaction. In each approach, most of the responsibility of log compaction falls on the state machine, which is in charge of writing the state to disk and compacting the state. State machines can achieve this in different ways, which are described throughout the chapter and summarized in Figure 5.1:</p>
+<ul>
+<li>Snapshotting for memory-based state machines is conceptually the simplest approach. In snapshotting, the entire current system state is written to a snapshot on stable storage, then the entire log up to that point is discarded. Snapshotting is used in Chubby [11, 15] and ZooKeeper [38], and we have implemented snapshotting in LogCabin. Snapshotting is the approach presented in the most depth in this chapter, in Section 5.1.</li>
+<li>With disk-based state machines, a recent copy of the system state is maintained on disk as part of normal operation. Thus, the Raft log can be discarded as soon as the state machine reflects writes to disk, and snapshotting is used only when sending consistent disk images to other servers (Section 5.2).</li>
+<li>Incremental approaches to log compaction, such as log cleaning and log-structured merge trees, are presented in Section 5.3. These approaches write to disk efficiently, and they utilize resources evenly over time.</li>
+<li>Finally, Section 5.4 discusses an approach to log compaction that minimizes the mechanism required by storing snapshots directly in the log. Though easier to implement, this approach is only suitable for very small state machines.</li>
+</ul>
+<p><img src="/img/15RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220415170837048.png" alt="image-20220415170837048"></p>
+<p>LogCabin系统目前只实现了基于内存的快照方法（它使用基于内存的状态机）。</p>
+<p>LogCabin currently only implements the memory-based snapshotting approach (it embeds a memory based state machine).</p>
+<p>日志压缩的各种方法有几个共同的核心概念。</p>
+<p>首先，<font color=red>每个服务器独立压缩已提交的日志，而不是将压缩功能都集中在Leader身上。</font>这避免了Leader将快照数据传输给本身已有日志数据的Follower。这也有助于模块化：日志压缩的大部分复杂性都落在状态机中，而与Raft本身没有太多交互。这有助于将系统总体复杂性保持在最低水平：这样，整体复杂度是Raft的复杂度加上日志压缩复杂度，而不是与之相乘。5.4节会讨论一种将压缩责任集中在Leader身上的方法（对于非常小的状态机，基于Leader的日志压缩方法可能更好）。</p>
+<p>The various approaches to compaction share several core concepts. First, instead of centralizing compaction decisions on the leader, each server compacts the committed prefix of its log independently. This avoids having the leader transmit data to followers that already have the data in their logs. It also helps modularity: most of the complexity of log compaction is contained within the state machine and does not interact much with Raft itself. This helps keep overall system complexity to a minimum: the complexity of Raft adds to, rather than multiplies with, the complexity of log compaction. Alternative approaches that centralize compaction responsibilities on a leader are discussed further in Section 5.4 (and for very small state machines, a leader-based approach may be better).</p>
+<p>其次，状态机和Raft之间的基本交互涉及将已提交的日志从Raft传输给状态机。在应用日志条目之后，状态机迟早会以一种可以恢复到当前系统状态的方式将这些条目反映到磁盘上。一旦这样做了，它会告诉Raft丢弃日志中相应的条目。<font color=red>在Raft丢弃日志条目之前，Raft自身必须保存一些描述这些日志条目的信息。具体而言，Raft必须保留其丢弃的最后一个条目的Index和Term；</font>这俩信息可用于将位于状态机的压缩的状态之后的日志部分保持在正确的OFFSET上，并保证AppendEntries的一致性检查可以继续工作（该RPC需要包含其中的第一个条目之前的条目的Index和Term信息）。<font color=red>Raft还需要保留丢弃日志中的成员配置信息，以支持集群成员配置变更。</font></p>
+<p>Second, the basic interaction between the state machine and Raft involves transferring responsibility for a prefix of the log from Raft to the state machine. Sooner or later after applying entries, the state machine reflects those entries to disk in a way that can recover the current system state. Once it has done so, it tells Raft to discard the corresponding prefix of the log. Before Raft can give up responsibility for the log prefix, it must save some of its own state describing the log prefix. Specifically, Raft retains the index and term of the last entry it discarded; this anchors the rest of the log in place after the state machine’s state and allows the AppendEntries consistency check to continue to work (it needs the index and term for the entry preceding the first entry in the log). Raft also retains the latest configuration from the discarded log prefix in order to support cluster membership changes.</p>
+<p>第三，一旦Raft丢弃了日志的部分条目，状态机将承担两个新的职责：<font color=red>如果服务器重新启动，状态机需要从磁盘加载与丢弃的日志条目对应的状态，然后才能应用Raft日志中的任何条目；此外，状态机需要生成一致的状态镜像文件，以便将其发送给慢Follower（其日志远远落后于领导者的日志）。</font>将日志压缩延迟到日志条目“完全复制”到集群中的每个成员后是不可行的，否则少数慢速Follower可能会使得集群不可用，而且实际场景中可能会随时向集群中添加新的服务器。因此，慢速Follower或新服务器偶尔需要通过网络接收初始状态。Raft通过在AppendEntries中包含已丢弃日志的Index和Term信息来检测到这一点。在这种情况下，状态机必须提供一致的状态映像文件，然后由Leader发送给Follower。</p>
+<p>Third, once Raft has discarded a prefix of the log, the state machine takes on two new responsibilities. If the server restarts, the state machine will need to load the state corresponding to the discarded log entries from disk before it can apply any entries from the Raft log. In addition, the state machine may need to produce a consistent image of the state so that it can be sent to a slow follower (one whose log is far behind the leader’s). It is not feasible to defer compaction until log entries have been “fully replicated” to every member in the cluster, since a minority of slow followers must not keep the cluster from being fully available, and new servers can be added to the cluster at any time. Thus, slow followers or new servers will occasionally need to receive their initial states over the network. Raft detects this when the next entry needed in AppendEntries has already been discarded in the leader’s log. In this case, the state machine must provide a consistent image of the state, which the leader then sends to the follower.</p>
+<h3 id="5-1-Snapshotting-memory-based-state-machines-基于内存状态机的快照方法"><a href="#5-1-Snapshotting-memory-based-state-machines-基于内存状态机的快照方法" class="headerlink" title="5.1 Snapshotting memory-based state machines     基于内存状态机的快照方法"></a>5.1 Snapshotting memory-based state machines     基于内存状态机的快照方法</h3><p><img src="/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210924082907442.png" alt="image-20210924082907442"></p>
+<p><font color=red>快照方法适用于状态机的数据结构保存在内存中的场景。</font>对于数据集为千兆字节或数十千兆字节的状态机来说，这是一个合理的选择。它使操作能够快速完成，因为它们不必从磁盘获取数据；编程也很容易，因为可以使用丰富的数据结构，并且每个操作都可以运行到完成（无需阻塞I&#x2F;O）。</p>
+<p>The first approach to snapshotting applies when the state machine’s data structures are kept in memory. This is a reasonable choice for state machines with datasets in the gigabytes or tens of gigabytes. It enables operations to complete quickly, since they never have to fetch data from disk; it is also easy to program, since rich data structures can be used and every operation can run to completion (without blocking for I&#x2F;O).</p>
+<p><img src="/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210927082637519.png" alt="image-20210927082637519"></p>
+<p><em>图5.2：服务器将日志中已提交的条目（Index从1到5）替换为新快照，该快照只包含当前状态（示例中的变量x和y）。在丢弃1-5的日志条目之前，Raft需要保存快照中的最后一条的Index（即5）和Term（即3），从而将快照定位到日志中Index为6之前的部分。</em></p>
+<p>上图展示了内存状态机中在Raft中进行快照的基本思想。<font color=red>每个服务器都独立地进行快照，快照只覆盖日志中已提交且应用的条目。</font>快照方法的大部分工作就是将状态机的当前状态进行序列化，而这是特定于状态机来实现的。例如，<code>LogCabin</code>的状态机使用树作为其主要数据结构，它使用前序遍历深度优先的算法来序列化此树（因此在应用快照时，父节点在子节点之前被创建）。状态机还必须序列化它们保存的信息，以便为客户端提供线性化能力（参见第6章）。</p>
+<p>Figure 5.2 shows the basic idea of snapshotting in Raft when the state machine is kept in memory. Each server takes snapshots independently, covering just the committed entries in its log. Most of the work in snapshotting involves serializing the state machine’s current state, and this is specific to a particular state machine implementation. For example, LogCabin’s state machine uses a tree as its primary data structure; it serializes this tree using a pre-order depth-first traversal (so that when applying the snapshot, parent nodes are created before their children). State machines must also serialize the information they keep for providing linearizability to clients (see Chapter 6).</p>
+<p><font color=red>一旦状态机写完快照，就可以将日志截断。Raft首先保存重启所需的状态：快照中最后一个条目的Index和Term，以及快照中的最新成员配置，然后将Index之前的日志丢弃，之前保存的快照也可以丢弃，它们也没用了。</font></p>
+<p>Once the state machine completes writing a snapshot, the log can be truncated. Raft first stores the state it needs for a restart: the index and term of the last entry included in the snapshot and the latest configuration as of that index. Then it discards the prefix of its log up through that index. Any previous snapshots can also be discarded, as they are no longer useful.</p>
+<p>如上所述，Leader可能偶尔需要将其状态发送给慢Follower和新加入集群的服务器。在快照方法中，这个状态就是最新的快照文件，Leader使用名为<code>InstallSnapshot</code>的RPC发送该快照，如下图5.3所示。<font color=red>当Follower收到此RPC中包含的快照文件时，它必须决定如何处理其现有的日志项。</font>通常，快照文件中会包含Follower日志中没有的新信息，在这种情况下，Follower丢弃其整个日志，将其直接用快照取代，日志中可能有与快照冲突的未提交条目，也直接被快照覆盖。相反，如果Follower接收到的快照，仅包含其日志条目的头部部分条目（由于重传或某些错误），则快照所能覆盖的那些日志条目将被删除，但快照之后的条目仍然有效，必须保留。</p>
+<p><img src="/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210927083723980.png"></p>
+<p><em>图5.3：Leader使用InstallSnapshot RPC将快照发送给慢Follower。Leader使用AppendEntries RPC将条目同步到Follower，如果发现Follower需要的日志条目在Leader中已经被丢弃时，Leader才会发送快照。<font color=red>Leader将快照文件分割成若干块（chunk）进行发送</font>。通过分块传输，相当于给Follower一个心跳，可以使其重置选举定时器。快照块按照顺序发送，从而可以按序写入磁盘文件。<font color=red>RPC中包含了重启时RAFT加载快照所需的状态：快照中覆盖的最后日志条目的Index和Term，以及最新的成员配置信息。</font></em></p>
+<p><em>InstallSnapshot RPC：</em></p>
+<ul>
+<li><em>参数：</em><ul>
+<li><em>term：Leader的Term；</em></li>
+<li><em>leaderId：Leader的Id，从而Follower可以重定向客户端请求；</em></li>
+<li><em>lastIndex：快照所能覆盖的日志中最后一个条目的的Index；</em></li>
+<li><em>lastTerm：快照所能覆盖的日志中最后一个条目的的Term；</em></li>
+<li><em>lastConfig：快照中最后的成员配置；</em></li>
+<li><em>offset：快照块在快照文件中的偏移；</em></li>
+<li><em>data[]：快照块的数据；</em></li>
+<li><em>done：为true表示最后一个快照块；</em></li>
+</ul>
+</li>
+<li><em>结果：</em><ul>
+<li><em>term：Follower的currentTerm，可用于Leader更新自己的Term；</em></li>
+</ul>
+</li>
+<li><em>接收者的逻辑：</em><ol>
+<li><em>如果参数term小于自己的currentTerm，则立即回复；</em></li>
+<li><em>如果offset为0，即受到的是第一个快照块，则创建快照文件；</em></li>
+<li><em>根据offset将快照块写入快照文件；</em></li>
+<li><em>如果done为false，则回复Leader并等待更多的快照块；</em></li>
+<li><em>如果快照中的lastIndex大于之前快照中的lastIndex，则保存快照文件以及RAFT的状态（即快照中的lastIndex, lastTerm和lastConfig）。丢弃其他快照文件；</em></li>
+<li><em>如果当前的日志中有日志条目与快照中的lastIndex和lastTerm相同，则丢弃日志中lastIndex及之前的日志条目，然后回复；</em></li>
+<li><em>其他情况下，丢弃所有日志；</em></li>
+<li><em>使用快照的内容重置状态机，并且加载快照中的lastConfig作为集群成员配置；</em></li>
+</ol>
+</li>
+</ul>
+<p>As introduced above, the leader may occasionally need to send its state to slow followers and to new servers that are joining the cluster. In snapshotting, this state is just the latest snapshot, which the leader transfers using a new RPC called InstallSnapshot, as shown in Figure 5.3. When a follower receives a snapshot with this RPC, it must decide what to do with its existing log entries. Usually the snapshot will contain new information not already in the follower’s log. In this case, the follower discards its entire log; it is all superseded by the snapshot and may possibly have uncommitted entries that conflict with the snapshot. If, instead, the follower receives a snapshot that describes a prefix of its log (due to retransmission or by mistake), then log entries covered by the snapshot are deleted but entries following the snapshot are still valid and must be retained.</p>
+<p>本节的剩余部分将讨论基于内存的状态机的快照方法中的次要问题：</p>
+<ul>
+<li>5.1.1节讨论了如何在正常操作的同时生成快照，以尽量减少快照对客户端的影响；</li>
+<li>5.1.2节讨论了何时保存快照，平衡空间使用和快照开销；</li>
+<li>5.1.3节讨论了实施快照方法时出现的问题；</li>
+</ul>
+<p>The remainder of this section discusses secondary issues for snapshotting memory-based state machines：</p>
+<ul>
+<li>Section 5.1.1 discusses how to produce snapshots in parallel with normal operations, to minimize their effects on clients;</li>
+<li>Section 5.1.2 discusses when to take a snapshot, balancing the space usage and the overhead of snapshotting; and</li>
+<li>Section 5.1.3 discusses the issues that arise in implementing snapshotting.</li>
+</ul>
+<h4 id="5-1-1-Snapshotting-concurrently-并发快照（保证服务的同时进行写入快照）"><a href="#5-1-1-Snapshotting-concurrently-并发快照（保证服务的同时进行写入快照）" class="headerlink" title="5.1.1 Snapshotting concurrently 并发快照（保证服务的同时进行写入快照）"></a>5.1.1 Snapshotting concurrently 并发快照（保证服务的同时进行写入快照）</h4><p>创建快照可能需要很长时间，包括状态序列化和将其写入磁盘。例如，在当今的服务器上复制10GB内存大约需要1秒，而将其序列化通常需要更长的时间。即使是固态磁盘也只能在1秒内写入大约500MB的内存。因此，<font color=red>序列化和写入快照必须与正常操作同时进行，以避免出现可用性问题。</font></p>
+<p>Creating a snapshot can take a long time, both in serializing the state and in writing it to disk. For example, copying 10GB of memory takes about one second on today’s servers, and serializing it will usually take much longer: even a solid state disk can only write about 500MB in one second. Thus, both serializing and writing snapshots must be concurrent with normal operations to avoid availability gaps.</p>
+<p>幸运的是，写时复制技术允许在不影响当前写入快照的情况下apply新的更新。有两种方法：</p>
+<ul>
+<li>使用不可变（功能性的）数据结构构建状态机来支持写时复制技术。由于状态机命令不会原地修改状态，快照任务可以维护一个对先前状态的引用，并将其一致地写入快照中；<font color=red>没看懂，估计是类似于在应用层实现操作系统层面的copy-on-write</font>.</li>
+<li>或者，可以使用操作系统支持的写时拷贝技术（在编程环境允许的情况下）。例如，在Linux上，内存状态机可以使用fork来复制服务进程的整个地址空间。然后，在父进程继续为请求提供服务的同时，子进程可以将状态写入文件并退出。Logcard实现目前使用这种方法。</li>
+</ul>
+<p>Fortunately, copy-on-write techniques allow new updates to be applied without impacting the snapshot being written. There are two approaches to this:</p>
+<ul>
+<li>State machines can be built with immutable (functional) data structures to support this. Because state machine commands would not modify the state in place, a snapshotting task could keep a reference to some prior state and write it consistently into a snapshot.</li>
+<li>Alternatively, the operating system’s copy-on-write support can be used (where the programming environment allows it). On Linux for example, in-memory state machines can use fork to make a copy of the server’s entire address space. Then, the child process can write out the state machine’s state and exit, all while the parent process continues servicing requests. The LogCabin implementation currently uses this approach.</li>
+</ul>
+<p>服务器需要额外的内存来进行并行快照，这些内存需要进行规划和管理。状态机必须具有针对快照文件的流式接口，这样在快照创建时就不必完全暂存在内存中。尽管如此，写时复制仍需要与快照过程中更改的状态部分成比例的额外内存。此外，由于错误共享（false sharing），使用操作系统提供的写时复制时通常会使用更多内存（例如，如果两个不相关的数据项恰好位于同一内存页上，则即使只有第一个数据项发生了更改，第二个数据项也会被复制）。在运气不那么好的情况下，<font color=red>快照期间内存容量可能会耗尽，此时服务器应停止接受新日志条目，直到完成快照；</font>这将暂时牺牲该服务器的可用性（集群可能仍然可用），但至少允许服务器恢复。这种情况下最好不要中止快照，稍后重试，因为下一次尝试也可能会遇到相同的问题。（LogCabin 使用磁盘流接口，但目前仍无法很好的处理内存耗尽问题。）</p>
+<p>Servers require additional memory for snapshotting concurrently, which should be planned for and managed. It is essential for state machines to have a streaming interface to the snapshot file, so that the snapshot does not have to be staged entirely in memory while it is created. Still, copy-on-write requires extra memory proportional to the fraction of the state machine state that is changed during the snapshotting process. Moreover, relying on the operating system for copy-on-write will typically use even more memory due to false sharing (for example, if two unrelated data items happen to be on the same page of memory, the second item will be duplicated even when only the first has changed). In the unfortunate event that memory capacity is exhausted during snapshotting, a server should stop accepting new log entries until it completes its snapshot; this would temporarily sacrifice the server’s availability (the cluster might still remain available), but at least it would allow the server to recover. It is better not to abort the snapshot and retry later, since the next attempts might also face the same problem. (LogCabin uses a streaming interface to disk, but it does not currently handle memory exhaustion gracefully.)</p>
+<h4 id="5-1-2-When-to-snapshot-何时进行快照"><a href="#5-1-2-When-to-snapshot-何时进行快照" class="headerlink" title="5.1.2 When to snapshot 何时进行快照"></a>5.1.2 When to snapshot 何时进行快照</h4><p>服务器必须决定何时快照。如果服务器快照太频繁，则会浪费磁盘带宽和其他资源；如果快照频率太低，则可能会耗尽其存储容量，并会增加重启时重放（replay）日志所需的时间。</p>
+<p>Servers must decide when to snapshot. If a server snapshots too often, it wastes disk bandwidth and other resources; if it snapshots too infrequently, it risks exhausting its storage capacity, and it increases the time required to replay the log during restarts.</p>
+<p>一个简单的策略是在日志达到固定大小（以字节为单位）时进行快照。如果此大小设置为大大超过快照的预期大小，则快照的磁盘带宽开销将很小。然而，对于小型状态机，这可能会导致不必要的大量日志堆积。</p>
+<p>One simple strategy is to take a snapshot when the log reaches a fixed size in bytes. If this size is set to be significantly larger than the expected size of a snapshot, then the disk bandwidth overhead for snapshotting will be small. However, this can result in needlessly large logs for small state machines.</p>
+<p>更好的方法是比较快照的大小和日志的大小。如果快照比日志小很多倍，则进行快照可能是值得的。但是，在拍摄快照之前预估其大小可能是非常困难和繁重的，会给状态机带来很大的簿记负担，或者需要与实际拍摄快照一样多的工作来动态计算大小。压缩快照文件还可以更加节省空间和带宽，但很难预测压缩输出的大小。</p>
+<p>A better approach involves comparing the snapshot’s size with the log’s size. If the snapshot will be many times smaller than the log, it is probably worthwhile to take a snapshot. However, calculating the size of a snapshot before it is taken can be difficult and burdensome, imposing a significant bookkeeping burden for the state machine, or requiring almost as much work as actually taking a snapshot to compute the size dynamically. Compressing snapshot files also results in space and bandwidth savings, but it is hard to predict how large the compressed output will be.</p>
+<p>幸运的是，<font color=red>使用上一个快照的大小而不是下一个快照的大小作为参照，可能会更加合理。一旦日志的大小超过前一个快照的大小乘以可配置的扩展因子，服务器就可以进行快照</font>。扩展因子需要权衡磁盘带宽和空间利用率。例如，扩展因子为4会导致磁盘带宽的20%用于快照（快照的1个字节对应4字节的日志条目），并且需要大约6倍于存储单个状态副本所需的磁盘容量（其中包括：旧快照，比旧快照大4倍的日志，以及正在写入新快照）。</p>
+<p>Fortunately, using the size of the previous snapshot rather than the size of the next one results in reasonable behavior. Servers take a snapshot once the size of the log exceeds the size of the previous snapshot times a configurable expansion factor. The expansion factor trades off disk bandwidth for space utilization. For example, an expansion factor of 4 results in about 20% of the disk’s bandwidth being used towards snapshotting (for every 1 byte of snapshot, 4 bytes of log entries will be written), and requires about 6 times the disk capacity as that needed to store a single copy of the state (the old snapshot, a log 4 times bigger than that, and the new snapshot being written).</p>
+<p>快照也会造成CPU和磁盘带宽的大量使用，这可能会影响客户端性能。这可以通过额外的硬件来缓解；例如，可以使用第二个磁盘驱动器来提供额外的磁盘带宽。</p>
+<p>Snapshotting still creates a burst of CPU and disk bandwidth usage that might impact client performance. This can be mitigated with additional hardware; for example, a second disk drive can be used to provide the additional disk bandwidth.</p>
+<p>还可以以客户端请求从不在正在快照的服务器上等待的方式来安排快照。在这种方法中，对服务器将进行协调，以便在任何时候（如果可能的话）集群中只有少数服务器进行快照。因为Raft只需要过半服务器即可提交日志条目，所以少数服务器进行快照通常不会对客户端产生不利影响。当Leader想要进行快照时，它会先退出，同时允许另一台服务器管理集群。如果这一方法足够可靠，那么可以不需要并发快照；服务器仅在拍摄快照时不可用（尽管这会影响集群屏蔽故障的能力）。这对于未来的工作来说是一个激动人心的机会，因为它有可能提高系统的整体性能并减少系统的复杂度。</p>
+<p>It may also be possible to schedule snapshots in a way that client requests never wait on a server that is snapshotting. In this approach, servers would coordinate so that only up to a minority of the servers in the cluster would snapshot at any one time (when possible). Because Raft only requires a majority of servers to commit log entries, the minority of snapshotting servers would normally have no adverse effect on clients. When a leader wished to snapshot, it would step down first, allowing another server to manage the cluster in the meantime. If this approach was sufficiently reliable, it could also eliminate the need to snapshot concurrently; servers could just be unavailable while they took their snapshots (though they would count against the cluster’s ability to mask failures). This is an exciting opportunity for future work because of its potential to both improve overall system performance and reduce mechanism.</p>
+<h4 id="5-1-3-Implementation-concerns-实现细节"><a href="#5-1-3-Implementation-concerns-实现细节" class="headerlink" title="5.1.3 Implementation concerns 实现细节"></a>5.1.3 Implementation concerns 实现细节</h4><p>本节主要描述实现快照方法所涉及的主要组件，并讨论了实现这些组件的困难：</p>
+<p>This section reviews the major components needed for a snapshotting implementation and discusses the difficulties with implementing them:</p>
+<p><strong>保存和加载快照</strong>：保存快照涉及状态序列化以及将其写入文件，而加载则是相反的过程。这相当简单，尽管序列化各种类型的数据对象可能有些繁琐。从状态机到磁盘上文件的流式接口有助于避免在内存中保存整个状态机状态；压缩流并对其应用校验和也是有益的。LogCabin 首先将每个快照写入一个临时文件，然后在写入完成并已刷新到磁盘时重命名该文件；这样可以确保服务器在启动时不会加载未完全写入的快照。</p>
+<p><strong>Saving and loading snapshots</strong>: Saving a snapshot involves serializing the state machine’s state and writing that data out to a file, while loading is the reverse process. We found this to be fairly straightforward, although it was somewhat tedious to serialize the various types of data objects from their native representations. A streaming interface from the state machine to a file on disk is useful to avoid buffering the entire state machine state in memory; it may also be beneficial to compress the stream and apply a checksum to it. LogCabin writes each snapshot to a temporary file first, then renames the file when writing is complete and has been flushed to disk; this ensures that no server loads a partially written snapshot on startup.</p>
+<p><strong>传输快照</strong>：传输快照涉及分别在Leader端和Follower端实现InstallSnapshot RPC。这也很简单，并且可以共享一些将快照保存到磁盘和从磁盘加载快照的代码。快照的传输性能通常不是很重要（需要此状态的Follower尚未参与条目的提交，因此不会很快需要它；另一方面，如果集群遇到其他故障，它可能需要赶上其他Follower以恢复可用性）。</p>
+<p><strong>Transferring snapshots</strong>: Transferring snapshots involves implementing the leader and follower sides of the InstallSnapshot RPC. This is fairly straightforward and may be able to share some code with saving snapshots to and loading snapshots from disk. The performance of this transfer is usually not very important (a follower that needs this state has not been participating in the commitment of entries, so it is probably not needed soon; on the other hand, if the cluster suffers additional failures, it may need to catch up the follower to restore availability).</p>
+<p><strong>消除不安全的日志访问并丢弃日志条目</strong>：我们最初设计LogCabin 时没有考虑日志压缩，因此代码中假设如果日志中存在条目<code>i</code>，则条目1到<code>i-1</code>也会存在。引入日志压缩之后，这种假设就不再成立了。例如，在确定AppendEntries RPC中前一个条目的Term时，该条目可能已被丢弃。在整个代码中删除这些假设需要仔细的推理和测试。如果编译器能够强制对日志的每次访问都能处理索引超出范围的情况，那么在更强大的类型系统的帮助下，这将更容易实现。一旦我们保证了所有日志访问的安全性，那么丢弃日志的头部条目就很简单了。到目前为止，我们只能单独测试快照的保存、加载和传输，但是当日志条目可以安全地丢弃时，就可以开始在系统范围的测试中这些操作了。</p>
+<p><strong>Eliminating unsafe log accesses and discarding log entries</strong>: We originally designed LogCabin without worrying about log compaction, so the code assumed that if entry <code>i</code> was present in the log, entries <code>1</code> through <code>i-1</code> would also be present. This is no longer true with log compaction; for example, when determining the term for the previous entry in the AppendEntries RPC, that entry might have been discarded. Removing these assumptions throughout the code required careful reasoning and testing. This would have been easier with help from a more powerful type system, if the compiler could enforce that every access to the log also handled the case that the index was out of bounds. Once we had made all the log accesses safe, discarding the prefix of the log was straightforward. Until this point, we could only test the saving, loading, and transferring snapshots in isolation, but when log entries can be safely discarded, these can all start to be exercised in system-wide tests.</p>
+<p><strong>使用写时复制进行并发快照</strong>：<font color=red>并发快照可能需要重新设计状态机，或是利用操作系统的fork操作。</font>LogCabin目前使用的是fork，但是<font color=red>fork在涉及多线程，以及C++析构函数时需要慎重设计，要使其正确工作存在一些困难。但是，使用fork只需要少量代码，而且完全不需要修改状态机的数据结构，因此我们认为使用fork是正确的方法。</font></p>
+<p>Snapshotting concurrently with copy-on-write**: Snapshotting concurrently may require reworking the state machine or leveraging the operating system’s fork operation. LogCabin currently uses fork, which interacts poorly with threads and C++ destructors; getting this to work correctly presented some difficulty. However, it is a small amount of code and completely eliminates the need to modify the state machine’s data structures, so we think it was the right approach.</p>
+<p><strong>决定何时快照</strong>：我们建议在开发阶段，每次应用日志条目后就进行快照，因为这有助于快速捕捉bug。实现完成后，应使用更加有用的快照时间策略（例如，使用有关Raft日志大小和最后一次快照大小的统计信息）。</p>
+<p><strong>Deciding when to snapshot</strong>: We recommend taking snapshots after applying every log entry during development, since that can help catch bugs quickly. Once the implementation is complete, a more useful policy of when to snapshot should be added (e.g., using statistics about the size of Raft log and the size of the last snapshot).</p>
+<p>我们发现快照的分段开发和测试很有挑战性。在可以丢弃日志条目之前，上述这些组件大多数都必须就绪，但只有到丢弃日志条目时，许多新的代码路径才能在系统测试中被测到。因此，应该仔细考虑实现和测试这些组件的顺序。</p>
+<p>We found piecewise development and testing of snapshotting to be challenging. Most of these components must be in place before it is possible to discard log entries, but only then will many of the new code paths be exercised in system-wide tests. Thus, implementers should consider the order in which to implement and test these components carefully.</p>
+<hr>
+<h3 id="5-2-Snapshotting-disk-based-state-machines-基于磁盘的状态机的快照"><a href="#5-2-Snapshotting-disk-based-state-machines-基于磁盘的状态机的快照" class="headerlink" title="5.2 Snapshotting disk-based state machines  基于磁盘的状态机的快照"></a>5.2 Snapshotting disk-based state machines  基于磁盘的状态机的快照</h3><p><img src="/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210928183432186.png" alt="image-20210928183432186"></p>
+<p>本节讨论基于磁盘的大型状态机（大约几十或数百GB）的快照方法。这种状态机与基于内存的状态机在行为上略有不同，<font color=red>在磁盘上状态机总是会有一份状态副本以防崩溃。每次应用Raft日志中的条目都会改变磁盘上的状态，从而形成一个新的状态快照。因此，一旦应用了条目，就可以将其从RAFT日志中删除。</font>（状态机可以在内存中缓冲写操作，以期实现更好的磁盘效率；这种情况下一旦将缓存写入磁盘，相应的条目可以从Raft日志中丢弃）</p>
+<p>This section discusses a snapshotting approach for large state machines (on the order of tens or hundreds of gigabytes) that use disk as their primary location of record. These state machines behave differently in that they always have a copy of the state ready on disk in case of a crash. Applying each entry from the Raft log mutates the on-disk state and effectively arrives at a new snapshot. Thus, once an entry is applied, it can be discarded from the Raft log. (State machines can also buffer writes in memory in hopes of achieving better disk efficiency; once they are written to disk, the corresponding entries can be discarded from the Raft log.)</p>
+<p>基于磁盘的状态机的主要问题，是修改磁盘上的状态可能性能较差。如果没有写缓存，则每次应用一个命令都需要一个或多个随机磁盘写入，这会降低系统总体的写吞吐量（而写缓冲可能没有多大帮助）。第5.3节讨论了日志压缩的增量方法，该方法通过大的顺序写入来更有效地写入磁盘。</p>
+<p>The main problem with disk-based state machines is that mutating state on disk can lead to poor performance. Without write buffering, it requires one or more random disk writes for every command applied, which can limit the system’s overall write throughput (and write buffering might not help much). Section 5.3 discusses incremental approaches to log compaction which write to disk more efficiently with large, sequential writes.</p>
+<p>基于磁盘的状态机必须能够提供一致的磁盘快照，以便将其传输给慢Follower。尽管在磁盘上总会有一个状态快照，但状态机仍在不断地修改它。因此，<font color=red>仍然需要写时复制技术</font>，以便在足够长的时间内保持一致的快照以进行传输。幸运的是，磁盘格式几乎总是总可以划分为逻辑块，因此在状态机中实现写时拷贝应该很简单。基于磁盘的状态机也可以依赖操作系统对其快照的支持。例如，Linux上的LVM（逻辑卷管理）可用于创建整个磁盘分区的快照[70]，最近的一些文件系统则允许对单个目录进行快照[19]。</p>
+<p>Disk-based state machines must be able to provide a consistent snapshot of the disk for the purpose of transmitting it to slow followers. Although they always have a snapshot on disk, they are continuously modifying it. Thus, they still require copy-on-write techniques to retain a consistent snapshot for a long enough period to transmit it. Fortunately, disk formats are almost always divided into logical blocks, so implementing copy-on-write in the state machine should be straightforward. Disk-based state machines can also rely on operating system support for their snapshots. For example, LVM (logical volume management) on Linux can be used to create snapshots of entire disk partitions [70], and some recent file systems allow snapshotting individual directories [19].</p>
+<p>随着磁盘修改的累积，复制磁盘映像的快照可能需要很长时间，保留快照所需的额外磁盘使用量也会增加。虽然我们还没有实现过基于磁盘的快照，但我们推测基于磁盘的状态机可以通过<font color=red>以下方法</font>传输其磁盘内容来避免大部分开销：</p>
+<ol>
+<li>对于每个磁盘块，记录它的上次修改时间。</li>
+<li>在继续正常操作的同时，将整个磁盘内容逐块传输到Follower。在此过程中，Leader上无需额外的磁盘空间。由于传输的同时可能会修改块，这可能导致Follower上的磁盘映像与Leader上的不一致。在Leader发送磁盘块时，记录其上次修改时间。</li>
+<li>状态机修改状态时，在磁盘上进行写时复制。一旦执行完此操作，Leader将拥有其磁盘内容的一致性副本，但由于客户端操作的持续进行，需要使用额外的磁盘空间来修改磁盘。</li>
+<li>对第2步首次传输磁盘块，到第3步拍摄快照之间修改的磁盘块重新传输。</li>
+</ol>
+<p>Copying a snapshot of a disk image can take a long time, and as modifications to the disk accumulate, so does the extra disk usage required to retain the snapshot. Although we haven’t implemented disk-based snapshotting, we speculate that disk-based state machines could avoid most of this overhead by transmitting their disk contents with the following algorithm:</p>
+<ol>
+<li>For each disk block, track the time it was last modified.</li>
+<li>While continuing normal operation, transmit the entire disk contents to a follower block by block. During this process, no extra disk space is used on the leader. Since blocks are being modified concurrently, this is likely to result in an inconsistent disk image on the follower. As each block is transferred from the leader, note its last modification time.</li>
+<li>Take a copy-on-write snapshot of the disk contents. Once this is taken, the leader has a consistent copy of its disk contents, but additional disk space is used as modifications to the disk occur due to continued client operations.</li>
+<li>Retransmit only the disk blocks that were modified between when they were first transmitted in Step 2 and when the snapshot was taken in Step 3.</li>
+</ol>
+<p>可以预期的是，在第3步创建一致性快照时，该快照的大部分块都已被传输。如果是这种情况，步骤4中的传输将能够很快完成，在步骤4中用于保存快照的额外磁盘容量将较低，并且重新传输修改后的块的额外网络带宽也将较低。</p>
+<p>Hopefully, most of the blocks of the consistent snapshot will have already been transmitted by the time it is created in Step 3. If that is the case, the transfer in Step 4 will proceed quickly: the additional disk capacity used to retain the snapshot on the leader during Step 4 will be low, and the additional network bandwidth used during Step 4 to retransmit modified blocks will also be low.</p>
+<hr>
+<h3 id="5-3-Incremental-cleaning-approaches-增量清洗方法（略）"><a href="#5-3-Incremental-cleaning-approaches-增量清洗方法（略）" class="headerlink" title="5.3 Incremental cleaning approaches  增量清洗方法（略）"></a>5.3 Incremental cleaning approaches  增量清洗方法（略）</h3><p>Incremental approaches to compaction, such as log cleaning [97, 98] and log-structured merge trees [84, 17] (LSM trees), are also possible. Although they are more complex than snapshotting, incremental approaches have several desirable features:</p>
+<ul>
+<li>They operate on only a fraction of the data at once, so they spread the load of compaction evenly over time.</li>
+<li>They write to disk efficiently, both in normal operation and while compacting. They use large, sequential writes in both cases. Incremental approaches also selectively compact parts of the disk with the most reclaimable space, so they write less data to disk than snapshotting for memory-based state machines (which rewrites all of disk on every snapshot).</li>
+<li>They can transfer consistent state snapshots fairly easily because they do not modify regions of disk in place.</li>
+</ul>
+<p>Section 5.3.1 and Section 5.3.2 first describe the basics of log cleaning and LSM trees in general. Then, Section 5.3.3 discusses how they could be applied to Raft.</p>
+<h4 id="5-3-1-Basics-of-log-cleaning"><a href="#5-3-1-Basics-of-log-cleaning" class="headerlink" title="5.3.1 Basics of log cleaning"></a>5.3.1 Basics of log cleaning</h4><p>Log cleaning was introduced in the context of log-structured file systems [97] and has recently been proposed for in-memory storage systems such as RAMCloud [98]. In principle, log cleaning can be used for any type of data structure, though some would be harder to implement efficiently than others.</p>
+<p>Log cleaning maintains the log as the place of record for the system’s state. The layout is optimized for sequential writing, and it makes read operations effectively random access. Thus, indexing structures are needed to locate data items to read.</p>
+<p>In log cleaning, the log is split into consecutive regions called segments. Each pass of the log cleaner compacts the log using a three-step algorithm:</p>
+<ol>
+<li>It first selects segments to clean that have accumulated a large fraction of obsolete entries.</li>
+<li>It then copies the live entries (those that contribute to the current system state) from those segments to the head of the log.</li>
+<li>Finally, it frees the storage space for the segments, making that space available for new segments.</li>
+</ol>
+<p>To minimize the effect on normal operation, this process can be done concurrently [98].</p>
+<p>As a result of copying the live entries forwards to the head of the log, the entries get to be out of order for replay. The entries can include additional information (e.g., version numbers) to recreate the correct ordering when the log is applied.</p>
+<p>The policy of which segments are selected for cleaning has a big impact on performance; prior work proposes a cost-benefit policy that factors in not only the amount of space utilized by live<br>entries but also how long those entries are likely to remain live [97, 98].</p>
+<p>Determining whether entries are live is the state machine’s responsibility. For example, in a keyvalue store, a log entry to set a key to a particular value is live if the key exists and is currently set to the given value. Determining whether a log entry that deletes a key is live is more subtle: it is live as long as any prior entries setting that key are present in the log. RAMCloud preserves deletion commands (called tombstones) as necessary [98], but another approach is to periodically write out a summary of the keys that are present in the current state, then all log entries regarding keys not listed are not live. Key-value stores are a fairly simple example; other state machines are possible, but unfortunately, determining liveness will be different for each.</p>
+<h4 id="5-3-2-Basics-of-log-structured-merge-trees"><a href="#5-3-2-Basics-of-log-structured-merge-trees" class="headerlink" title="5.3.2 Basics of log-structured merge trees"></a>5.3.2 Basics of log-structured merge trees</h4><p>Log-structured merge trees (LSM trees) were first described by O’Neil [84] and were later popularized in distributed systems by BigTable [17]. They are used in systems such as Apache Cassandra [1] and HyperDex [27] and are available as libraries such as LevelDB [62] and its forks (e.g., RocksDB [96] and HyperLevelDB [39]).</p>
+<p>LSM trees are tree-like data structures that store ordered key-value pairs. At a high level, they use disk similarly to log cleaning approaches: they write in large sequential strides and do not modify data on disk in place. However, instead of maintaining all state in the log, LSM trees reorganize the state for better random access.</p>
+<p>A typical LSM tree keeps recently written keys in a small log on disk. When the log reaches a fixed size, it is sorted by key and written to a file called a run in sorted order. Runs are never modified in place, but a compaction process periodically merges multiple runs together, producing new runs and discarding the old ones. The merge is reminiscent of merge sort; when a key is in multiple input runs, only the latest version is kept, so the produced runs are more compact. The compaction strategy used in LevelDB is summarized in Figure 5.1; it segregates runs by age for efficiency (similar to log cleaning).</p>
+<p>During normal operation, the state machine can operate on this data directly. To read a key, it first checks to see if that key was modified recently in its log, then checks each run. To avoid checking every run for a key on every lookup, some systems create a bloom filter for each run (a compact data structure which can say with certainty in some cases that a key does not appear in a run, though it may sometimes require searching a run even when a key is not present).</p>
+<h4 id="5-3-3-Log-cleaning-and-log-structured-merge-trees-in-Raft"><a href="#5-3-3-Log-cleaning-and-log-structured-merge-trees-in-Raft" class="headerlink" title="5.3.3 Log cleaning and log-structured merge trees in Raft"></a>5.3.3 Log cleaning and log-structured merge trees in Raft</h4><p>We have not attempted to implement log cleaning or LSM trees in Raft, but we speculate that both would work well. Applying LSM trees to Raft appears to be fairly straightforward. Because the Raft log already stores recent entries durably on disk, the LSM tree can keep recent data in a more convenient tree format in memory. This would be fast for servicing lookups, and when the Raft log reached a fixed size, the tree would already be in sorted order to write to disk as a new run. Transferring the state from the leader to a slow follower requires sending all the runs to the follower (but not the in-memory tree); fortunately, runs are immutable, so there is no concern of the runs being modified during the transfer.</p>
+<p><img src="/img/15RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20220416091413088.png" alt="image-20220416091413088"></p>
+<p>Applying log cleaning to Raft is less obvious.We first considered an approach in which the Raft log was divided into segments and cleaned (see Figure 5.4(a)). Unfortunately, cleaning would place a lot of holes in the log where segments were freed, which would require a modified approach to log replication.We think this approach could be made to work, but it adds significant complexity to Raft and its interaction with the state machine. Moreover, since only the leader can append to the Raft log, cleaning would need to be leader-based, which would waste the leader’s network bandwidth (this is discussed further in Section 5.4).</p>
+<p>A better approach would be to handle log cleaning similarly to LSM trees: Raft would keep a contiguous log for recent changes, and the state machine would keep its own state as a log, but these logs would be logically distinct (see Figure 5.4(b)). When the Raft log grew to a fixed size, its new entries would be written as a new segment in the state machine’s log, and the corresponding prefix of the Raft log would be discarded. Segments in the state machine would be cleaned independently on each server, and the Raft log would remain entirely unaffected by this. We prefer this approach over cleaning the Raft log directly, since the complexity of log cleaning is encapsulated entirely in the state machine (the interface between the state machine and Raft remains simple), and servers can clean independently.</p>
+<p>As described, this approach would require the state machine to write all of Raft’s log entries into its own log (though it could do so in large batches). This additional copy could be optimized away by directly moving a file consisting of log entries from Raft’s log and incorporating that file into the state machine’s data structures. This could be a helpful optimization for performance-critical systems, but unfortunately, it would more tightly couple the state machine and the Raft module, since the state machine would need to understand the on-disk representation of the Raft log.</p>
+<hr>
+<h3 id="5-4-Alternative-leader-based-approaches-备选方案：基于领导者的方法"><a href="#5-4-Alternative-leader-based-approaches-备选方案：基于领导者的方法" class="headerlink" title="5.4 Alternative: leader-based approaches 备选方案：基于领导者的方法"></a>5.4 Alternative: leader-based approaches 备选方案：基于领导者的方法</h3><p><img src="/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210928183359525.png" alt="image-20210928183359525"></p>
+<p><em>快照步骤：</em></p>
+<ol>
+<li><em>当Raft日志大小超过1MB时，停止接收新的客户端请求；</em></li>
+<li><em>等待日志中最后一个条目被apply；</em></li>
+<li><em>序列化状态数据，将序列化的内容添加到日志末尾；</em></li>
+<li><em>恢复处理客户端请求；</em></li>
+<li><em>当服务器认识到快照条目被提交后，它丢弃之前的日志条目。</em></li>
+</ol>
+<p>本章之前介绍的日志压缩方法与Raft的强Leader原则不同，因为服务器在Leader不知情的情况下各自压缩日志。然而，我们认为这种背离是合理的。<font color=red>Leader的作用是避免在达成共识时出现决策冲突，但在进行快照时已经达成了共识，因此没有决策冲突。数据仍然只从Leader流向Follower，只不过Follower现在可以独立组织自己的数据。</font></p>
+<p>The log compaction approaches presented in this chapter depart from Raft’s strong leader principle, since servers compact their logs without the knowledge of the leader. However, we think this departure is justified. While having a leader helps avoid conflicting decisions in reaching consensus, consensus has already been reached when snapshotting, so no decisions conflict. Data still only flows from leaders to followers, but followers can now reorganize their data independently.</p>
+<p>我们也考虑了基于Leader的日志压缩方法，但这种方法对性能的影响都远大于其带来的好处。Leader压缩自己的日志，然后将其发送给Follower，而Follower本来也可以独立压缩自己的日志，这实际上是一种浪费。将冗余状态发送给每个Follower将浪费网络带宽并减慢压缩过程。每个Follower已经拥有压缩自己状态所需的信息，而Leader的出口网络带宽通常是Raft最宝贵的（瓶颈）资源。<font color=red>对于基于内存的快照，服务器从其本地状态直接生成快照通常比通过网络发送和接收快照成本低得多。</font>对于增量压缩方法，这更多地取决于硬件配置，但我们依然认为独立压缩成本更低。</p>
+<p>We also considered leader-based approaches to log compaction, but any benefits are usually outweighed by performance considerations. It would be wasteful for the leader to compact its log, then send the result to the followers, when they could just as well compact their own logs independently. Sending the redundant state to each follower would waste network bandwidth and slow the compaction process. Each follower already has the information needed to compact its own state, and the leader’s outbound network bandwidth is usually Raft’s most precious (bottleneck) resource. For memory-based snapshots, it is typically much cheaper for a server to produce a snapshot from its local state than it is to send and receive one over the network. For incremental compaction approaches, this depends a bit more on the hardware configuration, but we also expect independent compaction to be cheaper.</p>
+<h4 id="5-4-1-Storing-snapshots-in-the-log-在日志中存储快照"><a href="#5-4-1-Storing-snapshots-in-the-log-在日志中存储快照" class="headerlink" title="5.4.1 Storing snapshots in the log 在日志中存储快照"></a>5.4.1 Storing snapshots in the log 在日志中存储快照</h4><p>基于领导者的方法的一个可能的好处是，如果所有系统状态都可以存储在日志中，那么就不需要复制和持久化状态的新机制。因此，我们考虑了一种基于领导者的快照方法，Leader创建快照并将快照作为条目存储在Raft日志中，如下图5.5所示。然后，Leader使用AppendEntries RPC将此快照发送给其每个Follower。为了不中断正常请求，每个快照将被拆分为多个条目，并与日志中的正常客户端命令交叉存储在日志中。</p>
+<p>One possible benefit to leader-based approaches is that, if all the system state could be stored in the log, then new mechanisms to replicate and persist the state would not be needed. Thus, we considered a leader-based approach to snapshotting in which the leader would create a snapshot and store the snapshot as entries in the Raft log, as shown in Figure 5.5. The leader would then send this snapshot to each of its followers using the AppendEntries RPC. To reduce any disruption on normal operation, each snapshot would be split into many entries and interleaved with normal client commands in the log.</p>
+<p><img src="/img/04RAFT%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9(%E5%A4%A7%E8%AE%BA%E6%96%87)/image-20210928181911418.png" alt="image-20210928181911418"></p>
+<p><em>图5.5：一种基于领导者的方法，将快照分块存储在日志中，并与客户端命令交错存储。快照内容从start条目开始，到end条目结束。快照存储在start和end之间的多个日志条目中。因此，客户端请求可以与快照并行进行，每个条目的大小都是有限的，并且条目附加到日志中的速率也是有限的：只有当Leader知道上一个快照块已提交时，下一个快照块才会附加到日志中。一旦每个服务器了解到end条目已提交，它就可以丢弃其日志中，start条目之前的内容。日志的重放需要两阶段算法：首先应用最后一个完整的快照，然后应用快照的start条目后的客户端请求。</em></p>
+<p>与快照存储在日志之外相比，这种方法无需引入新的机制，因为服务器不需要额外的机制来传输或持久化快照（快照将像其他日志条目一样被复制和持久化）。然而，除了要为Follower浪费一些网络带宽（他们本可以轻松地制作自己的快照），这还有一个严重的问题。如果一个Leader在创建快照的过程中失效，它将在日志中留下不完整的快照。原则上，这种情况可能会反复发生，经过多次失败的快照尝试后，积累的垃圾将会耗尽服务器的存储容量。因此，我们认为这种机制在实践中不可行。</p>
+<p>This would achieve better economy of mechanism than storing the snapshot outside the log, since servers would not need separate mechanisms to transfer snapshots or persist them (they would be replicated and persisted just like other log entries). However, in addition to wasting network bandwidth for followers that could just as easily produce their own snapshots, this has a serious problem. If a leader fails in the middle of creating a snapshot, it leaves a partial snapshot in the servers’ logs. In principle this could happen repeatedly and exhaust servers’ storage capacity with garbage accumulated from numerous failed snapshotting attempts. Thus, we don’t think this mechanism is viable in practice.</p>
+<h4 id="5-4-2-Leader-based-approach-for-very-small-state-machines-小状态机上的基于Leader的压缩方法"><a href="#5-4-2-Leader-based-approach-for-very-small-state-machines-小状态机上的基于Leader的压缩方法" class="headerlink" title="5.4.2 Leader-based approach for very small state machines 小状态机上的基于Leader的压缩方法"></a>5.4.2 Leader-based approach for very small state machines 小状态机上的基于Leader的压缩方法</h4><p>然而对于非常小的状态机，在日志中存储快照不仅变得可行，而且还可以大大简化。如果快照足够小（最多大约1兆字节），它可以轻松地放入单个日志条目中，而不会中断正常操作太长时间。要以这种方式压缩服务器日志，Leader的操作步骤是：</p>
+<ol>
+<li>停止接受新的客户请求；</li>
+<li>等待日志中的所有条目都提交，并等待其状态机应用其日志中的所有条目；</li>
+<li>拍摄快照（同步）；</li>
+<li>将快照附加到日志末尾的单个日志条目中；</li>
+<li>继续接受新的客户端请求。</li>
+</ol>
+<p>For very small state machines, storing the snapshot in the log not only becomes viable but can also be simplified significantly. If the snapshot is small enough (up to about one megabyte), it can fit comfortably in a single log entry without interrupting normal operation for too long. To compact the servers’ logs in this way, the leader would:</p>
+<ol>
+<li>Stop accepting new client requests;</li>
+<li>Wait for all entries in its log to be committed and its state machine to have applied all entries in its log;</li>
+<li>Take a snapshot (synchronously);</li>
+<li>Append the snapshot into a single log entry at the end of its log; and</li>
+<li>Resume accepting new client requests.</li>
+</ol>
+<p>一旦每个服务器了解到快照条目已提交，它就可以在日志中丢弃快照之前的所有条目。在停止客户端请求和传输快照条目之前，这种方法会导致较小段时间的可用性问题，但对于非常小的状态机，其影响将是有限的。</p>
+<p>Once each server learned that the snapshot entry was committed, it could discard every entry before the snapshot in its log. This approach would cause a small availability gap while client requests were stopped and the snapshot entry was transferred, but its impact would be limited for very small state machines.</p>
+<p>这种更简单的方法避免了在日志之外持久化快照、避免了使用新的RPC传输快照以及并发快照的实现。然而，这种方法不适合较大的状态机。</p>
+<p>This simpler approach avoids the implementation effort of persisting snapshots outside the log, transferring them using a new RPC, and snapshotting concurrently. However, successful systems tend to be used more than their original designers intended, and this approach would not work well for larger state machines.</p>
+<hr>
+<h3 id="5-5-Conclusion-总结"><a href="#5-5-Conclusion-总结" class="headerlink" title="5.5 Conclusion 总结"></a>5.5 Conclusion 总结</h3><p>本章讨论了RAFT中日志压缩的几种方法。不同系统使用不同的方法，具体取决于状态机的大小、所需的性能级别以及预算的复杂性。Raft支持多种方法，这些方法有一些共通的概念框架：</p>
+<ul>
+<li>每个服务器独立压缩其日志中的已提交条目。</li>
+<li>状态机和Raft之间的基本交互涉及将已提交日志从Raft转移到状态机。一旦状态机将命令应用到磁盘中后，它就可以让Raft丢弃相应的日志条目。Raft保留它丢弃的最后一个条目的Index和Term，以及该索引之前的最新配置。</li>
+<li>一旦Raft丢弃了日志的头部条目，状态机就承担了两个新的职责：在重新启动时加载状态，并提供一致的映像用以传输给慢Follower。</li>
+</ul>
+<p>This chapter discussed several approaches to log compaction in Raft, which are summarized in Figure 5.1. Different approaches are suitable for different systems, depending on the size of the state machine, the level of performance required, and the amount of complexity budgeted. Raft supports a wide variety of approaches that share a common conceptual framework:</p>
+<ul>
+<li>Each server compacts the committed prefix of its log independently.</li>
+<li>The basic interaction between the state machine and Raft involves transferring responsibility for a prefix of the log from Raft to the state machine. Once the state machine has applied commands to disk, it instructs Raft to discard the corresponding prefix of the log. Raft retains the index and term of the last entry it discarded, along with the latest configuration as of that index.</li>
+<li>Once Raft has discarded a prefix of the log, the state machine takes on two new responsibilities: loading the state on a restart and providing a consistent image to transfer to a slow follower.</li>
+</ul>
+<p>基于内存的状态机的快照方法已成功地应用于多个生产系统，包括Chubby和ZooKeeper，我们也已经在Logcard中实现了这种方法。尽管操作内存中的数据结构通常很快，但快照过程中的性能也可能会受到显著影响。并发快照有助于隐藏资源使用情况，将来，可以通过安排集群中的服务器在不同的时间进行快照，从而使快照根本不影响客户端。</p>
+<p>Snapshotting for memory-based state machines is used successfully in several production systems, including Chubby and ZooKeeper, and we have implemented this approach in LogCabin. Although operating on an in-memory data structure is fast for most operations, performance during the snapshotting process may be significantly impacted. Snapshotting concurrently helps to hide the resource usage, and in the future, scheduling servers across the cluster to snapshot at different times might keep snapshotting from affecting clients at all.</p>
+<p>基于磁盘的状态机在概念上很简单，因为可以原地改变它们的状态。它们仍然需要写时拷贝，以便将一致的磁盘映像传输到其他服务器，但这对于磁盘来说负担不大，因为磁盘会自然地分成块。但是，正常操作期间的随机磁盘写入速度会变慢，因此这种方法将限制系统的写入吞吐量。</p>
+<p>Disk-based state machines that mutate their state in place are conceptually simple. They still require copy-on-write for transferring a consistent disk image to other servers, but this may be a small burden with disks, which naturally split into blocks. However, random disk writes during normal operation tend to be slow, so this approach will limit the system’s write throughput.</p>
+<p>最后，增量方法可能是最有效的压缩方法。通过每次操作一小块状态，它们可以限制资源使用的爆发式增长（这种方法也可以并发压缩）。这种方法还可以避免将相同的数据重复写入磁盘；稳定的数据存储在磁盘上不经常被压缩的区域。虽然实现增量压缩可能很复杂，但这种复杂性可以转移到类似LevelDB这样的库中。此外，通过将数据结构保留在内存中并在内存中缓存更多磁盘的内容，使用增量压缩的客户端操作的性能可以接近基于内存的状态机。</p>
+<p>Ultimately, incremental approaches can be the most efficient form of compaction. By operating on small pieces of the state at a time, they can limit bursts in resource usage (and they can also compact concurrently). They can also avoid writing the same data out to disk repeatedly; stable data should make its way to a region of disk that does not get compacted often. While implementing incremental compaction can be complex, this complexity can be offloaded to a library such as LevelDB. Moreover, by keeping data structures in memory and caching more of the disk in memory, the performance for client operations with incremental compaction can approach that of memory based state machines.</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/" rel="prev" title="etcd_raft源码解析-09日志追加">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-09日志追加
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" rel="next" title="etcd_raft源码解析-10日志压缩">
+      etcd_raft源码解析-10日志压缩 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Chapter-5-Log-compaction"><span class="nav-number">1.</span> <span class="nav-text">Chapter 5 Log compaction</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#5-1-Snapshotting-memory-based-state-machines-%E5%9F%BA%E4%BA%8E%E5%86%85%E5%AD%98%E7%8A%B6%E6%80%81%E6%9C%BA%E7%9A%84%E5%BF%AB%E7%85%A7%E6%96%B9%E6%B3%95"><span class="nav-number">1.1.</span> <span class="nav-text">5.1 Snapshotting memory-based state machines     基于内存状态机的快照方法</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#5-1-1-Snapshotting-concurrently-%E5%B9%B6%E5%8F%91%E5%BF%AB%E7%85%A7%EF%BC%88%E4%BF%9D%E8%AF%81%E6%9C%8D%E5%8A%A1%E7%9A%84%E5%90%8C%E6%97%B6%E8%BF%9B%E8%A1%8C%E5%86%99%E5%85%A5%E5%BF%AB%E7%85%A7%EF%BC%89"><span class="nav-number">1.1.1.</span> <span class="nav-text">5.1.1 Snapshotting concurrently 并发快照（保证服务的同时进行写入快照）</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-1-2-When-to-snapshot-%E4%BD%95%E6%97%B6%E8%BF%9B%E8%A1%8C%E5%BF%AB%E7%85%A7"><span class="nav-number">1.1.2.</span> <span class="nav-text">5.1.2 When to snapshot 何时进行快照</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-1-3-Implementation-concerns-%E5%AE%9E%E7%8E%B0%E7%BB%86%E8%8A%82"><span class="nav-number">1.1.3.</span> <span class="nav-text">5.1.3 Implementation concerns 实现细节</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-2-Snapshotting-disk-based-state-machines-%E5%9F%BA%E4%BA%8E%E7%A3%81%E7%9B%98%E7%9A%84%E7%8A%B6%E6%80%81%E6%9C%BA%E7%9A%84%E5%BF%AB%E7%85%A7"><span class="nav-number">1.2.</span> <span class="nav-text">5.2 Snapshotting disk-based state machines  基于磁盘的状态机的快照</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-3-Incremental-cleaning-approaches-%E5%A2%9E%E9%87%8F%E6%B8%85%E6%B4%97%E6%96%B9%E6%B3%95%EF%BC%88%E7%95%A5%EF%BC%89"><span class="nav-number">1.3.</span> <span class="nav-text">5.3 Incremental cleaning approaches  增量清洗方法（略）</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#5-3-1-Basics-of-log-cleaning"><span class="nav-number">1.3.1.</span> <span class="nav-text">5.3.1 Basics of log cleaning</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-3-2-Basics-of-log-structured-merge-trees"><span class="nav-number">1.3.2.</span> <span class="nav-text">5.3.2 Basics of log-structured merge trees</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-3-3-Log-cleaning-and-log-structured-merge-trees-in-Raft"><span class="nav-number">1.3.3.</span> <span class="nav-text">5.3.3 Log cleaning and log-structured merge trees in Raft</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-4-Alternative-leader-based-approaches-%E5%A4%87%E9%80%89%E6%96%B9%E6%A1%88%EF%BC%9A%E5%9F%BA%E4%BA%8E%E9%A2%86%E5%AF%BC%E8%80%85%E7%9A%84%E6%96%B9%E6%B3%95"><span class="nav-number">1.4.</span> <span class="nav-text">5.4 Alternative: leader-based approaches 备选方案：基于领导者的方法</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#5-4-1-Storing-snapshots-in-the-log-%E5%9C%A8%E6%97%A5%E5%BF%97%E4%B8%AD%E5%AD%98%E5%82%A8%E5%BF%AB%E7%85%A7"><span class="nav-number">1.4.1.</span> <span class="nav-text">5.4.1 Storing snapshots in the log 在日志中存储快照</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-4-2-Leader-based-approach-for-very-small-state-machines-%E5%B0%8F%E7%8A%B6%E6%80%81%E6%9C%BA%E4%B8%8A%E7%9A%84%E5%9F%BA%E4%BA%8ELeader%E7%9A%84%E5%8E%8B%E7%BC%A9%E6%96%B9%E6%B3%95"><span class="nav-number">1.4.2.</span> <span class="nav-text">5.4.2 Leader-based approach for very small state machines 小状态机上的基于Leader的压缩方法</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-5-Conclusion-%E6%80%BB%E7%BB%93"><span class="nav-number">1.5.</span> <span class="nav-text">5.5 Conclusion 总结</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

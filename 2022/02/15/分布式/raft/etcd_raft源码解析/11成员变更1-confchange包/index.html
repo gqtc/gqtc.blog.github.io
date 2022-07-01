@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="confchang包中包含两个文件：confchange.go和restore.go。confchange.go主要实现了配置变更的具体操作；restore.go主要实现了节点崩溃时或者收到snapshot时恢复配置状态相关的一系列动作； 本文介绍的是配置变更的基础模块，都是confchange.go中的实现逻辑。配置变更的流程细节请参考《配置变更2-流程》一同食用。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="etcd_raft源码解析-11成员变更1-confchange包">
+<meta property="og:url" content="http://example.com/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="confchang包中包含两个文件：confchange.go和restore.go。confchange.go主要实现了配置变更的具体操作；restore.go主要实现了节点崩溃时或者收到snapshot时恢复配置状态相关的一系列动作； 本文介绍的是配置变更的基础模块，都是confchange.go中的实现逻辑。配置变更的流程细节请参考《配置变更2-流程》一同食用。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-02-14T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-06-28T01:39:40.666Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="raft">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>etcd_raft源码解析-11成员变更1-confchange包 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          etcd_raft源码解析-11成员变更1-confchange包
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-02-15 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-15T00:00:00+08:00">2022-02-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:40" itemprop="dateModified" datetime="2022-06-28T09:39:40+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>confchang</code>包中包含两个文件：<code>confchange.go</code>和<code>restore.go</code>。<code>confchange.go</code>主要实现了配置变更的具体操作；<code>restore.go</code>主要实现了节点崩溃时或者收到<code>snapshot</code>时恢复配置状态相关的一系列动作；</p>
+<p>本文介绍的是配置变更的基础模块，都是<code>confchange.go</code>中的实现逻辑。配置变更的流程细节请参考《配置变更2-流程》一同食用。</p>
+<span id="more"></span>
+<p><code>confchange.go</code>实现了节点配置变更的具体操作，即收到<code>confchange</code>消息后，执行配置变更动作，如添加节点、删除节点等。它实现了单节点变更（<code>simple</code>）和联合共识（<code>joint consensus</code>）两种配置变更方法，并且在变更时，会对一些<code>Invariant</code>（不变式）做验证，以便校验配置变更的合法性。</p>
+<h3 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h3><p><code>confchange.go</code>中的逻辑都是在<code>Changer</code>结构的方法中实现的。<code>Changer</code>结构的定义如下，它实际上就是对<code>tracker.ProgressTracker</code>的封装。<font color=red>所谓集群配置变更，就是对<code>tracker.ProgressTracker</code>的修改</font>：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Changer <span class="keyword">struct</span> &#123;</span><br><span class="line">	Tracker   tracker.ProgressTracker</span><br><span class="line">	LastIndex <span class="type">uint64</span> <span class="comment">//最新的日志索引</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h3 id="incoming和outgoing"><a href="#incoming和outgoing" class="headerlink" title="incoming和outgoing"></a>incoming和outgoing</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">incoming</span><span class="params">(voters quorum.JointConfig)</span></span> quorum.MajorityConfig      &#123; <span class="keyword">return</span> voters[<span class="number">0</span>] &#125;</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">outgoing</span><span class="params">(voters quorum.JointConfig)</span></span> quorum.MajorityConfig      &#123; <span class="keyword">return</span> voters[<span class="number">1</span>] &#125;</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">outgoingPtr</span><span class="params">(voters *quorum.JointConfig)</span></span> *quorum.MajorityConfig &#123; <span class="keyword">return</span> &amp;voters[<span class="number">1</span>] &#125;</span><br></pre></td></tr></table></figure>
+
+<p>在联合共识算法中，<code>Tracker</code>中包含了配置变更时的<code>Cnew,old</code>配置。代码中，以<code>incoming</code>（即<code>voters[0]</code>）和<code>outgoing</code>（即<code>voters[1]</code>）表示。在配置变更之前，只有<code>incoming</code>，发生配置变更时将<code>incoming</code>拷贝一个副本，该副本就是<code>outgoing</code>，然后将变更应用到<code>incoming</code>中，因此，<code>incoming</code>就是所谓的<code>Cnew</code>，而<code>outgoing</code>是<code>Cold</code>。</p>
+<p><font color=red>注意</font>，<code>incoming</code>和<code>outgoing</code>都是指的<code>Voter</code>；</p>
+<p>根据当前<code>outgoing</code>的长度，即可判断当前是否处于联合共识配置变更过程中：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">joint</span><span class="params">(cfg tracker.Config)</span></span> <span class="type">bool</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">len</span>(outgoing(cfg.Voters)) &gt; <span class="number">0</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在进行<code>Simple</code>配置变更时，要保证<code>Cold</code>和<code>Cnew</code>只有一个节点的差异，这是通过<code>symdiff</code>函数来实现：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">symdiff</span><span class="params">(l, r <span class="keyword">map</span>[<span class="type">uint64</span>]<span class="keyword">struct</span>&#123;&#125;)</span></span> <span class="type">int</span> &#123;</span><br><span class="line">	<span class="keyword">var</span> n <span class="type">int</span></span><br><span class="line">	pairs := [][<span class="number">2</span>]quorum.MajorityConfig&#123;</span><br><span class="line">		&#123;l, r&#125;, <span class="comment">// count elems in l but not in r</span></span><br><span class="line">		&#123;r, l&#125;, <span class="comment">// count elems in r but not in l</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">for</span> _, p := <span class="keyword">range</span> pairs &#123;</span><br><span class="line">		<span class="keyword">for</span> id := <span class="keyword">range</span> p[<span class="number">0</span>] &#123;</span><br><span class="line">			<span class="keyword">if</span> _, ok := p[<span class="number">1</span>][id]; !ok &#123;</span><br><span class="line">				n++</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> n</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>按照该函数的逻辑，如果<code>incoming &amp; outgoing</code>是<code>(1)&amp;(1 2)</code>，则他们的差值是<code>1</code>，即<code>outgoing</code>删除一个节点变成<code>incoming</code>，而<code>(1)&amp;(2)</code>这样的配置变更，差值是<code>2</code>，即<code>outgoing</code>要先删除一个节点<code>2</code>，然后添加一个节点<code>1</code>，才能变成<code>incoming</code>。</p>
+<hr>
+<h3 id="不变式检查"><a href="#不变式检查" class="headerlink" title="不变式检查"></a>不变式检查</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">checkInvariants</span><span class="params">(cfg tracker.Config, prs tracker.ProgressMap)</span></span> <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p>配置变更时，要保证不变式的成立。检查不变式是在<code>checkInvariants</code>中实现的。有下面一些不变式：</p>
+<ul>
+<li><code>tracker.Config</code>中的<code>Voters</code>，<code>Learners</code>和<code>LearnersNext</code>，其中包含的每个节点，都能在<code>tracker.ProgressMap</code>找到对应的<code>Progress</code>；</li>
+<li><code>tracker.Config.LearnersNext</code>中的节点，表示<code>Voter</code>中将要被降级为<code>Learner</code>的节点，因此其中的节点必须包含在<code>outgoing</code>中，而且对应的<code>Progress.IsLearner</code>必须为<code>false</code>；</li>
+<li><code>Learners ∩ Voters == ∅</code>，即<code>tracker.Config.Learners</code>中的节点，不能出现在<code>outgoing</code>和<code>incoming</code>中；而且对应的<code>Progress.IsLearner</code>必须为<code>true</code>；</li>
+<li>如果当前没有执行配置变更（或者已经完成了），则<code>outgoing</code>必须为<code>nil</code>，<code>tracker.Config.LearnersNext</code>必须为<code>nil</code>，而且<code>tracker.Config.AutoLeave</code>必须是<code>false</code>；</li>
+</ul>
+<hr>
+<h3 id="新节点初始化Progress"><a href="#新节点初始化Progress" class="headerlink" title="新节点初始化Progress"></a>新节点初始化Progress</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> initProgress(cfg *tracker.Config, prs tracker.ProgressMap, id <span class="type">uint64</span>, isLearner <span class="type">bool</span>)</span><br></pre></td></tr></table></figure>
+
+<p>对于新加入的节点（<code>Voter</code>或者<code>Learner</code>），配置变更操作实际上就是创建该节点对应的<code>Progress</code>，并将节点加入到<code>Voters</code>或者<code>Learners</code>中。这些都是通过调用<code>Changer.initProgress</code>方法实现的。</p>
+<p>该函数的逻辑是：</p>
+<ul>
+<li><p>参数<code>isLearner</code>表示新加入的节点是<code>Learner</code>还是<code>Voter</code>，该参数为<code>true</code>，则将<code>节点ID</code>记录到<code>cfg.Learners</code>中；否则记录到<code>incoming</code>中；</p>
+</li>
+<li><p>然后创建新的<code>Progress</code>，插入到<code>prs</code>这个<code>map</code>中。新创建的<code>Progress</code>的初始属性如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">prs[id] = &amp;tracker.Progress&#123;</span><br><span class="line">    <span class="comment">// 将Next置为最新的日志索引LastIndex，注意下面的注释 </span></span><br><span class="line">    <span class="comment">// TODO(tbg): seems awfully optimistic(太过乐观了). Using the first index would be</span></span><br><span class="line">    <span class="comment">// better(使用初始索引可能更好些). The general expectation(期望) here is that the follower </span></span><br><span class="line">    <span class="comment">// has no log at all (and will thus likely need a snapshot), though the app may</span></span><br><span class="line">    <span class="comment">// have applied a snapshot out of band before adding the replica (thus</span></span><br><span class="line">    <span class="comment">// making the first index the better choice).</span></span><br><span class="line">    Next:      c.LastIndex,</span><br><span class="line">    Match:     <span class="number">0</span>,</span><br><span class="line">    Inflights: tracker.NewInflights(c.Tracker.MaxInflight),</span><br><span class="line">    IsLearner: isLearner,</span><br><span class="line">    <span class="comment">// When a node is first added, we should mark it as recently active.</span></span><br><span class="line">    <span class="comment">// Otherwise, CheckQuorum may cause us to step down if it is invoked</span></span><br><span class="line">    <span class="comment">// before the added node has had a chance to communicate with us.</span></span><br><span class="line">    RecentActive: <span class="literal">true</span>,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+</ul>
+<hr>
+<h3 id="删除节点"><a href="#删除节点" class="headerlink" title="删除节点"></a>删除节点</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> remove(cfg *tracker.Config, prs tracker.ProgressMap, id <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>要删除的节点，既有可能是<code>Voter</code>，也有可能是<code>Learner</code>：</p>
+<ul>
+<li>如果要删除的<code>节点ID</code>在<code>prs</code>中找不到对应的<code>Progress</code>，说明该节点不是系统中的节点，则直接返回；</li>
+<li>将<code>节点ID</code>从<code>incoming</code>中删除；</li>
+<li>将<code>节点ID</code>从<code>cfg.Learners</code>和<code>cfg.LearnersNext</code>中删除；如果<code>节点ID</code>不在<code>outgoing</code>中（<code>Learner</code>的情况），则直接将节点对应的<code>Progress</code>从<code>prs</code>中删除；</li>
+</ul>
+<hr>
+<h3 id="新增Voter"><a href="#新增Voter" class="headerlink" title="新增Voter"></a>新增Voter</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> makeVoter(cfg *tracker.Config, prs tracker.ProgressMap, id <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>新增<code>Voter</code>节点，既有可能是添加一个全新的<code>Voter</code>节点，也有可能是将<code>Learner</code>升级为<code>Voter</code>节点：</p>
+<ul>
+<li>如果<code>prs</code>中不包含<code>节点ID</code>，说明添加的是一个全新的<code>Voter</code>节点，直接调用<code>initProgress</code>即可；</li>
+<li>如果是<code>Learner</code>升级成<code>Voter</code>节点，则将<code>节点ID</code>从<code>cfg.Learners</code>中，以及从<code>cfg.LearnersNext</code>中删除（这种情况，原因可能是，<code>joint consensus</code>配置变更可以包含多个变更步骤，之前的某一步将<code>Voter</code>降级为<code>Learner</code>，后面的某一步又将<code>Learner</code>升级为<code>voter</code>），并将<code>ID</code>添加到<code>incoming</code>中；</li>
+</ul>
+<hr>
+<h3 id="新增Learner"><a href="#新增Learner" class="headerlink" title="新增Learner"></a>新增Learner</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> makeLearner(cfg *tracker.Config, prs tracker.ProgressMap, id <span class="type">uint64</span>)</span><br></pre></td></tr></table></figure>
+
+<p>新增<code>Learner</code>节点，既有可能是添加一个全新的<code>Learner</code>节点，也有可能是将<code>Voter</code>降级为<code>Learner</code>节点：</p>
+<ul>
+<li>如果<code>prs</code>中不包含<code>节点ID</code>，说明添加的是一个全新的<code>Learner</code>节点，则直接调用<code>initProgress</code>即可；</li>
+<li>如果是<code>Voter</code>节点降级为<code>Learner</code>节点，先调用<code>remove</code>将节点从<code>incoming</code>中删除，然后如果新加<code>节点ID</code>包含在<code>outgoing</code>中，则将其添加到<code>cfg.LearnersNext</code>中；否则（这种情况，原因可能是，<code>joint consensus</code>配置变更可以包含多个变更步骤，之前的某一步新增了全新的<code>Voter</code>，后面的某一步又将<code>Voter</code>降级为<code>Learner</code>），直接将<code>节点ID</code>添加到<code>cfg.Learners</code>中；</li>
+</ul>
+<hr>
+<h3 id="配置变更相关"><a href="#配置变更相关" class="headerlink" title="配置变更相关"></a>配置变更相关</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> checkAndCopy() (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">checkAndReturn</span><span class="params">(cfg tracker.Config, prs tracker.ProgressMap)</span></span> (tracker.Config, tracker.ProgressMap, <span class="type">error</span>)</span><br></pre></td></tr></table></figure>
+
+<p><code>checkAndCopy</code>方法复制并返回<code>c.Tracker.Config</code>和<code>c.Tracker.Progress</code>的副本，后续所作的配置变更都是在副本上执行的，然后调用<code>checkAndReturn</code>函数进行不变式的检查。</p>
+<p>需要注意的是：这里<code>c.Tracker.Config</code>使用的深拷贝，而<code>c.Tracker.Progress</code>使用的是浅拷贝（根据注释，配置变更时只会修改<code>Progress</code>中的<code>Learner</code>，所以使用浅拷贝）。这里使用副本，猜测可能是为了保证配置变更违反不变式时，可以方便的回退。</p>
+<p><code>checkAndReturn</code>函数就是调用<code>checkInvariants</code>检查<code>cfg</code>和<code>prs</code>是否满足不变式，不满足则返回错误；</p>
+<hr>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c Changer)</span></span> apply(cfg *tracker.Config, prs tracker.ProgressMap, ccs ...pb.ConfChangeSingle) <span class="type">error</span></span><br></pre></td></tr></table></figure>
+
+<p><code>apply</code>函数就是根据<code>ccs</code>中包含的一系列配置变更消息，执行相应的动作：</p>
+<ul>
+<li>消息类型为<code>pb.ConfChangeAddNode</code>，则调用<code>makeVoter</code>；</li>
+<li>消息类型为<code>pb.ConfChangeAddLearnerNode</code>，则调用<code>makeLearner</code>；</li>
+<li>消息类型为<code>pb.ConfChangeRemoveNode</code>，则调用<code>remove</code>；</li>
+<li>其他消息，报错退出；</li>
+<li>如果变更后，<code>incoming</code>为空，则抛出一个”removed all voters”错误；</li>
+</ul>
+<hr>
+<p>剩下的内容，参考《成员变更2-流程》</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/raft/" rel="tag"># raft</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" rel="prev" title="raft大论文翻译-06与Client的交互">
+      <i class="fa fa-chevron-left"></i> raft大论文翻译-06与Client的交互
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/" rel="next" title="etcd_raft源码解析-11成员变更2-流程">
+      etcd_raft源码解析-11成员变更2-流程 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">数据结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#incoming%E5%92%8Coutgoing"><span class="nav-number">2.</span> <span class="nav-text">incoming和outgoing</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8D%E5%8F%98%E5%BC%8F%E6%A3%80%E6%9F%A5"><span class="nav-number">3.</span> <span class="nav-text">不变式检查</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B0%E8%8A%82%E7%82%B9%E5%88%9D%E5%A7%8B%E5%8C%96Progress"><span class="nav-number">4.</span> <span class="nav-text">新节点初始化Progress</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%A0%E9%99%A4%E8%8A%82%E7%82%B9"><span class="nav-number">5.</span> <span class="nav-text">删除节点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B0%E5%A2%9EVoter"><span class="nav-number">6.</span> <span class="nav-text">新增Voter</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B0%E5%A2%9ELearner"><span class="nav-number">7.</span> <span class="nav-text">新增Learner</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E7%9B%B8%E5%85%B3"><span class="nav-number">8.</span> <span class="nav-text">配置变更相关</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
