@@ -4026,4 +4026,1234 @@ Signed-off-by: Jay Lee &lt;BusyJayLee@gmail.com&gt;
         <tag>raft</tag>
       </tags>
   </entry>
+  <entry>
+    <title>000总结</title>
+    <url>/2021/12/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/000%E6%80%BB%E7%BB%93/</url>
+    <content><![CDATA[<h3 id="基本概念"><a href="#基本概念" class="headerlink" title="基本概念"></a>基本概念</h3><h4 id="系统"><a href="#系统" class="headerlink" title="系统"></a>系统</h4><p>系统由状态，以及一些能够转换该状态的操作组成。随着系统的运行，它通过一些操作历史（history of operations，个人理解就是一系列操作，以及每个操作后的状态，以及操作的调起和完成时间），从一种状态转换到另一种状态。</p>
+<span id="more"></span>
+<h4 id="进程"><a href="#进程" class="headerlink" title="进程"></a>进程</h4><p>进程是一个逻辑上的单线程程序，执行计算和调起操作。</p>
+<h4 id="操作"><a href="#操作" class="headerlink" title="操作"></a>操作</h4><p>操作会引起系统从一个状态到另一个状态的转换。例如，一个单变量系统可能有“read”和“write”这样的操作；计数器可能具有诸如递增、递减和读取之类的操作；SQL存储可能具有诸如selects和updates之类的操作。</p>
+<h4 id="调起时间和完成时间"><a href="#调起时间和完成时间" class="headerlink" title="调起时间和完成时间"></a>调起时间和完成时间</h4><p>操作是需要时间的。比如在多线程系统中，一个函数调用就是一种操作；在分布式系统中，一个操作可能就是发送请求到服务节点，然后收到一个响应；</p>
+<p>每个操作都有一个调起时间，完成时有一个更大的完成时间；这两个时间都由假想的、完全同步的全球可访问的时钟提供。我们认为这些时钟提供的是<font color=red>实际时间顺序（real-time order）的时钟</font>；与之相反的就是只跟踪因果顺序的时钟；</p>
+<h4 id="并发"><a href="#并发" class="headerlink" title="并发"></a>并发</h4><p>因为操作需要耗时，所以两个并发的操作在时间上就有可能重叠。比如操作A和B，A先开始，然后B开始，然后A结束，之后B结束。只要他们在时间上有重叠，那我们说操作A和B是并发的。</p>
+<h4 id="一致性模型"><a href="#一致性模型" class="headerlink" title="一致性模型"></a>一致性模型</h4><p>网络分区是不可避免的，消息总会延迟、丢弃、重发或者乱序。所以我们希望软件能保持某种<font color=red>直观的正确性。</font>但是如何定义正确呢？</p>
+<p>给定一些与<font color=red>操作和状态相关的“规则”</font>，针对系统的操作历史应该始终遵循这些规则。我们称这些规则为“一致性模型”。（一致性模型，就是规则的集合，就是符合规则的操作历史的集合。什么是正确？符合规则就是正确！）</p>
+<p>正式的说法是，<font color=red>一致性模型是所有允许的操作历史的集合。</font>如果运行一个程序，执行了某种操作后得到了某种结果，该操作以及结果在允许的操作历史集合中，那就说这种操作是一致的（满足这种一致性模型的）。某个操作历史不在一致性模型中，那就是这种操作历史是不一致的（不满足这种一致性模型）。如果每个可能的执行都在允许的范围内，则说系统满足这种一致性模型。我们当然是希望真实系统满足“直观正确的”一致性模型，这样我们就可以编写可预测的程序。<font color=red>比如当我们说一个操作历史不符合序列化一致性时，就表示该操作历史不是序列性模型的历史集合中的成员；</font></p>
+<p>正式的说法就是：<font color=red>我们把更严格，集合更小的一致性模型成为更强的一致性模型；而集合更大，要求更宽松的一致性模型称为较弱的一致性模型；</font></p>
+<h4 id="total-order"><a href="#total-order" class="headerlink" title="total order !!!"></a>total order !!!</h4><p>所有操作都能按照某种顺序排序。这个顺序不一定就是实际时间（real-time）上的顺序，只要有顺序就行。</p>
+<blockquote>
+<p>假设A是一个集合 {1,2,3} ；R是集合A上的关系，例如{&lt;1,1&gt;,&lt;2,2&gt;,&lt;3,3&gt;,&lt;1,2&gt;,&lt;1,3&gt;,&lt;2,3&gt;}</p>
+<ul>
+<li>自反性：任取一个A中的元素x，如果都有&lt;x,x&gt;在R中，那么R是自反的。</li>
+<li>对称性：任取一个A中的元素x,y，如果&lt;x,y&gt; 在关系R上,那么&lt;y,x&gt; 也在关系R上，那么R是对称的。</li>
+<li>反对称性：任取一个A中的元素x,y(x!&#x3D;y)，如果&lt;x,y&gt; 在关系R上,那么&lt;y,x&gt; 不在关系R上，那么R是反对称的。</li>
+<li>传递性：任取一个A中的元素x,y,z，如果&lt;x,y&gt;,&lt;y,z&gt; 在关系R上，那么 &lt;x,z&gt; 也在关系R上，那么R是对称的。</li>
+</ul>
+<p>偏序： 设R是非空集合A上的关系，如果R是自反的，反对称的，和传递的，则称R是A上的偏序关系。</p>
+<p>全序：如果R是A上的偏序关系，那么对于任意的A集合上的 x,y，都有 x &lt;&#x3D; y，或者 y &lt;&#x3D; x，二者必居其一，那么则称R是A上的全序关系。</p>
+<p>偏序关系就是指存在“序”这个概念，满足自反性、反对称性和传递性。但是并不是任何两个元素之间都有这个序的先后关系。比如集合之间的包含关系，就是一个偏序关系。但并不是任何两个集合之间都存在包含关系。</p>
+<p align=right>以上内容来自于：https://www.zhihu.com/question/36758436/answer/680927456</p>
+</blockquote>
+<p>因此，total order应该就是说：操作历史集合中的操作，都是可以排序的，而且满足自反、反对称和传递的特点。</p>
+<hr>
+<h4 id="real-time"><a href="#real-time" class="headerlink" title="real-time !!!"></a>real-time !!!</h4><p>上面介绍调起时间和完成时间时：每个操作都有一个调起时间，完成时有一个更大的完成时间；这两个时间都由假想的、完全同步的全球可访问的时钟提供。我们认为这些时钟提供的是<font color=red>实际时间顺序（real-time order）的时钟</font>；与之相反的就是只跟踪因果顺序的时钟；</p>
+<p>一种一致性模型如果需要满足real time的要求，那它肯定也满足total order。</p>
+<hr>
+<h3 id="一致性的强弱"><a href="#一致性的强弱" class="headerlink" title="一致性的强弱"></a>一致性的强弱</h3><p>下面的图（改编自 <a href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Bailis, Davidson, Fekete et al</a> 和<a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti &amp; Vukolic</a>的论文）展示了一致性模型之间的关系。其中的箭头表示了一致性模型之间的包含关系。比如严格序列化（Strict serializable）一致性意味着它既满足序列化（serializability）一致性，也满足线性（linearizability）一致性。图中的颜色表示在异步网络环境下的可用性。</p>
+<p><img src="/img/000%E6%80%BB%E7%BB%93/image-20220309083251705.png" alt="image-20220309083251705"></p>
+<p>上图展示了按层次结构排列的一致性模型。<font color=red>最强模型是严格序列化（Strict serializable），它统一了两个不相交的一致性模型族：多对象事务上的一致性模型族和单对象操作的一致性模型族。</font>当我们说模型x意味着y时，我们的意思是，对于x中约定的操作历史，也肯定满足y的规则约束，所以x比y“强”。</p>
+<p>在多对象这一边，强序列化意味着序列化；序列化又意味着可重复读（repeatable read）和快照隔离（snapshot isolation）；而可重复读和快照隔离又都意味着单调原子视图（monotonic atomic view）。可重复读还意味着cursor stability；cursor stability和单调原子视图又同时意味着read committed；read committed意味着read uncommitted；</p>
+<p>在单对象这一边，强序列化意味着线性一致性；线性一致性又意味着顺序（sequential）一致性；顺序一致性意味着因果（causal）一致性；因果一致性意味着writes follow reads和PRAM；PRAM意味着单调读、单调写和read your writes；</p>
+<p>可用性方面：</p>
+<ul>
+<li>粉红色的Unavailable：表示发生网络错误时是不可用的。一些或者所有节点必须暂停操作，以便保证安全性；</li>
+<li>橙色的Sticky可用：表示只要client只与相同节点通信，那在无故障节点上是可用的；</li>
+<li>蓝色的完全可用：表示即使网络瘫痪了，在非故障节点上也是可用的；</li>
+</ul>
+<hr>
+<h3 id="一致性带来的成本"><a href="#一致性带来的成本" class="headerlink" title="一致性带来的成本"></a>一致性带来的成本</h3><p><a href="http://lpd.epfl.ch/sgilbert/pubs/BrewersConjecture-SigAct.pdf">CAP定理</a>表示对于一致性，可用性和分区容错性三者而言，任何系统最多能保证其中两个属性。虽然Eric Brewer的CAP是用非正式术语描述的，但是CAP定理有着非常精确的定义：</p>
+<ol>
+<li><font color=red>一致性这里就是线性一致性</font>，所以<font color=red>CAP定理适用于所有的线性一致性系统；</font></li>
+<li>可用性表示对于非失败节点发起的请求必须能成功完成。因为网络分区的时间可能持续任意长的时间，这就表示节点不能简单地将响应延迟到分区修复之后；</li>
+<li>分区容错性意味着允许发生网络分区。在网络正常的情况下提供线性一致性和可用性是很容易的，但是<font color=red>当网络不可靠时，同时提供这两种特性是不可能的。</font>因此如果网络不是完全可靠的（实际上它就是不可靠的），你就不能选择CA，所以构建在商用硬件之上的实际分布式系统中，最多可以保证AP或者CP。</li>
+</ol>
+<p>你可能会有这样的疑问：线性一致性不是一致性模型的唯一模型，我可以通过提供顺序一致性、串行一致性或者快照隔离，来绕过CAP定理。但是有其他证据表明，你也无法构建具有顺序一致性、序列一致性、可重复读、分区隔离，cursor stability等，或是更强的一致性模型的完全可用系统。在Peter Bailis的论文<a href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Highly Available Transactions paper</a>中指出，上图中基于红色区域的一致性模型的系统时不可能完全可用的。</p>
+<p>更强的一致性模型意味着更多的协调（更多的消息交互），以确保这些操作按照正确的顺序进行。这不仅造成了<font color=red>可用性较低，而且还暴露出更高的延迟。</font></p>
+<p>我们采用的是混合的数据存储系统或者数据库，融合不同的一致性模型来实现冗余、可用性、性能和安全性目标。<font color=red>在保证可用性和性能方面，尽可能采用弱一致性模型，如果算法需要有严格的操作顺序要求，则采用强一致性模型。</font></p>
+<hr>
+<h3 id="一致性"><a href="#一致性" class="headerlink" title="一致性"></a>一致性</h3><h4 id="Strict-Serializability-严格序列化"><a href="#Strict-Serializability-严格序列化" class="headerlink" title="Strict Serializability     严格序列化"></a>Strict Serializability     严格序列化</h4><p>不那么正式地说法，严格序列化意味着操作以跟这些操作的实时顺序（real-time ordering，即由上面提到的全局时钟保证的）一致的顺序进行执行。比如，如果操作A的完成时间比B的开始时间要早，那在序列化的顺序中，A要出现B的前面。</p>
+<p>特点：</p>
+<ul>
+<li>total order和real time：具有实时顺序的序列化系统。</li>
+<li>“事务性”模型：操作（通常称为“事务”）包括几个按顺序执行的子操作。严格序列化保证操作（事务）以原子方式进行：即事务的子操作不会与其他事务的子操作交叉。</li>
+<li>“多对象”模型：操作针对的是系统中的多个对象。</li>
+<li>在网络分区的情况下，不是完全或粘性（sticky）可用的；即网络分区时，部分或所有节点将无法继续执行操作。</li>
+</ul>
+<p>严格序列化意味着序列化（serializability）和线性化（linearizability）。可以认为严格序列化，是在保证事务性多对象操作的序列化顺序的基础上，增加了线性化的实时顺序约束；或者可以这样认为，严格序列化的数据库就是把整个数据库视为一个对象的线性化系统。</p>
+<hr>
+<h4 id="单对象操作一致性"><a href="#单对象操作一致性" class="headerlink" title="单对象操作一致性"></a>单对象操作一致性</h4><h5 id="Linearizability-线性一致性"><a href="#Linearizability-线性一致性" class="headerlink" title="Linearizability 线性一致性"></a>Linearizability 线性一致性</h5><p>假设有一个所有进程都可以访问的全局状态，针对这个全局状态的操作都是<font color=red>原子</font>的，而不是相互交织的，这就得到了线性一致性的模型：每个操作都会在其调起和完成之间的某个时刻<strong>原子地</strong>生效。</p>
+<p>线性一致性有个很重要的一个约束：一旦一个操作完成了，那所有人必须都能看到该操作的结果（或者是更加靠后的结果）。因为操作起作用的时间，肯定不会晚于其结束时间，而该操作之后（即调起时间晚于该操作完成时间的操作）操作，它发生作用的时间肯定要晚于其调起的时间，进而肯定要晚于前一个操作的结束时间。举例而言：如果一个操作成功写入了<code>b</code>，那该写操作之后的读操作，必须能读到<code>b</code>（或者如果同时有其他写操作的话，能读到更新的值）。</p>
+<p>线性一致性在时间上的约束，也保证所有修改后的结果，都能在操作完成之后的其他读操作是可见的。所以，线性一致性不允许出现读取到旧数据的情况；也不允许出现非单调读的现象——即先读到新值，然后又读到了旧值。</p>
+<p>特点：</p>
+<ul>
+<li>最强的单对象一致性模型之一；</li>
+<li>满足<font color=red>total order和real time</font>，即每个操作都是<font color=red>原子的，按照这些操作的实时顺序发生的</font>；</li>
+<li>在网络分区的情况下，不是完全或粘性（sticky）可用的；即网络分区时，部分或所有节点将无法继续执行操作。</li>
+</ul>
+<hr>
+<h5 id="sequential-顺序一致性"><a href="#sequential-顺序一致性" class="headerlink" title="sequential 顺序一致性"></a>sequential 顺序一致性</h5><p>直白的说，允许操作在时间上不那么严格，即操作可以在调用之前或完成之后生效，但保留了进程内部的操作必须按该进程规定的顺序进行的约束，这就是比线性一致性稍弱的一致性模型：顺序一致性。</p>
+<p>特点：</p>
+<ul>
+<li>total order，并且事件顺序与每个进程内的操作顺序一致（即保证总顺序中，<font color=red>单个进程内的操作还是按real-time的顺序进行的</font>）。</li>
+<li>在有网络分区的情况下不是完全可用或粘性可用的；即网络发生分区时，若干或者所有节点都无法再继续取得进展；</li>
+<li>可以读取过期的状态，但一旦进程A观察到进程B的某些操作，它就不可能再观察到B之前的状态。这种约束与total order属性相结合，使得顺序一致性也是一种强一致性模型。</li>
+</ul>
+<hr>
+<h5 id="Causal-Consistency-因果一致性"><a href="#Causal-Consistency-因果一致性" class="headerlink" title="Causal Consistency   因果一致性"></a>Causal Consistency   因果一致性</h5><p>不强制一个进程内的所有操作都是按序执行的，而只要求具有因果依赖关系的操作必须按序。这种一致性模型要比约束同一进程内所有操作必须按序的一致性稍弱，同一进程内没有因果依赖的操作可以以任意顺序出现。</p>
+<p>特点：</p>
+<ul>
+<li><p>因果相关的操作应该<font color=red>以相同的顺序被所有进程观察到</font>，但是每个进程对于因果不相关的操作的顺序可能会有不同的看法。</p>
+</li>
+<li><p><font color=red>粘性可用</font>：发生网络分区时，只要CLIENT始终访问的是同一个无故障节点，那该节点上肯定会有所进展。</p>
+</li>
+<li><p>不是total order。</p>
+</li>
+<li><p>因果一致性首次来源于Lamport对<code>happens-before</code>关系的定义，它通过将一个操作与同一进程之前的操作，以及其他进程上的相关操作（通过消息交互使得操作的结果可见）关联起来，捕捉到了潜在因果关系的概念。</p>
+</li>
+</ul>
+<hr>
+<h5 id="PRAM-流水线随机访问存储系统"><a href="#PRAM-流水线随机访问存储系统" class="headerlink" title="PRAM    流水线随机访问存储系统"></a>PRAM    流水线随机访问存储系统</h5><p>PRAM（Pipeline Random Access Memory）这个概念来源于Lipton &amp; Sandberg的论文《PRAM: A Scalable Shared Memory》，这种一致性模型的约束是：<font color=red>由单个进程进行的多个写操作，会按照该进程执行它们的顺序被其他所有进程观察到；然而多个进程的写操作则可能以不同的顺序被外部观察到。</font></p>
+<p>特点：</p>
+<ul>
+<li>PRAM实际上等同于read your writes，单调写和单调读；</li>
+<li>粘性可用：在网络分区的情况下，只要client始终访问的是同一个节点，那所有进程都可以取得进展。</li>
+<li>无total order;</li>
+</ul>
+<hr>
+<h5 id="Read-Your-Writes-读你的写"><a href="#Read-Your-Writes-读你的写" class="headerlink" title="Read Your Writes     读你的写"></a>Read Your Writes     读你的写</h5><p>read your writes，或者叫read my writes保证这样的规则：如果一个进程执行了写操作w，然后该进程又执行了读操作r，那r必须能够看到w的结果；</p>
+<p>注意：read your writes不是应用于不同进程上的规则。比如它不保证，如果进程1写成功了，那进程2一定能观察到写操作的结果；</p>
+<p>特点：</p>
+<ul>
+<li>粘性可用：如果发生了网络分区，那只要CLIENT始终访问的是同一个节点，那该节点依然可以取得进展；</li>
+<li>Viotti 和 Vukolić在论文中定义了read your writes：如果对于特定进程而言，其执行的写操作在读操作之前完成，那写操作的结果必须是对该读操作而言是可见的。换句话说，会话顺序（仅限于相同进程中的先写后读），必须是可见顺序的子集；</li>
+</ul>
+<hr>
+<h5 id="Writes-Follow-Reads-读后写"><a href="#Writes-Follow-Reads-读后写" class="headerlink" title="Writes Follow Reads     读后写"></a>Writes Follow Reads     读后写</h5><p>writes follow reads：也叫做会话因果关系，保证这样的规则：如果一个进程读到了v，v来自于写操作w1，然后该进程执行写操作w2，那w2必须在w1之后可见。Once you’ve read something, you can’t change that read’s past.</p>
+<p>writes follow reads是完全可用的，即使发生网络分区，那每个节点依然可以取得进展；</p>
+<hr>
+<h5 id="Monotonic-Reads-单调读"><a href="#Monotonic-Reads-单调读" class="headerlink" title="Monotonic Reads 单调读"></a>Monotonic Reads 单调读</h5><p>单调读的规则：如果一个进程先执行读操作r1，然后是r2，那r2读取到的值，不能是r1所反映出的写操作之前的状态；</p>
+<p>直白点说就是读操作不能倒退：对于写操作w，以及读操作r1和r2，r1在r2之前执行，并且都是由相同的进程执行的，那如果r1见到了w的结果，那r2也必须能见到w的结果；</p>
+<p>特点：</p>
+<ul>
+<li>单调读的规则适用于相同进程的读操作，而不适用于不同进程的操作；</li>
+<li>完全可用的：即使发生了网络分区，那所有节点还是可以取得进展；</li>
+</ul>
+<hr>
+<h5 id="Monotonic-Writes-单调写"><a href="#Monotonic-Writes-单调写" class="headerlink" title="Monotonic Writes 单调写"></a>Monotonic Writes 单调写</h5><p>单调写保证这样的场景：一个进程先进行了写操作w1，然后是写操作w2，那其他所有进程都是先观察到w1，然后是w2；</p>
+<p>特点：</p>
+<ul>
+<li>只适用于相同进程的写操作，而非不同进程的写操作；</li>
+<li>完全可用：即使发生了网络分区，所有节点都可以取得进展；</li>
+</ul>
+<hr>
+<h4 id="多对象事务一致性"><a href="#多对象事务一致性" class="headerlink" title="多对象事务一致性"></a>多对象事务一致性</h4><p>下面的一致性模型都是“事务”一致性模型：操作（通常称为“事务”）包括按顺序执行的几个基本子操作。也都是“多对象”一致性模型：操作可以作用于系统中的多个对象上。</p>
+<p><a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999规范</a>定义的隔离异常现象有：</p>
+<blockquote>
+<p>P1（“脏读”）：SQL事务T1修改了某行。然后，SQL事务T2在T1执行提交之前读取该行。如果T1随后执行回滚，T2将读取到从未提交过的行，可以认为该行从未存在过。</p>
+<p>P2（“不可重复读取”）：SQL事务T1读取一行。然后，SQL事务T2修改或删除该行并执行提交。如果T1随后尝试重新读取该行，它可能会读到修改后的值或发现该行已被删除。</p>
+<p>P3（“幻读”）：事务T1读取满足某些搜索条件的行。事务T2执行SQL语句，这些语句会生成满足事务T1使用的搜索条件的一行或多行。如果事务T1随后以相同的搜索条件重复再次读取，它将获得不同的行集合。</p>
+</blockquote>
+<p>此外，还有脏写：</p>
+<blockquote>
+<p>脏写：假设T1修改了x，而且T2在T1提交或者回滚之前也修改了x，那如果T1或T1回滚的话，x的最终的值是未知的。</p>
+<p>Dirty Write—Suppose T1 modifies x and T2 further modifies x before T1 commits or<br>aborts. If either T1 or T2 aborts, it is unclear what the real value of x should be.</p>
+</blockquote>
+<hr>
+<h5 id="Serializability-序列化"><a href="#Serializability-序列化" class="headerlink" title="Serializability     序列化"></a>Serializability     序列化</h5><p><font color=red>如果操作历史相当于以某种单一原子顺序发生的，但不约束调用和完成时间，这就是所谓的序列化。</font>这种一致性可能比你预期的强很多，也弱很多。”弱”体现在，它对real-time没有限制；”强”体现在，它排除了很多操作历史，因为它需要有<font color=red>线性顺序：total order</font>：</p>
+<ul>
+<li>它在real-time上并无约束，即使在单进程上也没有。如果进程A完成了写操作w，然后进程B开始读操作r，那r不一定读到w的结果。</li>
+<li>它对total order有强约束，但它允许乱序。比如，一个序列化的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>特点：</p>
+<ul>
+<li>“事务”一致性模型：序列化保证事务以原子的方式进行：事务的子操作不会与其他事务的子操作交错执行。</li>
+<li>“多对象”一致性模型：实际上，序列化不仅作用于事务中涉及的特定对象，而且可以把整个系统当成一个整体—-操作可以作用于谓词之上（<em>比如where</em>），比如所有的cat。</li>
+<li>序列化无法达到完全或者粘性可用。如果发生了网络分区，那部分或所有节点将无法继续执行操作。</li>
+<li>序列化意味着可重复读，快照隔离等。</li>
+</ul>
+<p>隔离级别在SERIALIZABLE时，并行执行的事务保证是串行化的。串行执行就是下一个事务在上一个事务执行完成之后才能执行。如果用禁止的异常情况来定义其隔离级别：序列化不会出现P3（幻读）现象：</p>
+<blockquote>
+<p>P3（“幻读”）：事务T1读取满足某些搜索条件的行。事务T2执行SQL语句，这些语句会生成满足事务T1使用的搜索条件的一行或多行。如果事务T1随后以相同的搜索条件重复再次读取，它将获得不同的行集合。</p>
+</blockquote>
+<hr>
+<h5 id="Repeatable-Read"><a href="#Repeatable-Read" class="headerlink" title="Repeatable Read"></a>Repeatable Read</h5><p>可重复读类似于序列化，但是与之不同的是，它允许幻读：事务T1使用谓词进行读取，比如“所有名为Dikembe”的人员集合，另一个事务T2在T1提交之前，新增了名为”Dikembe”的人员信息。虽然单个对象在读取时是稳定的，但谓词本身可能不是。</p>
+<p>特点：</p>
+<ul>
+<li>在网络分区的场景下不是完全可用；在存在网络分区的情况下，一些或所有节点可能无法取得进展。</li>
+<li>可重复读取意味着<a href="https://jepsen.io/consistency/models/cursor-stability">游标稳定性</a>，<a href="https://jepsen.io/consistency/models/read-committed">读已提交</a>等。</li>
+<li>没有real-time的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。</li>
+<li>也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>像序列化一样，可重复读允许重排序。比如，一个可重复读的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>可重复读不会出现P2（不可重复读取）现象：：</p>
+<blockquote>
+<p>P2（“不可重复读取”）：SQL事务T1读取一行。然后，SQL事务T2修改或删除该行并执行提交。如果T1随后尝试重新读取该行，它可能会读到修改后的值或发现该行已被删除。</p>
+</blockquote>
+<hr>
+<h5 id="Snapshot-Isolation-快照隔离"><a href="#Snapshot-Isolation-快照隔离" class="headerlink" title="Snapshot Isolation     快照隔离"></a>Snapshot Isolation     快照隔离</h5><p>在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对<em>x</em>的写入，则T1必须中止。</p>
+<p>特点：</p>
+<ul>
+<li>不能完全可用；存在网络分区的情况下，一些或所有节点可能无法取得进展。</li>
+<li>快照隔离意味着读已提交。但是它没有任何实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。</li>
+<li>快照隔离也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。</li>
+<li>快照隔离允许重排序。比如，一个快照隔离的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>Berenson、Bernstein等<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">首次定义的快照隔离</a>：</p>
+<blockquote>
+<p>…将事务开始读取已提交的数据快照中的数据时的时间戳，作为开始时间戳。此时间戳可以是事务首次读取数据之前的任何时间。只要自开始时间戳以来的快照数据是可维护的，那运行在快照隔离中的事务的读操作将永远不会被阻塞。事务的写操作（更新、插入和删除）也会反映到快照中，如果事务再次访问（读取或更新）数据，则将再次读取该快照。开始时间戳之后的其他事务的更新操作，对于本事务是不可见的。</p>
+<p>当事务T1准备提交时，它将获得一个提交时间戳，该时间戳将大于任何现有的开始时间戳或提交时间戳。只有不存在符合下面条件的事务T2的情况下，T1才能提交成功：T2的提交时间戳在T1执行期间，即[开始时间戳，提交时间戳]期间，并且T2和T1对同一份数据进行了写操作。如果存在这样的T2，那T1将会中止。这种被称为First-committer-wins的特性，防止了更新丢失的现象（现象P4）。T1提交后，其更新对于开始时间戳大于T1提交时间戳的所有事物都可见了。</p>
+</blockquote>
+<hr>
+<h5 id="Cursor-Stability-游标稳定性"><a href="#Cursor-Stability-游标稳定性" class="headerlink" title="Cursor Stability     游标稳定性"></a>Cursor Stability     游标稳定性</h5><p>游标稳定性是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标。当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。</p>
+<p>游标稳定性可以防止更新丢失，即事务T1读取、修改和写回对象x，但另一个事务T2在T1读取x后更新x，这就导致T2的更新丢失了。</p>
+<p>特点：</p>
+<ul>
+<li>不是完全可用的；在网络分区的情况下，一些或所有节点可能无法取得进展。</li>
+<li>游标稳定性没有任何的real-time上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。</li>
+<li>游标稳定性也不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+</ul>
+<p>游标稳定性要强于读已提交，所以它禁止ANSI定义的脏写和脏读，但是允许不可重复读和幻读。</p>
+<hr>
+<h5 id="Monotonic-Atomic-View-单调原子视图"><a href="#Monotonic-Atomic-View-单调原子视图" class="headerlink" title="Monotonic Atomic View     单调原子视图"></a>Monotonic Atomic View     单调原子视图</h5><p>单调原子视图比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。</p>
+<p>特点：</p>
+<ul>
+<li>完全可用：在存在网络分区的情况下，每个节点都可以取得进展。</li>
+<li>没有real-time的约束。如果进程A完成写操作w，进程B开始读操作r，r不一定保证能看到w的结果。</li>
+<li>不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>类似于<a href="https://jepsen.io/consistency/models/serializable">串行化</a>，单调原子视图允许重排序。比如，一个单调原子视图的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>单调原子视图是在Bailis、Davidson、Fekete等人在<a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">《高可用交易：优点和局限性》</a>中提出的：</p>
+<blockquote>
+<p>在MAV（Monotonic Atomic View）下，一旦一个事务Ti的一些操作结果被另一个事务Tj观察到，此后，Ti的所有操作结果都能被Tj观察到。也就是说，如果事务Tj读取事务Ti写入的对象的某个版本，则Tj稍后读取的对象无法返回Ti应用了更高版本的值。</p>
+</blockquote>
+<p>由于单调原子视图强于读已提交，因此它禁止了脏读和脏写，但是允许出现不可重复度和幻读。</p>
+<hr>
+<h5 id="Read-Committed-读已提交"><a href="#Read-Committed-读已提交" class="headerlink" title="Read Committed     读已提交"></a>Read Committed     读已提交</h5><p>读已提交加强了<a href="https://jepsen.io/consistency/models/read-uncommitted">Read uncommitted（读未提交）</a>，防止了脏读：不允许事务观察到未提交事务的写操作。</p>
+<p>特点：</p>
+<ul>
+<li>完全可用的：存在网络分区的情况下，每个节点都可以取得进展。；</li>
+<li>读已提交没有任何real-time上的约束。如果进程A完成写操作w，然后进程B开始读操作r，则r不一定保证能观察到w。</li>
+<li>读已提交也不保证单个进程上的多个事务之间的顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>类似于串行化，读已提交允许重排序。比如，一个读已提交的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>读已提交不会出现P1（脏读）现象：</p>
+<blockquote>
+<p>P1（“脏读”）：SQL事务T1修改了某行。然后，SQL事务T2在T1执行提交之前读取该行。如果T1随后执行回滚，T2将读取到从未提交过的行，可以认为该行从未存在过。</p>
+</blockquote>
+<hr>
+<h5 id="Read-Uncommitted-读未提交"><a href="#Read-Uncommitted-读未提交" class="headerlink" title="Read Uncommitted    读未提交"></a>Read Uncommitted    读未提交</h5><p>读未提交是这样的一致性模型，它禁止脏写，即两个事务在提交之前同时修改同一对象。</p>
+<p>特点：</p>
+<ul>
+<li>完全可用：存在网络分区的情况下，每个节点都可以取得进展。</li>
+<li>读未提交没有任何实际时间上的约束。如果进程A完成写操作w，然后进程B开始读操作r，则r不一定保证能观察到w。</li>
+<li>也不保证单个进程上的多个事务之间的顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>类似于<a href="https://jepsen.io/consistency/models/serializable">串行化</a>，读未提交允许重排序。比如，一个读已提交的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>00Strong consistency models--aphyr</title>
+    <url>/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/</url>
+    <content><![CDATA[<p>网络分区是不可避免的，交换机、网卡、主机硬件、操作系统、磁盘，虚拟化层、程序的语义等等，都会使我们的消息延迟、丢弃、重发或者乱序。所以我们希望我们的软件保持某种<font color=red>直观的正确性。</font></p>
+<span id="more"></span>
+<p>Network partitions <a href="http://aphyr.com/posts/288-the-network-is-reliable">are going to happen</a>. Switches, NICs, host hardware, operating systems, disks, virtualization layers, and language runtimes, not to mention program semantics themselves, all conspire to delay, drop, duplicate, or reorder our messages. In an uncertain world, we want our software to maintain some sense of <em>intuitive correctness</em>.</p>
+<p>但是如何定义正确呢？本文中我们将介绍一些“强”一致性模型，看看它们是如何结合在一起的。</p>
+<p>Well, obviously we want intuitive correctness. Do The Right Thing(TM)! But what exactly <em>is</em> the right thing? How might we describe it? In this essay, we’ll take a tour of some “strong” consistency models, and see how they fit together.</p>
+<h3 id="Correctness-什么是正确"><a href="#Correctness-什么是正确" class="headerlink" title="Correctness  什么是正确"></a>Correctness  什么是正确</h3><p>首先，我们这样定义算法的抽象行为：一个系统由状态，以及一些能够转换该状态的操作组成。随着系统的运行，它通过一些操作历史（history of operations，个人理解就是一系列操作，以及每个操作后的状态），从一种状态转换到另一种状态。</p>
+<p>There are many ways to express an algorithm’s abstract behavior–but just for now, let’s say that a <em>system</em> is comprised of a <em>state</em>, and some <em>operations</em> that transform that state. As the system runs, it moves from state to state through some history of operations.</p>
+<p>比如某个系统中，状态就是一个变量，而操作就是对变量的读写。那下面的Ruby代码，就是对这个变量的赋值和打印：</p>
+<p>For instance, our state might be a variable, and the <em>operations</em> on the state could be the writes to, and reads from, that variable. In this simple Ruby program, we write and read a variable several times, printing it to the screen to illustrate the reads.</p>
+<figure class="highlight ruby"><table><tr><td class="code"><pre><span class="line">x = <span class="string">&quot;a&quot;</span>; puts x; puts x</span><br><span class="line">x = <span class="string">&quot;b&quot;</span>; puts x</span><br><span class="line">x = <span class="string">&quot;c&quot;</span></span><br><span class="line">x = <span class="string">&quot;d&quot;</span>; puts x</span><br></pre></td></tr></table></figure>
+
+<p>看到上面的代码，我们已经有了这个程序正确性的直观模型：它应该打印“aabd”。</p>
+<p>We already have an <em>intuitive</em> model of this program’s correctness: it should print “aabd”. Why? Because each of the statements <em>happen in order</em>. First we <code>write the value a</code>, then <code>read the value a</code>, then <code>read the value a</code>, then <code>write the value b</code>, and so on.</p>
+<p>这样的系统中，我们设置了变量的值为<code>a</code>，那后续就应该读到<code>a</code>，即读操作应该返回最近一次写入的值（register系统的<font color=red>不变式</font>），我们称这样的系统（具有单一值的单个变量）为register系统。</p>
+<p>Once we set a variable to some value, like <code>a</code>, reading it should return <code>a</code>, until we change the value again. Reading a variable returns the most recently written value. We call this kind of system–a variable with a single value–a <em>register</em>.</p>
+<p>给变量赋值了<code>a</code>，然后读该变量就应该返回<code>a</code>。我们认为这是理所应当的，但是系统可能会返回任意值，比如<code>A</code>，<code>d</code>甚至是<code>the moon</code>，如果确实如此，那直观上我们会说系统是不正确的。</p>
+<p>We’ve had this model drilled into our heads from the first day we started writing programs, so it feels like second nature–but this is <em>not</em> the only way variables could work. A variable could return <em>any</em> value for a read: <code>a</code>, <code>d</code>, or <code>the moon</code>. If that happened, we’d say the system was <em>incorrect</em>, because those operations don’t align with our <em>model</em> of how variables are supposed to work.</p>
+<p>这暗示了系统的“正确性”定义：给定一些与<font color=red>操作和状态相关的“规则”</font>，针对系统的操作历史应该始终遵循这些规则。我们称这些规则为“一致性模型”。（一致性模型，就是规则的集合，就是符合规则的操作历史的集合。什么是正确？符合规则就是正确！）</p>
+<p>This hints at a definition of <em>correctness</em> for a system: given some <em>rules</em> which relate the operations and state, the history of operations in the system should always <em>follow those rules</em>. We call those rules a <em>consistency model</em>.</p>
+<p>我们将register系统的规则表述为简单的英语语句，但规则也可以是任意复杂的数学结构。比如“读操作返回两次写入之前的值，如果该值是4，则返回cat或dog；否则将其值加上3后返回”，<font color=red>这就是规则，就是一致性模型</font>；或者“每次读取总是返回0”也是一致性模型；甚至说“根本没有规则，任何操作都是允许的”，这也是一种一致性模型，这是最容易满足的一致性模型。</p>
+<p>We phrased our rules for registers as simple English statements, but they could be arbitrarily complicated mathematical structures. “A read returns the value from two writes ago, plus three, except when the value is four, in which case the read may return either cat or dog” is a consistency model. As is “Every read always returns zero”. We could even say “There are no rules at all; every operation is permitted”. That’s the <em>easiest</em> consistency model to satisfy; every system obeys it trivially.</p>
+<p>正式的说法是，<font color=red>一致性模型是所有允许的操作历史的集合。</font>如果我们运行一个程序，并且在允许的操作集合中执行了一系列操作，那么就说这种特定的执行是一致的（满足这种一致性模型的）。如果程序的操作历史不在一致性模型中，并且程序偶尔出错，那么我们说这种操作历史是不一致的（不满足这种一致性模型）。如果每个可能的执行都在允许的范围内，则说系统满足这种一致性模型。我们当然是希望真实系统满足“直观正确的”一致性模型，这样我们就可以编写可预测的程序。</p>
+<p>More formally, we say that a consistency model is the <em>set of all allowed histories of operations</em>. If we run a program and it goes through a sequence of operations in the allowed set, that particular execution <em>is consistent</em>. If the program screws up occasionally and goes through a history <em>not</em> in the consistency model, we say the history was <em>inconsistent</em>. If <em>every</em> possible execution falls into the allowed set, the system <em>satisfies</em> the model. We want real systems to satisfy “intuitively correct” consistency models, so that we can write predictable programs.</p>
+<hr>
+<h3 id="Concurrent-histories-并发操作"><a href="#Concurrent-histories-并发操作" class="headerlink" title="Concurrent histories   并发操作"></a>Concurrent histories   并发操作</h3><p>假设现在有两个控制线程（这里也可以是进程，或者是其他可以并行进行的操作）对同一个register进行修改，那上面的register不变式就被打破了。</p>
+<p>Now imagine a concurrent program, like one written in Node.js or Erlang. There are multiple logical threads of control, which we term “processes”. If we run a concurrent program with two processes, each of which works with the same register, our earlier register invariant could be violated.</p>
+<img src="/img/00Strong consistency models--aphyr/image-20220224122231411.png" alt="image-20220224122231411" style="zoom:50%;" />
+
+<p>假设两个线程分别是<code>top</code>和<code>bottom</code>。<code>top</code>进行的操作是：<code>write a, read, read</code>。<code>bottom</code>同时进行操作是<code>read, write b, read</code>。因为程序是并发的，所以两个线程的操作交织在一起，交织的操作序列可以有很多种排序—-只要单个线程的操作按照指定的顺序执行就行。在上图中展示出的操作序列是：<code>top write a, bottom read a, top read a, bottom write b, top read b, bottom read b</code>。</p>
+<p>There are two processes at work here: call them “top” and “bottom”. The top process tries to write a , read , read . The bottom process, meanwhile, tries to read , write b , read . Because the program is concurrent, the operations from these two processes could interleave in more than one order–so long as the operations for a single process happen in the order that process specifies. In this particular case, top writes a , bottom reads a , top reads a , bottom writes b , top reads b , and bottom reads b .</p>
+<p>并发是无处不在的，多线程的操作以任意顺序交织在一起。但是单个线程对操作历史有个约束：属于单个线程的操作必须按照顺序完成。</p>
+<p>In this light, the concept of concurrency takes on a different shape. We might imagine every program as concurrent by default–when executed, operations could happen in any order. A thread, a process–in the logical sense, anyway–is a constraint over the history: operations belonging to the same thread must take place in order. Logical threads impose a partial order over the allowed operations.</p>
+<p>引入并发后，即使是从单个线程的角度看，我们的register系统的不变式也被打破了。比如<code>top</code>线程，先是写入了<code>a</code>，然后读到了 <code>a</code>，最后读到了<code>b</code>，这个<code>b</code>并不是自己写入的。所以我们必须对一致性模型就行某种程度上的relax，以便能适应这种并发的情况：一个线程允许读到其他线程最近写入的值。这样的register系统中，两个线程就会进行协调和同步，因为他们共享了状态。</p>
+<p>Even with that order, our register invariant–from the point of view of an individual process–no longer holds. The process on top wrote a , read a , then read b –which is not the value it wrote. We must relax our consistency model to usefully describe concurrency. Now, a process is allowed to read the most recently written value from any process, not just itself. The register becomes a place of coordination between two processes; they share state.</p>
+<h3 id="Light-cones-光锥（实际就是指操作的时间区间）"><a href="#Light-cones-光锥（实际就是指操作的时间区间）" class="headerlink" title="Light cones 光锥（实际就是指操作的时间区间）"></a>Light cones 光锥（实际就是指操作的时间区间）</h3><p>然而，现实世界中，线程间的距离是遥远的，操作是需要耗时的。</p>
+<p>However, this is not the full story: in almost every real-world system, processes are distant from each other. An uncached value in memory, for instance, is likely on a DIMM thirty centimeters away from the CPU. It takes light over a full nanosecond to travel that distance–and real memory accesses are much slower. A value on a computer in a different datacenter could be thousands of kilometers–hundreds of milliseconds–away. We just can’t send information there any faster; physics, thus far, forbids it.</p>
+<p>这就表示<font color=red>操作不是瞬时的</font>，操作是有时间区间的。比如我们写一个变量，这个写操作会传递到内存，到另一个节点上，甚至到月亮上，然后内存中的状态被修改后，会返回一个确认消息，收到确认消息后，我们才知道操作发生并且完成了。</p>
+<p>This means our operations are <em>no longer instantaneous</em>. Some of them might be so fast as to be negligible, but in full generality, operations <em>take time</em>. We <em>invoke</em> a write of a variable; the write travels to memory, or another computer, or the moon; the memory changes state; a confirmation travels back; and then we <em>know</em> the operation took place.</p>
+<img src="/img/00Strong consistency models--aphyr/concurrent-read.jpg" alt="concurrent-read.jpg" style="zoom:50%;" />
+
+<p>消息发送的快慢，意味着操作历史的“模糊性”。如果消息传递的快些或者慢些，那操作历史中的操作顺序就可能会发生变化。比如这里的例子中，当值为<code>a</code>时，<code>bottom</code>线程发起读操作，读操作进行过程中，<code>top</code>线程写入了<code>b</code>，这个写动作在读操作之前到达，那<code>bottom</code>这里读到的就是<code>b</code>，而非<code>a</code>。</p>
+<p>The delay in sending messages from one place to another implies <em>ambiguity</em> in the history of operations. If messages travel faster or slower, they could take place in unexpected orders. Here, the bottom process invokes a read when the value is <code>a</code>. While the read is in flight, the top process writes <code>b</code>–and by happenstance, its write arrives <em>before</em> the read. The bottom process finally completes its read and finds <code>b</code>, not <code>a</code>.</p>
+<p>这就又违反了之前约定好的并发register系统的一致性模型。<code>bottom</code>线程读到的值，并不是在发起读操作那一时刻的值。那如果用操作完成时间，而非操作调用时间，来表示操作的true time呢？这还是有问题，如果读操作在写操作之前到达，那读操作会返回<code>a</code>，而非当前值（true time时刻的值）<code>b</code>。</p>
+<p>This history violates our concurrent register consistency model. The bottom process did <em>not</em> read the current value at the time it invoked the read. We might try to use the completion time, rather than the invocation time, as the “true time” of the operation, but this fails by symmetry as well; if the read arrives <em>before</em> the write, the process would receive <code>a</code> when the current value is <code>b</code>.</p>
+<p>在一个分布式系统中（操作需要时间的系统），必须再次relax一致性模型：<font color=red>允许这些模棱两可的顺序。</font></p>
+<p>In a distributed system–one in which it takes time for an operation to take place–we must <em>relax</em> our consistency model again; allowing these ambiguous orders to happen.</p>
+<p>How far must we go? Must we allow <em>all</em> orderings? Or can we still impose some sanity on the world?</p>
+<h3 id="Linearizability-线性一致性"><a href="#Linearizability-线性一致性" class="headerlink" title="Linearizability 线性一致性"></a>Linearizability 线性一致性</h3><img src="/img/00Strong consistency models--aphyr/finite-concurrency-bounds.jpg" alt="finite-concurrency-bounds.jpg" style="zoom:50%;" />
+
+<p>仔细考虑的话，事件的顺序并不是完全模糊的，它还是有界限在的：消息的发送总有一个起点；操作的结果肯定是在该操作调起之后才能返回。</p>
+<p>On careful examination, there are some bounds on the order of events. We can’t send a message back in time, so the <em>earliest</em> a message could reach the source of truth is, well, <em>instantly</em>. An operation cannot take effect <em>before</em> its invocation.</p>
+<p>同样，收到操作已完成的消息的时间也不会倒流，这就表示：任何操作在完成之后（收到完成的消息了），那他所作的修改肯定已经生效了。</p>
+<p>Likewise, the message informing the process that its operation completed cannot travel back in time, which means that no operation may take effect <em>after</em> its completion.</p>
+<p>我们假设有一个全局状态，所有线程都可以访问它；如果假设针对这个全局状态的操作都是<font color=red>原子</font>的，而不是相互交织的，那就可以排除掉很多不可能的操作历史。这就得到了线性一致性的模型：<font color=red>每个操作都会在其调起和完成之间的某个时刻<strong>原子地</strong>生效。</font></p>
+<p>If we assume that there is a single global state that each process talks to; if we assume that operations on that state take place <em>atomically</em>, without stepping on each other’s toes; then we can rule out a great many histories indeed. We know that <strong>each operation appears to take effect atomically at some point between its invocation and completion</strong>.</p>
+<p>我们称这种一致性模型就是线性一致性；尽管操作是并发执行的，但每个操作都是以线性顺序发生的。</p>
+<p>We call this consistency model <em>linearizability</em>; because although operations are concurrent, and take time, there is some place–or the appearance of a place–where every operation happens in a nice linear order.</p>
+<img src="/img/00Strong consistency models--aphyr/linearizability-complete-visibility.jpg" alt="linearizability-complete-visibility.jpg" style="zoom:50%;" />
+
+<p>“单一全局状态”不必是单个节点；操作实际上也不必是原子操作。状态可以分布在多台机器上，对其进行的操作也可以经历多个步骤才能完成。<font color=red>只要从外部观察者的角度来看，操作历史等同于原子的修改单一状态即可</font>。一般情况下，一个线性一致性的系统通常由多个协调性的线程组成，每个线程本身就是线性的。</p>
+<p>The “single global state” doesn’t have to be a single node; nor do operations actually have to be atomic. The state could be split across many machines, or take place in multiple steps–so long as the external history, from the point of view of the processes, appears <em>equivalent</em> to an atomic, single point of state. Often, a linearizable system is made up of smaller coordinating processes, each of which is itself linearizable; and <em>those</em> processes are made up of carefully coordinated smaller processes, and so on, down to <a href="http://en.wikipedia.org/wiki/Compare-and-swap">linearizable operations provided by the hardware</a>.</p>
+<p>线性一致性有个很重要的一个约束，<font color=red>就是一旦一个操作完成了，那所有人必须都能看到该操作的结果（或者是更加靠后的结果）。</font>因为操作起作用的时间，肯定不会晚于其结束时间，而该操作之后（即调起时间晚于该操作完成时间的操作）操作，它发生作用的时间肯定要晚于其调起的时间，进而肯定要晚于前一个操作的结束时间。举例而言：如果一个操作成功写入了<code>b</code>，那该写操作之后的读操作，必须能读到<code>b</code>（或者如果同时有其他写操作的话，能读到更新的值）。</p>
+<p>Linearizability has powerful consequences. Once an operation is complete, <em>everyone</em> must see it–or some later state. We know this to be true because each operation <em>must</em> take place before its completion time, and any operation invoked subsequently <em>must</em> take place after the invocation–and by extension, after the original operation itself. Once we successfully write <code>b</code>, every subsequently invoked read <em>must</em> see <code>b</code>–or some later value, if more writes occur.</p>
+<p>我们可以用线性化的原子约束（atomic constraint of linearizability）来安全的修改状态。比如我们可以定义一个<code>compare-and-set</code>操作，这个操作只有当register的值是old-value的时候，才把register的值设置为new-value。我们可以用<code>compare-and-set</code>作为互斥锁、信号量、管道、计数器等等的基础。</p>
+<p>We can use the atomic constraint of linearizability to <em>mutate state safely</em>. We can define an operation like <code>compare-and-set</code>, in which we set the value of a register to a new value if, and only if, the register currently has some other value. We can use <code>compare-and-set</code> as the basis for mutexes, semaphores, channels, counters, lists, sets, maps, trees–all kinds of shared data structures become available. Linearizability guarantees us the safe interleaving of changes.</p>
+<p>此外，线性一致性在时间上的约束，也保证所有修改后的结果，都能在操作完成之后的其他读操作是可见的。所以，<font color=red>线性一致性不允许出现读取到旧数据的情况；也不允许出现非单调读的现象——即先读到新值，然后又读到了旧值。</font></p>
+<p>Moreover, linearizability’s time bounds guarantee that those changes will be visible to other participants after the operation completes. Hence, linearizability prohibits stale reads. Each read will see <em>some</em> current state between invocation and completion; but not a state prior to the read. It also prohibits <em>non-monotonic reads</em>–in which one reads a new value, then an old one.</p>
+<p>基于这些约束，这样就能解释为什么线性一致性的系统会被选为很多并发编程的基础。比如Javascript 中的所有变量都是（独立地）线性化的；Java中的volatile变量也是如此。很多语言都有互斥锁和信号量，这些也是线性的。</p>
+<p>Because of these strong constraints, linearizable systems are easier to reason about–which is why they’re chosen as the basis for many concurrent programming constructs. All variables in Javascript are (independently) linearizable; as are volatile variables in Java, atoms in Clojure, or individual processes in Erlang. Most languages have mutexes and semaphores; these are linearizable too. Strong assumptions yield strong guarantees.</p>
+<p>但如果我们不能满足这些假设，会发生什么呢？</p>
+<p>But what happens if we can’t satisfy those assumptions?</p>
+<h3 id="Sequential-consistency-顺序一致性"><a href="#Sequential-consistency-顺序一致性" class="headerlink" title="Sequential consistency 顺序一致性"></a>Sequential consistency 顺序一致性</h3><img src="/img/00Strong consistency models--aphyr/sequential-history.jpg" alt="sequential-history.jpg" style="zoom:50%;" />
+
+<p>如果我们允许进程在<font color=red>时间上不那么严格</font>，也就是说，操作就可以在调用之前或完成之后生效，但保留了线程内部的操作必须按该线程规定的顺序进行的约束，那么就得到一个比线性一致性稍弱的一致性模型：<font color=red>顺序一致性。</font></p>
+<p>If we allow processes to skew in time, such that their operations can take effect <em>before</em> invocation, or <em>after</em> completion–but retain the constraint that operations from any given process must take place in that process’ order–we get a weaker flavor of consistency: <em>sequential consistency</em>.</p>
+<p>顺序一致性要比线性一致性允许更多的操作历史。它实际上也非常有用，比如，用户将视频上传至YouTube时，YouTube将视频放到队列中进行处理，然后返回给用户该视频的网页，但是实际上用户当时还不能在网页上看到该视频，要等几分钟过后视频处理完成后才能看到。队列这里就起到了异步处理的作用，同时它还保留了顺序。</p>
+<p>Sequential consistency allows more histories than linearizability–but it’s still a useful model: one that we use every day. When a user uploads a video to YouTube, for instance, YouTube puts that video into a <em>queue</em> for processing, then returns a web page for the video right away. We can’t actually <em>watch</em> the video at that point; the video upload <em>takes effect</em> a few minutes later, when it’s been fully processed. Queues remove <em>synchronous</em> behavior while (depending on the queue) preserving order.</p>
+<p>很多缓存也是一种顺序一致性系统。比如在Twitter上写了tweet，或者在Facebook上发帖，需要时间才能渗透到缓存系统的各个层。不同的用户会在不同的时间看到我的消息，但<font color=red>能保证每个用户都会按顺序看到我的操作，一旦看到了，那帖子就不会消失，而且如果写了多条评论，它们将按顺序显示</font>。</p>
+<p>Many caches also behave like sequentially consistent systems. If I write a tweet on Twitter, or post to Facebook, it takes time to percolate through layers of caching systems. Different users will see my message at different times–but each user will see my operations <em>in order</em>. Once seen, a post shouldn’t disappear. If I write multiple comments, they’ll become visible sequentially, not out of order.</p>
+<h3 id="Causal-consistency-因果一致性"><a href="#Causal-consistency-因果一致性" class="headerlink" title="Causal consistency 因果一致性"></a>Causal consistency 因果一致性</h3><p>如果不强制一个线程的所有操作都是按序执行的，而只要求<font color=red>具有因果依赖关系的操作必须按序</font>。比如，每个人看到的针对一个blog的所有评论都是相同的顺序出现的，并且要保证只有某条回复A依赖的回复B可见之后，A才可见。如果把像”本操作依赖操作X”这样的因果关系显式编码到操作中，那数据库可以直到它依赖的所有操作都可见之后，才使得该操作可见。</p>
+<p>We don’t have to enforce the order of <em>every</em> operation from a process. Perhaps, only <em>causally related</em> operations must occur in order. We might say, for instance, that all comments on a blog post must appear in the same order for everyone, and insist that any <em>reply</em> be visible to a process <em>only after the post it replies to</em> is visible. If we encode those causal relationships like “I depend on operation X” as an explicit part of each operation, the database can delay making operations visible until it has all the operation’s dependencies.</p>
+<p>这种一致性模型要比约束同一线程内所有操作必须按序的一致性稍弱，这种模型中<font color=red>同一线程内没有因果依赖的操作可以以任意顺序出现。</font></p>
+<p>This is weaker than ordering every operation from the same process–operations from the same process with independent causal chains could execute in any relative order–but prevents many unintuitive behaviors.</p>
+<h3 id="Serializable-consistency-序列一致性"><a href="#Serializable-consistency-序列一致性" class="headerlink" title="Serializable consistency 序列一致性"></a>Serializable consistency 序列一致性</h3><img src="/img/00Strong consistency models--aphyr/serializable-history.jpg" alt="serializable-history.jpg" style="zoom:50%;" />
+
+<p><font color=red>如果操作历史相当于以某种单一原子顺序发生的，但不约束调用和完成时间，这就是所谓的序列一致性。</font>这种一致性可能比你预期的强很多，也弱很多。</p>
+<p>If we say that the history of operations is equivalent to one that took place in some single atomic order–but say nothing about the invocation and completion times–we obtain a consistency model known as <em>serializability</em>. This model is both much stronger and much weaker than you’d expect.</p>
+<p>序列化的”弱”体现在，他允许更多的操作历史，因为它对时间和顺序没有限制。在上面的图中，消息可以在过去，也可以在未来发送，这就造成了时间线的交叉。在序列化的数据库中，像<code>read x</code>这样的事务，是允许<code>x</code>在未初始化时的time 0进行的，也允许它被无限地推迟到遥远的未来！像<code>write 2 to x</code>这个事务可能会立即执行，也可以被推迟到时间线的末尾，即永远也不会发生。</p>
+<p>Serializability is <em>weak</em>, in the sense that it permits many types of histories, because it places no bounds on time or order. In the diagram to the right, it’s as if messages could be sent arbitrarily far into the past or future, that causal lines are allowed to cross. In a serializable database, a transaction like <code>read x</code> is always allowed to execute at time 0, when <code>x</code> had not yet been initialized. Or it might be delayed infinitely far into the future! The transaction <code>write 2 to x</code> could execute right now, <em>or</em> it could be delayed until the end of time, never appearing to occur.</p>
+<p>比如像下面的代码，可以打印出<code>nil</code>，<code>1</code>或<code>2</code>。因为这些操作可以以任意顺序执行。这就是序列化一致性弱的体现。这里我们假设每行代码代表单独的操作而且这些操作都执行成功了。</p>
+<p>For instance, in a serializable system, the program</p>
+<figure class="highlight plaintext"><table><tr><td class="code"><pre><span class="line">x = 1</span><br><span class="line">x = x + 1</span><br><span class="line">puts x</span><br></pre></td></tr></table></figure>
+
+<p>is allowed to print <code>nil</code>, <code>1</code>, <em>or</em> <code>2</code>; because the operations can take place in any order. This is a surprisingly weak constraint! Here, we assume that each line represents a single operation and that all operations succeed.</p>
+<p>另一方面，序列化的强体现在，它也排除了很多操作历史，因为它需<font color=red>要有线性顺序</font>。比如下面的代码，只能有一种执行顺序，就是<code>x</code>的值从<code>nil -&gt; 1 -&gt; 2 -&gt; 3</code>，然后最后打印出<code>3</code>。</p>
+<p>On the other hand, serializability is <em>strong</em>, in the sense that it prohibits large classes of histories, because it demands a linear order. The program</p>
+<figure class="highlight plaintext"><table><tr><td class="code"><pre><span class="line">print x if x = 3</span><br><span class="line">x = 1 if x = nil</span><br><span class="line">x = 2 if x = 1</span><br><span class="line">x = 3 if x = 2</span><br></pre></td></tr></table></figure>
+
+<p>can only be ordered in one way. It doesn’t happen in the same order we <em>wrote</em>, but it will reliably change <code>x</code> from <code>nil</code> -&gt; <code>1</code> -&gt; <code>2</code> -&gt; <code>3</code>, and finally print <code>3</code>.</p>
+<p>由于序列化允许操作的任意乱序执行（只要这些操作是原子的），因此它在实际应用中并不是很有用。大多数声称提供序列化的数据库实际上提供了<font color=red>强序列化</font>，它与线性一致性有相同的时间界限。更加复杂的是，大多数SQL数据库声称的序列一致性实际上表示<a href="http://www.bailis.org/papers/hat-hotos2013.pdf">较弱的东西</a>，比如可重复读，cursor稳定性或者快照隔离。</p>
+<p>Because serializability allows arbitrary reordering of operations (so long as the order appears atomic), it is not particularly useful in real applications. Most databases which claim to provide serializability actually provide <em>strong serializability</em>, which has the same time bounds as linearizability. To complicate matters further, what most SQL databases term the SERIALIZABLE consistency level <a href="http://www.bailis.org/papers/hat-hotos2013.pdf">actually means something weaker</a>, like repeatable read, cursor stability, or snapshot isolation.</p>
+<h3 id="Consistency-comes-with-costs-一致性带来的成本"><a href="#Consistency-comes-with-costs-一致性带来的成本" class="headerlink" title="Consistency comes with costs 一致性带来的成本"></a>Consistency comes with costs 一致性带来的成本</h3><p>我们说过，“弱”一致性模型比“强”一致性模型允许更多的操作历史。例如，线性一致性需要保证操作在调用时和完成时之间进行。然而，要求顺序就以为这需要协调。错略的说，我们需要排除的操作历史越多，那系统中的参与者就需要更加谨慎，更多的沟通。</p>
+<p>We’ve said that “weak” consistency models <em>allow more histories</em> than “strong” consistency models. Linearizability, for example, guarantees that operations take place between the invocation and completion times. However, <em>imposing order requires coordination</em>. Speaking loosely, the more histories we exclude, the more careful and communicative the participants in a system must be.</p>
+<p>你可能已经听说过<a href="http://lpd.epfl.ch/sgilbert/pubs/BrewersConjecture-SigAct.pdf">CAP定理</a>，它表示对于一致性，可用性和分区容错性三者而言，任何系统最多能保证其中两个属性。虽然Eric Brewer的CAP是用非正式术语描述的，但是CAP定理有着非常精确的定义：</p>
+<ol>
+<li><font color=red>一致性这里就是线性一致性</font>，特别是对于一个线性一致性的<code>register</code>系统来说。<code>register</code>系统可以扩展到sets, lists, maps，关系数据库等等。所以<font color=red>CAP定理适用于所有的线性一致性系统；</font></li>
+<li>可用性表示对于非失败节点发起的请求必须能成功完成。因为网络分区的时间可能持续任意长的时间，这就表示节点不能简单地将响应延迟到分区修复之后；</li>
+<li>分区容错性意味着允许发生网络分区。在网络正常的情况下提供线性一致性和可用性是很容易的，但是<font color=red>当网络不可靠时，同时提供这两种特性是不可能的。</font>因此如果网络不是完全可靠的（实际上它就是不可靠的），你就不能选择CA，所以构建在商用硬件之上的实际分布式系统中，最多可以保证AP或者CP。</li>
+</ol>
+<p>You may have heard of the <a href="http://lpd.epfl.ch/sgilbert/pubs/BrewersConjecture-SigAct.pdf">CAP theorem</a>, which states that given consistency, availability, and partition tolerance, any given system may guarantee <em>at most</em> two of those properties. While Eric Brewer’s CAP conjecture was phrased in these informal terms, the CAP <em>theorem</em> has very precise definitions:</p>
+<ol>
+<li>Consistency means linearizability, and in particular, a linearizable register. Registers are equivalent to other systems, including sets, lists, maps, relational databases, and so on, so the theorem can be extended to cover <em>all kinds</em> of linearizable systems.</li>
+<li>Availability means that every request to a non-failing node must complete successfully. Since network partitions are allowed to last <em>arbitrarily long</em>, this means that nodes cannot simply defer responding until after the partition heals.</li>
+<li>Partition tolerance means that partitions <em>can happen</em>. Providing consistency and availability when the network is reliable is <em>easy</em>. Providing both when the network is not reliable is <em>provably impossible</em>. If your network is <em>not</em> perfectly reliable–and it isn’t–you cannot choose CA. This means that all practical distributed systems on commodity hardware can guarantee, at maximum, either AP or CP.</li>
+</ol>
+<img src="/img/00Strong consistency models--aphyr/family-tree.jpg" alt="family-tree.jpg" style="zoom: 50%;" />
+
+
+
+<p>你可能会有这样的疑问：线性一致性不是一致性模型的唯一模型，我可以通过提供顺序一致性、串行一致性或者快照隔离，来绕过CAP定理。</p>
+<p>“Hang on!” you might exclaim. “Linearizability is not the end-all-be-all of consistency models! I could work around the CAP theorem by providing <em>sequential</em> consistency, or serializability, or snapshot isolation!”</p>
+<p>确实，CAP定理只是说我们不可能构建完全可用的线性一致性系统。但是问题是，有其他证据表明，你也无法构建具有顺序一致性、序列一致性、可重复读、分区隔离，cursor stability等，或是更强的一致性模型的完全可用系统。在Peter Bailis的论文<a href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Highly Available Transactions paper</a>中指出，基于红色区域的一致性模型的系统时不可能完全可用的。</p>
+<p>This is true; the CAP theorem only says that we cannot build totally available linearizable systems. The problem is that we have <em>other</em> proofs which tell us that you cannot build totally available systems with sequential, serializable, repeatable read, snapshot isolation, or cursor stability–or any models stronger than those. In this map from Peter Bailis’ <a href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Highly Available Transactions paper</a>, models shaded in red <em>cannot be fully available</em>.</p>
+<p>如果我们把可用性的概念relax一些，比如CLIENT只能与相同的节点进行通信，那有些类型的一致性模型就是可以实现的了，比如因果一致性，PRAM，以及read-your-write一致性。</p>
+<p>If we <em>relax</em> our notion of availability, such that client nodes must always talk to the same server, <em>some</em> types of consistency become achievable. We can provide causal consistency, PRAM, and read-your-writes consistency.</p>
+<p><font color=red>如果需要完全可用，那我们可以提供单调读（monotonic reads）、单调写（monotonic writes）、read committed、monotonic atomic view等等这样的一致性模型。</font>比如像Riak、Cassandra这样的分布式存储系统，低隔离级别的ANSI SQL数据库系统等等就是这样的。这些一致性模型不像前面那些图中画的那样有线性顺序，它们仅仅提供部分有序，这种部分有序可以组合成patchwork或者web，因为部分有序，所以这些一致性模型可以由更多的操作历史。</p>
+<p>If we demand <em>total</em> availability, then we can provide monotonic reads, monotonic writes, read committed, monotonic atomic view, and so on. These are the consistency models provided by distributed stores like Riak and Cassandra, or ANSI SQL databases on the lower isolation settings. These consistency models don’t have linear orders like the diagrams we’ve drawn before; instead, they provide <em>partial</em> orders which come together in a patchwork or web. The orders are <em>partial</em> because they admit a broader class of histories.</p>
+<h3 id="A-hybrid-approach-一种混合的方法"><a href="#A-hybrid-approach-一种混合的方法" class="headerlink" title="A hybrid approach 一种混合的方法"></a>A hybrid approach 一种混合的方法</h3><img src="/img/00Strong consistency models--aphyr/weak-not-unsafe.jpg" alt="weak-not-unsafe.jpg" style="zoom:50%;" />
+
+
+
+<p>有一些算法需要线性一致性来保证安全性，比如要构建一个分布式锁的服务，那就需要为线性一致性，因为如果没有时间约束的话，那就有可能持有一个过去或者未来的锁。另一方面，还有很多算法不需要线性一致性，比如最终一致性的sets, lists, trees, maps等等，只需要弱一些的一致性模型就行了。</p>
+<p>Some algorithms depend on linearizability for safety. If we want to build a distributed lock service, for instance, linearizability is <em>required</em>; without hard time boundaries, we could hold a lock from the future or from the past. On the other hand, many algorithms <em>don’t</em> need linearizability. Eventually consistent sets, lists, trees, and maps, for instance, can be safely expressed as <a href="http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf">CRDTs</a> even in “weak” consistency models.</p>
+<p>更强的一致性模型意味着更多的协调（更多的消息交互），以确保这些操作按照正确的顺序进行。这不仅造成了<font color=red>可用性较低，而且还暴露出更高的延迟。</font>这也就就是为什么现代CPU的内存模型默认情况下并不是线性的，除非显式标注。现代CPU会将针对内存的操作进行重排序，这样做虽然难以理解，但是却带来了惊人的性能优势。现实中的节点分布在不同位置的分布式系统，节点间通信通常由数百毫秒的延迟，通常也会做出类似的权衡。</p>
+<p>Stronger consistency models also tend to require more coordination–more messages back and forth–to ensure their operations occur in the correct order. Not only are they less available, but they can also <em>impose higher latency constraints</em>. This is why modern CPU memory models are <em>not</em> linearizable by default–unless you explicitly say so, modern CPUs will reorder memory operations relative to other cores, or worse. While more difficult to reason about, the performance benefits are phenomenal. Geographically distributed systems, with hundreds of milliseconds of latency between datacenters, often make similar tradeoffs.</p>
+<p>所以在实际的应用中，我们采用的是混合的数据存储系统或者数据库，融合不同的一致性模型来实现冗余、可用性、性能和安全性目标。<font color=red>在保证可用性和性能方面，尽可能采用弱一致性模型，如果算法需要有严格的操作顺序要求，则采用强一致性模型。</font>比如，可以向S3，Riak或Cassandra中写入大量数据，然后将这些数据的指针线性的写入Postgres，Zookeeper或者Etcd中。一些数据库支持多个一致性模型，比如关系数据库中的隔离级别是可以调整的，或者Cassandra和Riak中的线性化事务，这有助于减少使用的系统数量。不过，底线是：任何人如果说他们的一致性模型是唯一正确的选择，那么这种说法很可能只是一种销售策略，不可能存在两全其美的东西。</p>
+<p>So in practice, we use <em>hybrid</em> data storage, mixing databases with varying consistency models to achieve our redundancy, availability, performance, and safety objectives. “Weaker” consistency models wherever possible, for availability and performance. “Stronger” consistency models where necessary, because the algorithm being expressed demands a stricter ordering of operations. You can write huge volumes of data to S3, Riak or Cassandra, for instance, then write a <em>pointer</em> to that data, linearizably, to Postgres, Zookeeper or Etcd. Some databases admit multiple consistency models, like tunable isolation levels in relational databases, or Cassandra and Riak’s linearizable transactions, which can help cut down on the number of systems in play. Bottom line, though: anyone who says their consistency model is the only right choice is likely trying to sell something. You can’t have your cake and eat it too.</p>
+<p>说了这么多一致性模型相关的东西之后，下一篇文章中我想谈谈我们如何验证线性一致性系统的正确性。</p>
+<p>Armed with a more nuanced understanding of consistency models, I’d like to talk about how we go about <em>verifying</em> the correctness of a linearizable system. In the next Jepsen post, we’ll discuss the linearizability checker I’ve built for testing distributed systems: <a href="http://aphyr.com/posts/314-computational-techniques-in-knossos">Knossos</a>.</p>
+<p>For a more formal definition of these models, try Dziuma, Fatourou, and Kanellou’s <a href="http://www.ics.forth.gr/tech-reports/2013/2013.TR439_Survey_on_Consistency_Conditions.pdf">Survey on consistency conditions</a></p>
+<hr>
+<p>原文：<a href="https://aphyr.com/posts/313-strong-consistency-models">https://aphyr.com/posts/313-strong-consistency-models</a></p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>01Consistency Models</title>
+    <url>/2021/01/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/01Consistency%20Models/</url>
+    <content><![CDATA[<h2 id="Consistency-Models"><a href="#Consistency-Models" class="headerlink" title="Consistency Models"></a>Consistency Models</h2><p>下面的图（改编自 <a href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Bailis, Davidson, Fekete et al</a> 和<a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti &amp; Vukolic</a>的论文）展示了一致性模型之间的关系。其中的箭头表示了一致性模型之间的包含关系。比如严格序列化（Strict serializable）一致性意味着它既满足序列化（serializability）一致性，也满足线性（linearizability）一致性。图中的颜色表示在异步网络环境下的可用性。</p>
+<span id="more"></span>
+<p>This clickable map (adapted from <a href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Bailis, Davidson, Fekete et al</a> and <a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti &amp; Vukolic</a>) shows the relationships between common consistency models for concurrent systems. Arrows show the relationship between consistency models. For instance, strict serializable implies both serializability and linearizability, linearizability implies sequential consistency, and so on. Colors show how available each model is, for a distributed system on an asynchronous network.</p>
+<p>![image-20220309083251705](&#x2F;img&#x2F;01Consistency Models–jepsen&#x2F;image-20220309083251705.png)</p>
+<p>上图展示了按层次结构排列的一致性模型。<font color=red>最强模型是严格序列化（Strict serializable），它统一了两个不相交的一致性模型族：多对象事务上的一致性模型族和单对象操作的一致性模型族。</font>当我们说模型x意味着y时，我们的意思是，对于x中约定的操作历史，也肯定满足y的规则约束，所以x比y“强”。</p>
+<p>This diagram shows consistency models arranged in a hierarchy. The strongest model shown is <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializable</a>. Strict serializable unifies two disjoint families of consistency models: those over multi-object transactions, and those for single object operations. When we say that model x implies y, we mean that for every history where x holds, y does too; x is “stronger” than y.</p>
+<p>在多对象这一边，强序列化意味着序列化；序列化又意味着可重复读（repeatable read）和快照隔离（snapshot isolation）；而可重复读和快照隔离又都意味着单调原子视图（monotonic atomic view）。可重复读还意味着cursor stability；cursor stability和单调原子视图又同时意味着read committed；read committed意味着read uncommitted；</p>
+<p>On the multi-object side, strict serializable implies <a href="https://jepsen.io/consistency/models/serializable">serializable</a>, which in turn implies <a href="https://jepsen.io/consistency/models/repeatable-read">repeatable read</a> and <a href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a>. Snapshot isolation and repeatable read both imply <a href="https://jepsen.io/consistency/models/monotonic-atomic-view">monotonic atomic view</a>. Repeatable read implies <a href="https://jepsen.io/consistency/models/cursor-stability">cursor stability</a>. Cursor stability and monotonic atomic view both imply <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>, which implies <a href="https://jepsen.io/consistency/models/read-uncommitted">read uncommitted</a>.</p>
+<p>在单对象这一边，强序列化意味着线性一致性；线性一致性又意味着顺序（sequential）一致性；顺序一致性意味着因果（causal）一致性；因果一致性意味着writes follow reads和PRAM；PRAM意味着单调读、单调写和read your writes；</p>
+<p>For single-object models, strict serializable implies <a href="https://jepsen.io/consistency/models/linearizable">linearizable</a>, which implies <a href="https://jepsen.io/consistency/models/sequential">sequential</a>, which implies <a href="https://jepsen.io/consistency/models/causal">causal</a>. Causal implies <a href="https://jepsen.io/consistency/models/writes-follow-reads">writes follow reads</a> and <a href="https://jepsen.io/consistency/models/pram">PRAM</a>. PRAM implies <a href="https://jepsen.io/consistency/models/monotonic-reads">monotonic reads</a>, [monotonic writes](consistency&#x2F;models&#x2F;monotonic writes), and <a href="https://jepsen.io/consistency/models/read-your-writes">read your writes</a>.</p>
+<p><font color=red>可用性</font>方面：</p>
+<ul>
+<li>粉红色的Unavailable：表示发生网络错误时是不可用的。一些或者所有节点必须暂停操作，以便保证安全性；</li>
+<li>橙色的Sticky可用：表示只要client只与相同节点通信，那在无故障节点上是可用的；</li>
+<li>蓝色的完全可用：表示即使网络瘫痪了，在非故障节点上也是可用的；</li>
+</ul>
+<p>All models at or stronger than cursor stability, snapshot isolation, and sequential cannot be totally or available in asynchronous networks. All models at or stronger than read your writes can be at most sticky available. Weaker models (of those listed here) can be totally available.</p>
+<h3 id="Fundamental-Concepts-基本概念"><a href="#Fundamental-Concepts-基本概念" class="headerlink" title="Fundamental Concepts     基本概念"></a>Fundamental Concepts     基本概念</h3><p>Jepsen分析分布式系统的安全属性——特别是识别违反一致性模型的行为。本文首先明确一些一致性模型的基本定义、直观解释和理论基础。</p>
+<p>Jepsen analyses the safety properties of distributed systems–most notably, identifying violations of consistency models. But what are consistency models? What phenomena do they allow? What kind of consistency does a given program really need?</p>
+<p>In this reference guide, we provide basic definitions, intuitive explanations, and theoretical underpinnings of various consistency models for engineers and academics alike.</p>
+<h4 id="Systems-系统"><a href="#Systems-系统" class="headerlink" title="Systems 系统"></a>Systems 系统</h4><p><font color=red>分布式系统是一种并发系统，关于并发控制的许多文献都适用于分布式系统。实际上，我们将要讨论的大多数概念最初都是为单节点并发系统制定的。然而，分布式系统和单节点并发系统在可用性和性能方面存在一些重要差异。</font></p>
+<p><em>Distributed</em> systems are a type of <em>concurrent</em> system, and much of the literature on concurrency control applies directly to distributed systems. Indeed, most of the concepts we’re going to discuss were originally formulated for single-node concurrent systems. There are, however, some important differences in <em>availability</em> and <em>performance</em>.</p>
+<p>系统有一个随时间变化的逻辑“状态”。例如，一个一个整数变量就是最简单的系统，其状态为’0’、’3’或’42’；互斥锁只有两种状态：锁定或解锁；键值系统的状态可能是键到值的映射，例如：“{cat:1，dog:1}”或“{cat:4}”。</p>
+<p>Systems have a logical <em>state</em> which changes over time. For instance, a simple system could be a single integer variable, with states like <code>0</code>, <code>3</code>, and <code>42</code>. A mutex has only two states: locked or unlocked. The states of a key-value store might be maps of keys to values, for instance: <code>&#123;cat: 1, dog: 1&#125;</code>, or <code>&#123;cat: 4&#125;</code>.</p>
+<h4 id="Processes-进程"><a href="#Processes-进程" class="headerlink" title="Processes 进程"></a>Processes 进程</h4><p>进程是一个逻辑上的单线程程序，执行计算和调起操作。单个进程不是异步的——我们通过独立的进程来模拟异步计算。我们说“逻辑上的单线程”是为了强调，虽然一个进程一次只能做一件事，但它的实现可能会分布在多个线程、操作系统进程，甚至物理节点上，只要这些组件提供了一个连贯的单线程程序的假象。</p>
+<p>A <em>process</em><a href="https://jepsen.io/consistency#fn-1">1</a> is a logically single-threaded program which performs computation and runs operations. Processes are never asynchronous—we model asynchronous computation via independent processes. We say “logically single-threaded” to emphasize that while a process can only do one thing at a time, its implementation may be spread across multiple threads, operating system processes, or even physical nodes—just so long as those components provide the illusion of a coherent singlethreaded program.</p>
+<h4 id="Operations-操作"><a href="#Operations-操作" class="headerlink" title="Operations 操作"></a>Operations 操作</h4><p>操作会引起系统从一个状态到另一个状态的转换。例如，一个单变量系统可能有“read”和“write”这样的操作；计数器可能具有诸如递增、递减和读取之类的操作；SQL存储可能具有诸如selects和updates之类的操作。</p>
+<p>An operation is a transition from state to state. For instance, a single-variable system might have operations like <code>read</code> and <code>write</code>, which get and set the value of that variable, respectively. A counter might have operations like <em>increments</em>, <em>decrements</em>, and <em>reads</em>. An SQL store might have operations like <em>selects</em> and <em>updates</em>.</p>
+<h4 id="Functions-Arguments-amp-Return-Values-函数、参数和返回值"><a href="#Functions-Arguments-amp-Return-Values-函数、参数和返回值" class="headerlink" title="Functions, Arguments &amp; Return Values 函数、参数和返回值"></a>Functions, Arguments &amp; Return Values 函数、参数和返回值</h4><p>理论上我们可以给每个状态转移命名。比如锁有两种状态转换：<code>lock</code>和<code>unlock</code>；整数变量可以有无数个读写操作：<code>read-the-value-1</code>，<code>read-the-value-2</code>和<code>write-1</code>，<code>write-2</code>等；</p>
+<p>In theory, we could give every state transition a unique name. A lock has exactly two transition: <code>lock</code> and <code>unlock</code>. An integer register has an infinite number of reads and writes: <code>read-the-value-1</code>, <code>read-the-value-2</code>, …, and <code>write-1</code>, <code>write-2</code>, ….</p>
+<p>为了使其易于处理，我们将这些转换表示为函数及其参数。函数的例子有<code>&#39;read&#39;、&#39;write&#39;、&#39;cas&#39;、&#39;increment&#39;</code>等，比如在单变量系统中，写入<code>1</code>的操作可以这样表示：<code>&#123;:f :write, :value 1&#125;</code>；比如对于键值系统中，给key为<code>a</code>的值加上3，可以表示为：<code>&#123;:f :increment, :value [&quot;a&quot; 3]&#125;</code>；在事务存储系统中，操作可能比较复杂，比如，先读取<code>a</code>的当前值，得到<code>2</code>，然后将<code>b</code>的值置为<code>2</code>,可以表示为：<code>&#123;:f :txn, :value [[:read &quot;a&quot; 2] [:write &quot;b&quot; 3]]&#125;</code></p>
+<p>To make this more tractable, we break up these transitions into <em>functions</em> like <code>read</code>, <code>write</code>, <code>cas</code>, <code>increment</code>, etc., and <em>values</em> that parameterize those functions. In a single register system, a write of 1 could be written:</p>
+<figure class="highlight clj"><table><tr><td class="code"><pre><span class="line">&#123;<span class="symbol">:f</span> <span class="symbol">:write</span><span class="punctuation">,</span> <span class="symbol">:value</span> <span class="number">1</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Given a key-value store, we might increment the value of key “a” by 3 like so:</p>
+<figure class="highlight clj"><table><tr><td class="code"><pre><span class="line">&#123;<span class="symbol">:f</span> <span class="symbol">:increment</span><span class="punctuation">,</span> <span class="symbol">:value</span> [<span class="string">&quot;a&quot;</span> <span class="number">3</span>]&#125;</span><br></pre></td></tr></table></figure>
+
+<p>In a transactional store, the value could be a complex transaction. Here we read the current value of <code>a</code>, finding 2, and set <code>b</code> to <code>3</code>, in a single state transition:</p>
+<figure class="highlight clj"><table><tr><td class="code"><pre><span class="line">&#123;<span class="symbol">:f</span> <span class="symbol">:txn</span><span class="punctuation">,</span> <span class="symbol">:value</span> [[<span class="symbol">:read</span> <span class="string">&quot;a&quot;</span> <span class="number">2</span>] [<span class="symbol">:write</span> <span class="string">&quot;b&quot;</span> <span class="number">3</span>]]&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="Invocation-amp-Completion-Times-调起时间和完成时间"><a href="#Invocation-amp-Completion-Times-调起时间和完成时间" class="headerlink" title="Invocation &amp; Completion Times 调起时间和完成时间"></a>Invocation &amp; Completion Times 调起时间和完成时间</h4><p>操作是需要时间的。比如在多线程系统中，一个函数调用就是一种操作；在分布式系统中，一个操作可能就是发送请求到服务节点，然后收到一个响应；</p>
+<p>Operations, in general, take time. In a multithreaded program, an operation might be a function call. In distributed systems, an operation might mean sending a request to a server, and receiving a response.</p>
+<p>为了对此进行建模，我们定义每个操作都有一个调起时间，完成时有一个更大的完成时间；这两个时间都由假想的、完全同步的全球可访问的时钟提供。我们认为这些时钟提供的是实际时间顺序（real-time order）的时钟；与之相反的就是只跟踪因果顺序的时钟；</p>
+<p>To model this, we say that each operation has an <em>invocation time</em> and, should it complete, a strictly greater <em>completion time</em>, both given by an imaginary<a href="https://jepsen.io/consistency#fn-2">2</a>, perfectly synchronized, globally accessible clock.<a href="https://jepsen.io/consistency#fn-3">3</a> We refer to these clocks as providing a <em>real-time</em> order, as opposed to clocks that only track causal ordering.<a href="https://jepsen.io/consistency#fn-4">4</a></p>
+<h4 id="Concurrency-并发"><a href="#Concurrency-并发" class="headerlink" title="Concurrency 并发"></a>Concurrency 并发</h4><p>因为操作需要耗时，所以两个并发的操作在时间上就有可能重叠。比如操作A和B，A先开始，然后B开始，然后A结束，之后B结束。只要他们在时间上有重叠，那我们说操作A和B是并发的。</p>
+<p>Since operations take time, two operations might overlap in time. For instance, given two operations A and B, A could begin, B could begin, A could complete, and then B could complete. We say that two operations A and B are <em>concurrent</em> if there is some time during which A and B are both executing.</p>
+<p>因为进程都是单线程的，所以这就表示同一进程执行的两个操作肯定不是并发的。</p>
+<p>Processes are single-threaded, which implies that no two operations executed by the same process are ever concurrent.</p>
+<h4 id="Crashes-崩溃"><a href="#Crashes-崩溃" class="headerlink" title="Crashes 崩溃"></a>Crashes 崩溃</h4><p>由于某种原因，操作可能无法完成（比如超时了，或者是组件崩溃了），所以该操作没有完成时间，因此认为该操作与之后调起的每个操作都是重叠的。</p>
+<p>当进程某个操作处于这种状态时，就表示该进程卡住了，不能再次调用另一个操作。如果该进程又调起了新的操作，则这违反了进程同一时间只做一件事的约束。</p>
+<p>If an operation does not complete for some reason (perhaps because it timed out or a critical component crashed) that operation <em>has no completion time</em>, and must, in general, be considered concurrent with every operation after its invocation. It may or may not execute.</p>
+<p>A process with an operation is in this state is effectively stuck, and can never invoke another operation again. If it <em>were</em> to invoke another operation, it would violate our single-threaded constraint: processes only do one thing at a time.</p>
+<h4 id="Histories-操作历史"><a href="#Histories-操作历史" class="headerlink" title="Histories 操作历史"></a>Histories 操作历史</h4><p>操作历史是操作的集合，同时还包括他们的并发结构（调用时间和完成时间）。</p>
+<p>A <em>history</em> is a collection of operations, including their concurrent structure.</p>
+<p><font color=red>一些论文将历史表示未操作的集合，并且每个操作附带两个数，表示它们的调起时间和结束时间。通过对比进程间的时间窗口来推断进程的并发结构。</font></p>
+<p>Some papers represent this as a set of operations, where each operation includes two numbers, representing their invocation and completion time; concurrent structure is inferred by comparing the time windows between processes.</p>
+<p>Jepsen represents a history as an ordered list of invocation and completion operations, effectively splitting each operation in two. This representation is more convenient for algorithms which iterate over the history, keeping a representation of concurrent operations and possible states.</p>
+<h4 id="Consistency-Models-一致性模型"><a href="#Consistency-Models-一致性模型" class="headerlink" title="Consistency Models 一致性模型"></a>Consistency Models 一致性模型</h4><p>一致性模型就是历史的集合。我们使用一致性模型来定义系统的合法性。<font color=red>当我们说一个操作历史不符合序列化一致性时，就表示该操作历史不是序列性模型的历史集合中的成员；</font></p>
+<p>A <em>consistency model</em> is a set of histories. We use consistency models to define which histories are “good”, or “legal” in a system. When we say a history “violates serializability” or “is not serializable”, we mean that the history is not in the set of serializable histories.</p>
+<p>如果说一致性模型A意味着B，那就表示A是B的子集。比如线性一致性意味着顺序一致性，这是因为线性一致性的历史集合中的操作，肯定也存在于顺序一致性模型的历史集合中。这使得我们可以用层级结构来描述一致性模型间的关系。</p>
+<p>We say that consistency model A implies model B if A is a subset of B. For example, linearizability implies sequential consistency because every history which is linearizable is also sequentially consistent. This allows us to relate consistency models in a hierarchy.</p>
+<p>正式的说法就是：<font color=red>我们把更严格，集合更小的一致性模型成为更强的一致性模型；而集合更大，要求更宽松的一致性模型称为较弱的一致性模型；</font></p>
+<p>Speaking informally, we refer to smaller, more restrictive consistency models as “stronger”, and larger, more permissive consistency models as “weaker”.</p>
+<p>并非所有一致性模型都可以直接比较。通常，两个模型允许不同的行为，但都不包含另一个。</p>
+<p>Not all consistency models are directly comparable. Often, two models allow different behavior, but neither contains the other.</p>
+<hr>
+<p>原文：<a href="https://jepsen.io/consistency">https://jepsen.io/consistency</a></p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>02Strict Serializability</title>
+    <url>/2021/02/13/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/02Strict%20Serializability/</url>
+    <content><![CDATA[<h3 id="Strict-Serializability-严格序列化"><a href="#Strict-Serializability-严格序列化" class="headerlink" title="Strict Serializability     严格序列化"></a>Strict Serializability     严格序列化</h3><p>不那么正式地说法，严格序列化（Strict Serializability，又称PL-SS、严格1SR、强1SR）意味着操作以跟这些操作的实时顺序（real-time ordering，即由前面”Invocation &amp; Completion Times”中提到的全局时钟保证的）一致的顺序进行执行。比如，如果操作A的完成时间比B的开始时间要早，那在序列化的顺序中，A要出现B的前面。</p>
+<span id="more"></span>
+<p>Informally, strict serializability (a.k.a. PL-SS, Strict 1SR, Strong 1SR) means that operations appear to have occurred in some order, consistent with the <a href="https://jepsen.io/consistency#invocation--completion-times">real-time ordering</a> of those operations; e.g. if operation A completes before operation B begins, then A should appear to precede B in the serialization order.</p>
+<p><font color=red>严格序列化是一种“事务性”模型：操作（通常称为“事务”）包括几个按顺序执行的子操作。严格序列化保证操作（事务）以原子方式进行：即事务的子操作不会与其他事务的子操作交叉。</font></p>
+<p>Strict serializability is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive operations performed in order. Strict serializability guarantees that operations take place <em>atomically</em>: a transaction’s sub-operations do not appear to interleave with sub-operations from other transactions.</p>
+<p><font color=red>严格序列化还有一个“多对象”属性：操作针对的是系统中的多个对象。</font>事实上，严格序列化不仅适用于事务中涉及的特定对象，而且适用于整个系统。</p>
+<p>It is also a <em>multi-object</em> property: operations can act on multiple objects in the system. Indeed, strict serializability applies not only to the <em>particular</em> objects involved in a transaction, but to <em>the system as a whole</em>–operations may act on predicates, like “the set of all cats”.</p>
+<p>严格序列化性在网络分区的情况下，不是完全或粘性（sticky）可用的；在网络分区的情况下，部分或所有节点将无法继续执行操作。</p>
+<p>Strict serializability cannot be totally or sticky available; in the event of a network partition, some or all nodes will be unable to make progress.</p>
+<p><font color=red>严格序列化意味着序列化（serializability）和线性化（linearizability）。可以认为严格序列化，是在保证事务性多对象操作的序列化顺序的基础上，增加了线性化的实时顺序约束。或者可以这样认为，严格序列化的数据库就是把整个数据库视为一个对象的线性化系统。</font></p>
+<p>Strict serializability implies <a href="https://jepsen.io/consistency/models/serializable">serializability</a> and <a href="https://jepsen.io/consistency/models/linearizable">linearizability</a>. You can think of strict serializability as serializability’s total order of transactional multi-object operations, <em>plus</em> linearizability’s real-time constraints. Alternatively, you can think of a strict serializable database as a linearizable object in which the object’s state is the entire database.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally 正式说法"></a><a href="https://jepsen.io/consistency/models/strict-serializable#formally">Formally</a> 正式说法</h4><p>Herlihy和Wing的论文《Linearizability: A Correctness Condition for Concurrent Objects》中介绍线性一致性时，他们将严格序列化定义为：<font color=red>具有实时顺序的序列化系统。</font></p>
+<blockquote>
+<p>如果操作历史相当于事务是按顺序执行的，即事务之间没有交叉，那就认为该操作历史是序列化的；</p>
+<p>没有交叠的事务可以以显而易见的方式来定义他们间的（部分）优先顺序；</p>
+<p>如果操作历史中的事务顺序与他们的优先顺序一致，那就认为操作历史是严格序列化的；</p>
+</blockquote>
+<p>这里所谓的“显而易见的方式”就是指，如果事务A在事务B开始之前就完成了，那操作历史中，事务A要在先于事务B；这就是线性一致性中的实时顺序约束。</p>
+<p>When Herlihy and Wing <a href="http://cs.brown.edu/~mph/HerlihyW90/p463-herlihy.pdf">introduced linearizability</a>, they defined strict serializability in terms of a serializable system which is compatible with real-time order.</p>
+<blockquote>
+<p>A history is serializable if it is equivalent to one in which transactions appear to execute sequentially, i.e., without interleaving. A (partial) precedence order can be defined on non-overlapping pairs of transactions in the obvious way. A history is strictly serializable if the transactions’ order in the sequential history is compatible with their precedence order.</p>
+</blockquote>
+<p>“The obvious way” means that transaction A precedes transaction B if A completes before B begins; this is the real-time constraint from <a href="https://jepsen.io/consistency/models/linearizable">linearizability</a>.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>03Linearizability</title>
+    <url>/2021/03/01/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/03Linearizability/</url>
+    <content><![CDATA[<h3 id="Linearizability-线性化"><a href="#Linearizability-线性化" class="headerlink" title="Linearizability 线性化"></a>Linearizability 线性化</h3><p><font color=red>线性化是最强的<strong>单对象</strong>一致性模型之一</font>，它表示每个操作都是<font color=red>原子的，按照这些操作的实时顺序发生的</font>；比如：如果操作A在操作B调起之前完成，那操作B应该在操作A之后起作用；</p>
+<span id="more"></span>
+<p>Linearizability is one of the strongest single-object consistency models, and implies that every operation appears to take place atomically, in some order, consistent with the real-time ordering of those operations: e.g., if operation A completes before operation B begins, then B should logically take effect after A.</p>
+<p>这种模型在有网络分区的情况下不是完全可用或粘性可用的；即在网络发生分区时，若干或者所有节点都无法再继续进行操作；</p>
+<p>This model cannot be totally or sticky available; in the event of a network partition, some or all nodes will be unable to make progress.</p>
+<p>线性化是一个<font color=red>单对象</font>模型，但这里的“一个对象”不同的系统有不同的范围定义。比如某些key-value系统在单个key上提供线性一致性；另一些系统则在一个表中的多个键上，或者是数据库中的多个表上提供一致性；</p>
+<p>Linearizability is a single-object model, but the scope of “an object” varies. Some systems provide linearizability on individual keys in a key-value store; others might provide linearizable operations on multiple keys in a table, or multiple tables in a database—but not between different tables or databases, respectively.</p>
+<p>如果需要在多个对象上进行线性化，则需要严格序列化（strict serializability）；如果无需实时顺序的约束，但是依然想要每个进程观察到相同的操作总序（total order），则需要顺序一致性；</p>
+<p>When you need linearizability across multiple objects, try <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>. When <a href="https://jepsen.io/consistency#invocation--completion-times">real-time</a> constraints are not important, but you still want every process to observe the same total order, try <a href="https://jepsen.io/consistency/models/sequential">sequential consistency</a></p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally  正式说法"></a><a href="https://jepsen.io/consistency/models/linearizable#formally">Formally</a>  正式说法</h4><p>Herlihy 和 Wing在他们的论文《Linearizability: A Correctness Condition for Concurrent Objects》中引入了线性一致性的概念。（下面的话不好翻）如果并发系统中的操作历史H，等价于非并发系统中的操作历史S，并且H中的操作的部分实时顺序，与S中的操作顺序匹配的话，并且S中的操作顺序保留了对象的单线程语义，则认为H是线性一致性的。</p>
+<p>Herlihy &amp; Wing introduced linearizability in their 1990 paper <a href="http://cs.brown.edu/~mph/HerlihyW90/p463-herlihy.pdf">Linearizability: A Correctness Condition for Concurrent Objects</a>. Ignoring some bookeeping necessary to fill in the possible results of incomplete operations, a history H is one in which there is an equivalent sequential (e.g. non-concurrent) history S, and the partial real-time order of operations in H is consistent with the total order of S, and which preserves the objects’s single-threaded semantics.</p>
+<p>Viotti and Vukolić重新强调了操作历史的三个理论上的约束：</p>
+<ul>
+<li>SingleOrder：所有操作间是全序关系（total order）；</li>
+<li>RealTime：实时顺序约束；</li>
+<li>RVal：关联对象类型上遵守单线程原则；</li>
+</ul>
+<p>Viotti and Vukolić <a href="https://arxiv.org/pdf/1512.00168.pdf">rephrase this definition</a> in terms of three set-theoretic constraints on histories:</p>
+<ul>
+<li>SingleOrder (there exists some total order of operations)</li>
+<li>RealTime (consistent with the real time bound)</li>
+<li>RVal (obeying the single-threaded laws of the associated object’s datatype)</li>
+</ul>
+<hr>
+<p>《分布式系统与一致性》</p>
+<p>在通常情况下，每个调用事件和返回事件都有确定的发生时间，我们按这个发生时间的顺序得到一个确定的历史H，如果恰巧出现了发生时间完全相同的两个事件怎么办？可以把这两个事件任意排列，谁先谁后都可以，这并不影响对线性一致性的判断。</p>
+<p>线性一致性同样具有原子性。线性一致性也被称为原子一致性。</p>
+<p>线性一致性要求保持偏序关系。保持偏序关系是一种更苛刻的要求，所以线性一致性是比顺序一致性更强的一种一致性。保持偏序关系给线性一致性赋予了顺序一致性所不具有的一个特性，那就是实时性。</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>04sequential</title>
+    <url>/2021/04/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/04sequential/</url>
+    <content><![CDATA[<h3 id="Sequential-Consistency-顺序一致性"><a href="#Sequential-Consistency-顺序一致性" class="headerlink" title="Sequential Consistency     顺序一致性"></a>Sequential Consistency     顺序一致性</h3><p>顺序一致性是并发系统的一个强大安全属性。非正式地说，顺序一致性意味着操作似乎以某种<font color=red>总的顺序（total order）</font>发生，并且该顺序与每个进程内的操作顺序一致（即保证总顺序中，<font color=red>单个进程内的操作还是按实时的顺序进行的</font>）。</p>
+<span id="more"></span>
+<p>Sequential consistency is a strong safety property for concurrent systems. Informally, sequential consistency implies that operations appear to take place in some total order, and that that order is consistent with the order of operations on each individual process.</p>
+<p>这种模型在有网络分区的情况下不是完全可用或粘性可用的；即在网络发生分区时，若干或者所有节点都无法再继续取得进展；</p>
+<p>Sequential consistency cannot be totally or sticky available; in the event of a network partition, some or all nodes will be unable to make progress.</p>
+<p>顺序一致性系统中，一个进程可能远远领先于或落后于其他进程（即不保证进程间的顺序是符合实时顺序的）。例如，它们<font color=red>可以读取过期的状态</font>。然而，一旦进程A观察到进程B的某些操作，它就不可能再观察到B之前的状态。这种约束与total ordering属性相结合，使得顺序一致性也是一种强一致性模型。</p>
+<p>A process in a sequentially consistent system may be far ahead, or behind, of other processes. For instance, they may read arbitrarily stale state. However, once a process A has observed some operation from process B, it can never observe a state <em>prior</em> to B. This, combined with the total ordering property, makes sequential consistency a surprisingly strong model for programmers.</p>
+<p>如果想要实时顺序约束（比如想通过channel来告知其他进程某个事件，并且其他进程观察该事件），则需要线性一致性；如果需要完全可用，并且无需total order，则可以尝试因果一致性（causal consistency）；</p>
+<p>When you need real-time constraints (e.g. you want to tell some other process about an event via a side channel, and have that process observe that event), try <a href="https://jepsen.io/consistency/models/linearizable">linearizability</a>. When you need total availability, and a total order isn’t required, try <a href="https://jepsen.io/consistency/models/causal">causal consistency</a>.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally  正式说法"></a><a href="https://jepsen.io/consistency/models/sequential#formally">Formally</a>  正式说法</h4><p>Leslie Lamport在论文《How to Make a Multiprocessor Computer That Correctly Executes Multiprocess Programs》中定义了顺序一致性。他使用”顺序一致性”来表达：</p>
+<blockquote>
+<p><font color=red>操作的执行结果，就像是所有处理器的所有操作都按照某种总的顺序执行一样，并且从单独的处理器来看，每个处理器的操作都以其程序指定的顺序出现在该总顺序中。</font></p>
+</blockquote>
+<p>Leslie Lamport defined sequential consistency in his 1979 paper <a href="https://www.microsoft.com/en-us/research/uploads/prod/2016/12/How-to-Make-a-Multiprocessor-Computer-That-Correctly-Executes-Multiprocess-Programs.pdf">How to Make a Multiprocessor Computer That Correctly Executes Multiprocess Programs</a>. He uses “sequentially consistent” to imply…</p>
+<blockquote>
+<p>… the result of any execution is the same as if the operations of all the processors were executed in some sequential order, and the operations of each individual processor appear in this sequence in the order specified by its program.</p>
+</blockquote>
+<p>Viotti 和 Vukolić 将顺序一致性分解为三个属性：</p>
+<ol>
+<li>SingleOrder：操作有一个总的顺序（total order）</li>
+<li>PRAM：由单个进程进行的多个写操作，会按照该进程执行它们的顺序被其他所有进程观察到；然而多个进程的写操作则可能以不同的顺序被外部观察到。</li>
+<li>RVal：顺序必须与数据类型的语义一致</li>
+</ol>
+<p><a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a> decompose sequential consistency into three properties:</p>
+<ol>
+<li>SingleOrder (there exists some total order of operations)</li>
+<li><a href="https://jepsen.io/consistency/models/pram">PRAM</a></li>
+<li>RVal (the order must be consistent with the semantics of the datatype)</li>
+</ol>
+<hr>
+<p>《分布式系统与一致性》中的资料：</p>
+<p>Lamport在《How to make a multiprocessor computer that correctly executes multiprocess programs》中定义了顺序一致性：</p>
+<ul>
+<li>任意执行的结果和好像在处理器上执行的所有操作都按照某一种顺序排序执行的结果是一样的，并且每个处理器上的操作都会按照程序指定的顺序出现在操作序列中。</li>
+<li>“The result of any execution is the same as if the operations of all the processors were executed in some sequential order,and the operations of each individual processor appear in this sequence in the order specified by its program.”</li>
+</ul>
+<p>另外，从全局视角一致的角度，Wiki中对Consistency Model有如下描述：</p>
+<ul>
+<li>“writes to variables by different processors have to be seen in the same order by all processors”（不同的处理器对变量的写操作从所有的处理器角度来看必须是相同的顺序）</li>
+</ul>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>05Causal Consistency</title>
+    <url>/2022/04/13/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/05Causal%20Consistency/</url>
+    <content><![CDATA[<h3 id="Causal-Consistency-因果一致性"><a href="#Causal-Consistency-因果一致性" class="headerlink" title="Causal Consistency     因果一致性"></a>Causal Consistency     因果一致性</h3><p><font color=red>因果一致性要求，因果相关的操作应该以相同的顺序被所有流程观察到，但是每个进程对于因果不相关的操作的顺序可能会有不同的看法。</font></p>
+<span id="more"></span>
+<p>Causal consistency captures the notion that causally-related operations should appear in the same order on all processes—though processes may disagree about the order of causally independent operations.</p>
+<p><font color=red>举个例子</font>，假设用一个对象表示三人共用的聊天室，Attiya问了一句”shall we have lunch?”，Barbarella和Cyrus分别响应了”yes”和”no”。因果一致性允许Attiya观察到的顺序是：”lunch?”, “yes”, “no”；Barbarella观察到的顺序是：”lunch?”, “no”, “yes”；不会有人会观察到”yes”或”no”出现在”lunch?”的前面；</p>
+<p>For example, consider a single object representing a chat between three people, where Attiya asks “shall we have lunch?”, and Barbarella &amp; Cyrus respond with “yes”, and “no”, respectively. Causal consistency allows Attiya to observe “lunch?”, “yes”, “no”; and Barbarella to observe “lunch?”, “no”, “yes”. However, no participant <em>ever</em> observes “yes” or “no” prior to the question “lunch?”.</p>
+<p>收敛的因果系统要求系统中对象的值在相同的操作可见后收敛到相同的值。这样的系统中，用户可以短暂地观察到“lunch”, “yes”和“lunch”, “no”——但每个人最终都会达成一致（任选一个顺序）：”lunch?”, “yes”, “no”；</p>
+<p><em>Convergent</em> causal systems require that the values of objects in the system converge to identical values, once the same operations are visible. In such a system, users could transiently observe “lunch”, “yes”; and “lunch”, “no”—but everyone would eventually agree on (to pick an arbitrary order) “lunch”, “yes”, “no”.</p>
+<p><font color=red>因果一致性是粘性可用的</font>：即使发生了网络分区，只要client始终（stick to）访问的是同一个无故障节点，那该节点上肯定会有所进展。</p>
+<p>Causal consistency is sticky available: even in the presence of network partitions, every client connected to a non-faulty node can make progress. However, clients must stick to the same server.</p>
+<p>因果一致性的一个稍微强一点的版本，即实时因果一致性，被证明是始终可用的单向收敛系统中（an always-available, one-way convergent system）最强的一致性模型。大多数“因果一致性”系统实际上提供了这些更强的属性，例如RTC或causal+。</p>
+<p>A slightly stronger version of causal consistency, <a href="http://www.cs.cornell.edu/lorenzo/papers/cac-tr.pdf">Real-Time Causal</a>, is proven to be the strongest consistency model in an always-available, one-way convergent system. Most “causally consistent” systems actually provide these stronger properties, such as RTC or <a href="https://www.cs.cmu.edu/~dga/papers/cops-sosp2011.pdf">causal+</a>.</p>
+<p><font color=red>如果需要一个total order（因果一致性没有total order）</font>，并且愿意牺牲可用性和延迟的话，可以考虑顺序一致性。如果需要完全可用性，则只能放弃因果一致性（以及read-your-writes），不过依然可以使用writes follow reads，单调读和单调写。</p>
+<p>When a total order is required, and you’re willing to sacrifice availability (and latency), consider <a href="https://jepsen.io/consistency/models/sequential">sequential consistency</a>. If you need total availability, you’ll have to give up causal (and read-your-writes), but can still obtain <a href="https://jepsen.io/consistency/models/writes-follow-reads">writes follow reads</a>, <a href="https://jepsen.io/consistency/models/monotonic-reads">monotonic reads</a>, and <a href="https://jepsen.io/consistency/models/monotonic-writes">monotonic writes</a>.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally 正式说法"></a><a href="https://jepsen.io/consistency/models/causal#formally">Formally</a> 正式说法</h4><p>因果内存系统首次来源于Lamport对<code>happens-before</code>关系的定义，它通过将一个操作与同一进程之前的操作，以及其他进程上的相关操作（通过消息交互使得操作的结果可见）关联起来，捕捉到了潜在因果关系的概念。</p>
+<p>Causal memory stems from Lamport’s definition of the <a href="https://amturing.acm.org/p558-lamport.pdf">happens-before relation</a>, which captures the notion of potential causality by relating an operation to previous operations by the same process, and to operations on <em>other</em> processes whose effects could have been visible thanks to messages exchanged between those processes.</p>
+<p>这一模型在Ahamad, Neiger, Burns等人的论文中以多处理器内存模型的形式出现。不过一个更有用的参考可能是Mahajan、Alvisi和Dahlin的《Consistency、Availability and Convergence》中提到的操作历史，它由一系列的读写操作组成，操作间的<code>happen-before</code>关系构成一个有向无环图，并且happend-before需要：</p>
+<ol>
+<li>反映每个进程（“节点”）上的序列顺序，以及</li>
+<li>每个读操作需要返回最近的并发写操作的结果；</li>
+</ol>
+<p>This was formalized into a multiprocessor memory model in a <a href="https://link.springer.com/article/10.1007%2FBF01784241">1993 paper</a> by Ahamad, Neiger, Burns, et al, but a more useful (and non-paywalled) reference might be Mahajan, Alvisi, and Dahlin’s <a href="http://www.cs.cornell.edu/lorenzo/papers/cac-tr.pdf">Consistency, Availability, and Convergence</a>, which takes a history (called “an execution”) composed of read and write operations, asks for a directed acyclic happens-before relation over that execution, and requires that happens-before…</p>
+<ol>
+<li>Reflects the serial ordering on each process (“node”), and</li>
+<li>Each read returns the latest preceding concurrent writes</li>
+</ol>
+<p>Mahajan等人将冲突解决（如何处理并发写入）留给实现来决定。</p>
+<p>Mahajan et al leave conflict resolution (what to do with concurrent writes) up to the implementation, requiring only that all concurrent writes are returned for a read.</p>
+<p>一个更简洁的定义，来自于Viotti and Vukolić，将因果一致性分解为三个属性：</p>
+<ol>
+<li>因果可视性：happends-before关系是可见顺序的子集；</li>
+<li>因果冲突：happends-before关系是仲裁顺序的子集，所谓仲裁顺序，就是一个定义了如何解决冲突的total order；</li>
+<li>RVal：返回值应与数据类型的定义一致；例如，读操作应能反映出最近的写操作；</li>
+</ol>
+<p>A more concise definition, from <a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a>, decomposes causal consistency into three properties:</p>
+<ol>
+<li>CausalVisibility (the happens-before relation is a subset of the visibility order)</li>
+<li>CausalArbitration (the happens-before relation is a subset of the <em>arbitration order</em>: a total order which defines how conflicts are resolved)</li>
+<li>RVal (return values should be consistent with the definition of the datatype; e.g. reads should reflect recent writes)</li>
+</ol>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>06PRAM</title>
+    <url>/2022/04/19/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/06PRAM/</url>
+    <content><![CDATA[<h3 id="PRAM"><a href="#PRAM" class="headerlink" title="PRAM"></a>PRAM</h3><p>PRAM（流水线随机访问存储系统，Pipeline Random Access Memory）这个概念来源于Lipton &amp; Sandberg的论文《PRAM: A Scalable Shared Memory》，这篇论文尝试对现有的一致性内存模型进行relax，以期获得更好的并发性和性能。这种一致性模型的约束是：<font color=red>由单个进程进行的多个写操作，会按照该进程执行它们的顺序被其他所有进程观察到；然而多个进程的写操作则可能以不同的顺序被外部观察到。</font></p>
+<span id="more"></span>
+<p>PRAM (Pipeline Random Access Memory) comes from Lipton &amp; Sandberg’s 1988 paper <a href="ftp://ftp.cs.princeton.edu/techreports/1988/180.pdf">PRAM: A Scalable Shared Memory</a>, which attempts to <em>relax</em> existing coherent memory models to obtain better concurrency (and therefore performance). It enforces that any pair of writes executed by a single process are observed (everywhere) in the order the process executed them; however, writes from different processes may be observed in different orders.</p>
+<p>PRAM实际上等同于read your writes，单调写和单调读；</p>
+<p>PRAM is exactly equivalent to <a href="https://jepsen.io/consistency/models/read-your-writes">read your writes</a>, <a href="https://jepsen.io/consistency/models/monotonic-writes">monotonic writes</a>, and <a href="https://jepsen.io/consistency/models/monotonic-reads">monotonic reads</a>.</p>
+<p>PRAM是粘性可用的：在网络分区的情况下，只要client始终访问的是同一个节点，那所有进程都可以取得进展。</p>
+<p>PRAM is sticky available: in the event of a network partition, all processes can make progress so long as clients always stick to the same server.</p>
+<p>如果需要更严格的，保证write follow reads的一致性模型，则可以尝试因果一致性，它同样是粘性可用的，并且提供了更直观的语义；如果需要完全可用，则考虑牺牲掉 read your writes特性，只选择单调读+单调写；</p>
+<p>For a more strict consistency model which also enforces that <a href="https://jepsen.io/consistency/models/writes-follow-reads">writes follow reads</a>, try <a href="https://jepsen.io/consistency/models/causal">causal consistency</a>: it’s just as available, and provides more intuitive semantics. If you need total availability, consider sacrificing <a href="https://jepsen.io/consistency/models/read-your-writes">read your writes</a> and choosing just <a href="https://jepsen.io/consistency/models/monotonic-reads">monotonic reads</a> + <a href="https://jepsen.io/consistency/models/monotonic-writes">monotonic writes</a>.</p>
+<h4 id="Formally-正式定义"><a href="#Formally-正式定义" class="headerlink" title="Formally  正式定义"></a><a href="https://jepsen.io/consistency/models/pram#formally">Formally</a>  正式定义</h4><p>Lipton 和 Sandberg对PRAM的定义被表达为一种实现，而且其分析侧重于连续内存相关的性能。一个更抽象的定义来自Viotti 和 Vukolić：<font color=red>如果会话顺序（每个进程上的操作顺序）是可见性顺序（给定操作可见的操作）的子集，则满足PRAM要求。</font></p>
+<p>Lipton &amp; Sandberg’s <a href="ftp://ftp.cs.princeton.edu/techreports/1988/180.pdf">definition</a> is phrased as an implementation, and its analysis focuses on performance relative to coherent memory. A more abstract definition comes from <a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a>, where PRAM is satisfied if the session order (the order of operations on each process) is a subset of the visibility order (what operations are visible to a given operation).</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>07Read Your Writes</title>
+    <url>/2022/04/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/07Read%20Your%20Writes/</url>
+    <content><![CDATA[<h3 id="Read-Your-Writes"><a href="#Read-Your-Writes" class="headerlink" title="Read Your Writes"></a>Read Your Writes</h3><p>read your writes，或者叫read my writes保证这样的规则：如果一个进程执行了写操作w，然后该进程又执行了读操作r，那r必须能够看到w的结果；</p>
+<span id="more"></span>
+<p>注意：read your writes不是应用于不同进程上的规则。比如它不保证，如果进程1写成功了，那进程2一定能观察到写操作的结果；</p>
+<p>read your writes是粘性可用的：如果发生了网络分区，那只要CLIENT始终访问的是同一个节点，那该节点依然可以取得进展；</p>
+<p><em>Read your writes</em>, also known as <em>read my writes</em>, requires  that if a process performs a write <em>w</em>, then that same process performs a  subsequent read <em>r</em>, then <em>r</em> must observe <em>w</em>’s  effects.</p>
+<p>Note that read your writes does not apply to operations performed by  <em>different</em> processes. There is no guarantee, for instance, that if  process 1 writes a value successfully, that process 2 will subsequently observe  that write.</p>
+<p>Read your writes is sticky available: if a network partition occurs, every  node can make progress, so long as clients never change which server they talk  to.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally  正式说法"></a><a href="https://jepsen.io/consistency/models/read-your-writes#formally">Formally</a>  正式说法</h4><p>Viotti 和 Vukolić在论文中定义了read your writes：对于任意的写操作和读操作而言，如果对于特定进程而言，其执行的写操作在读操作之前完成，那写操作的结果必须是对该读操作而言是可见的。换句话说，会话顺序（仅限于相同进程中的先写后读），必须是可见顺序的子集；</p>
+<p><a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a> define  read your writes straightforwardly: for any write, and any read, if the write  falls before the read in a given session (process), then the write must be  visible to the read. In other terms, the session order (restricted to just  writes -&gt; reads), is a subset of the visibility order.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>08Writes Follow Reads</title>
+    <url>/2022/05/03/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/08Writes%20Follow%20Reads/</url>
+    <content><![CDATA[<h3 id="Writes-Follow-Reads"><a href="#Writes-Follow-Reads" class="headerlink" title="Writes Follow Reads"></a>Writes Follow Reads</h3><p>writes follow reads：也叫做会话因果关系，保证这样的规则：如果一个进程读到了v，v来自于写操作w1，然后该进程执行写操作w2，那w2必须在w1之后可见。Once you’ve read something, you can’t change that read’s past.</p>
+<span id="more"></span>
+<p><em>Writes follow reads</em>, also known as <em>session causality</em>, ensures that if a process reads a value <em>v</em>, which came from a write <em>w1</em>, and later performs write <em>w2</em>, then <em>w2</em> must be visible after <em>w1</em>. Once you’ve read something, you can’t change that read’s past.</p>
+<p>writes follow reads是完全可用的，即使发生网络分区，那每个节点依然可以取得进展；</p>
+<p>Writes follow reads is a totally available property. Every node can make progress regardless of network partitions.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally    正式说法"></a><a href="https://jepsen.io/consistency/models/writes-follow-reads#formally">Formally</a>    正式说法</h4><p>Viotti 和 Vukolić在论文中，以可见顺序（哪个写操作的结果被哪个读操作见到）、会话顺序（相同进程执行的操作）和仲裁顺序（本质上就是并发进行的操作中，哪个操作先执行）的概念定义了writes follow reads规则。writes follow reads就是：可见顺序和会话顺序，仅限于读写操作之间，必须是仲裁顺序的子集。</p>
+<p><a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a> define writes follow reads in terms of the visibility order (which effects are visible to which reads), the session order (the order of operations on each process) and the arbitration order (essentially, which concurrent updates take precedence): the visibility and session orders, restricted to read&#x2F;write pairs, must be a subset of the arbitration order.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>09Monotonic Reads</title>
+    <url>/2022/05/14/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/09Monotonic%20Reads/</url>
+    <content><![CDATA[<h3 id="Monotonic-Reads-单调读"><a href="#Monotonic-Reads-单调读" class="headerlink" title="Monotonic Reads 单调读"></a>Monotonic Reads 单调读</h3><p>单调读的规则：如果一个进程先执行读操作r1，然后是r2，那r2读取到的值，不能是r1所反映出的写操作之前的状态；直白点说就是，读操作不能倒退；</p>
+<span id="more"></span>
+<p>单调读的规则适用于相同进程的读操作，而不适用于不同进程的操作；</p>
+<p>单调读可以是完全可用的：即使发生了网络分区，那所有节点还是可以取得进展；</p>
+<p><em>Monotonic reads</em> ensures that if a process performs read <em>r1</em>, then <em>r2</em>, then <em>r2</em> cannot observe a state prior to the writes which were reflected in <em>r1</em>; intuitively, reads cannot go backwards.</p>
+<p>Monotonic reads does not apply to operations performed by <em>different</em> processes, only reads by the same process.</p>
+<p>Monotonic reads can be totally available: even during a network partition, all nodes can make progress.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally  正式说法"></a><a href="https://jepsen.io/consistency/models/monotonic-reads#formally">Formally</a>  正式说法</h4><p>Viotti 和 Vukolić在论文中，以会话顺序（相同进程执行的操作）和仲裁顺序（本质上就是哪个操作先执行）的概念定义了单调读规则。单调读就是：对于操作a、b和c，其中a是写操作，b和c是读操作；b在c之前执行，并且都是由相同的进程执行的，那如果b见到了a的结果，那c也必须能见到a的结果；</p>
+<p><a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a> define monotonic reads in terms of a session order (the order of operations performed by the same process) and a visibility order (which writes are visible to which reads). For all operations <em>a</em>, <em>b</em>, and <em>c</em>, where <em>b</em> and <em>c</em> are reads, if a is visible to b, and b is executed prior to, and by the same process as c, then a must be visible to c.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>10Monotonic Writes</title>
+    <url>/2022/05/17/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/10Monotonic%20Writes/</url>
+    <content><![CDATA[<h3 id="Monotonic-Writes-单调写"><a href="#Monotonic-Writes-单调写" class="headerlink" title="Monotonic Writes 单调写"></a>Monotonic Writes 单调写</h3><p>单调写保证这样的场景：一个进程先进行了写操作w1，然后是写操作w2，那其他所有进程都是先观察到w1，然后是w2；</p>
+<span id="more"></span>
+<p>单调写规则只适用于相同进程的写操作，而非不同进程的写操作；</p>
+<p>单调写可以是完全可用的：即使发生了网络分区，所有节点都可以取得进展；</p>
+<p><em>Monotonic writes</em> ensures that if a process performs write <em>w1</em>, then <em>w2</em>, then all processes observe <em>w1</em> before <em>w2</em>.</p>
+<p>Monotonic writes does not apply to operations performed by <em>different</em> processes, only writes by the same process.</p>
+<p>Monotonic writes can be totally available: even during a network partition, all nodes can make progress.</p>
+<h4 id="Formally-正式说法"><a href="#Formally-正式说法" class="headerlink" title="Formally  正式说法"></a><a href="https://jepsen.io/consistency/models/monotonic-writes#formally">Formally</a>  正式说法</h4><p>Viotti 和 Vukolić在论文中，以会话顺序（相同进程执行的操作）和仲裁顺序（本质上就是哪个操作先执行）的概念定义了单调写规则。单调写就是：会话顺序，仅限于写操作之间，必须是仲裁顺序的子集。</p>
+<p><a href="https://arxiv.org/pdf/1512.00168.pdf">Viotti and Vukolić</a> define monotonic writes in terms of a session order (the order of operations performed by the same process) and an arbitration order (essentially, which operations take precedence). The session order, constrained to only pairs of writes, must be a subset of the arbitration order.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>11Serializability</title>
+    <url>/2022/05/23/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/11Serializability/</url>
+    <content><![CDATA[<h3 id="Serializability"><a href="#Serializability" class="headerlink" title="Serializability"></a>Serializability</h3><p>非正式地说，序列化意味着事务似乎以某种总的顺序（total order, 全序?）发生。</p>
+<p>Informally, serializability means that transactions appear to have occurred in some total order.</p>
+<span id="more"></span>
+<p>序列化是一种“事务”模型：操作（通常称为“事务”）包括按顺序执行的几个基本子操作。序列化保证事务以原子的方式进行：事务的子操作不会与其他事务的子操作交错执行。</p>
+<p>Serializability is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. Serializability guarantees that operations take place <em>atomically</em>: a transaction’s sub-operations do not appear to interleave with sub-operations from other transactions.</p>
+<p>序列化也是一个“多对象”属性：操作可以作用于系统中的多个对象上。实际上，序列化不仅作用于事务中涉及的特定对象，而且可以把整个系统当成一个整体—-操作可以作用于谓词之上（<em>比如where</em>），比如所有的cat。</p>
+<p>适用于<em>整个系统</em>-操作可能作用于谓词，如“所有cat的集合”。</p>
+<p>It is also a <em>multi-object</em> property: operations can act on multiple objects in the system. Indeed, serializability applies not only to the <em>particular</em> objects involved in a transaction, but to <em>the system as a whole</em>—operations may act on predicates, like “the set of all cats”.</p>
+<p>序列化无法达到完全或者粘性可用。如果发生了网络分区，那部分或所有节点将无法继续执行操作。</p>
+<p>Serializability cannot be totally or sticky available; in the event of a network partition, some or all nodes will be unable to make progress.</p>
+<p>序列化意味着可重复读，快照隔离等。但是它并在real-time上并无约束，即使在单进程上也没有。如果进程A完成了写操作w，然后进程B开始读操作r，那r不一定读到w的结果。如果想要real-time上的约束，则需要强序列化。</p>
+<p>Serializability implies <a href="https://jepsen.io/consistency/models/repeatable-read">repeatable read</a>, <a href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a>, etc. However, it does not impose any real-time, or even per-process constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For those kinds of real-time guarantees, see <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializable</a>.</p>
+<p>进一步而言，序列化也不保证单个进程上的事务间的顺序。一个进程可能先观察到一个写操作，然后在后续的事务中再次观察同一个写操作时却也可能失败。实际上，如果写操作发生在不同的事务上，那进程可能无法正确观察到自己之前的写操作。</p>
+<p>Moreover, serializability does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<p>序列化对于总的顺序有强约束，但是它允许乱序。比如，一个序列化的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>The requirement for a total order of transactions is strong—but still allows pathological orderings. For instance, a serializable database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a>Formally</h4><p>The <a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999 spec</a> says:</p>
+<blockquote>
+<p>隔离级别在SERIALIZABLE时，并行执行的事务保证是串行化的。串行化执行的定义，就是并行执行的事务产生的结果，与那些相同事务串行执行的结果是相同的。串行执行就是下一个事务在上一个事务执行完成之后才能执行。</p>
+</blockquote>
+<blockquote>
+<p>The execution of concurrent SQL-transactions at isolation level SERIALIZABLE is guaranteed to be serializable. A serializable execution is defined to be an execution of the operations of concurrently executing SQL-transactions that produces the same effect as some serial execution of those same SQL-transactions. A serial execution is one in which each SQL-transaction executes to completion before the next SQL-transaction begins.</p>
+</blockquote>
+<p>然后接着用禁止的异常情况来定义其隔离级别：序列化是读已提交的，但是不会出现P3（幻读）现象：</p>
+<blockquote>
+<p>P3（“幻读”）：事务T1读取满足某些搜索条件的行。事务T2执行SQL语句，这些语句会生成满足事务T1使用的搜索条件的一行或多行。如果事务T1随后以相同的搜索条件重复再次读取，它将获得不同的行集合。</p>
+</blockquote>
+<p>… and goes on to define its isolation levels in terms of proscribed anomalies: serializable is <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>, but without phenomenon P3:</p>
+<blockquote>
+<p>P3 (“Phantom”): SQL-transaction T1 reads the set of rows N that satisfy some <search condition>. SQL-transaction T2 then executes SQL-statements that generate one or more rows that satisfy the <search condition> used by SQL-transaction T1. If SQL-transaction T1 then repeats the initial read with the same <search condition>, it obtains a different collection of rows.</p>
+</blockquote>
+<p>然而，正如<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson、Bernstein等人观察到的</a>，ANSI规范有多种解释，其中一种解释（“异常解释”）允许非序列化历史。</p>
+<p>However, as <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson, Bernstein, et al observed</a>, the ANSI specification allows multiple intepretations, and one of those interpretations (the “anomaly interpretation”) admits nonserializable histories.</p>
+<p><a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义</a>对ANSI隔离级别的预防性解释进行了更全面的总结，其将序列化定义为没有四种异常现象。即序列化禁止：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。…表示除了commit或abort之外的子操作。p表示谓词。</p>
+<p><a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a> provides a more thorough summary of the preventative interpretation of the ANSI levels, defining serializability as the absence of four phenomena. Serializability prohibits:</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>Here <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. The notation “…” indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate.</p>
+<p>正如Adya所指出的，ANSI规范的预防性解释是“过度限制的”：它排除了一些满足序列化的操作历史。</p>
+<p>As Adya notes, the preventative interpretation of the ANSI specification is <em>overly restrictive</em>: it rules out some histories which are legally serializable.</p>
+<p>对于序列化，基于抽象执行的合理直观的正式定义，可以参阅Cerone、Bernardi和Gotsman的<a href="http://drops.dagstuhl.de/opus/volltexte/2015/5375/pdf/15.pdf">具有原子可见性的事务一致性模型框架</a>，它将可序列化性指定为三个属性的组合：</p>
+<ul>
+<li>内部一致性：在事务内，读操作观察该事务最近的写操作（如果有）</li>
+<li>外部一致性：事务T1中的读操作（该事务中之前没有写操作）必须观察事务T0中写操作的结果，即T0对T1是可见的，并且除了T0外没有其他最近写入该对象的事务。</li>
+<li>完全可见性：可见性关系必须是全序的（total order）。</li>
+</ul>
+<p>有关基于状态的正式定义，请参阅Crooks、Pu、Alvisi和Clement：<a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seing-tr.pdf">眼见为实：以Client为中心的数据库隔离规范</a></p>
+<p>For a reasonably intuitive formalization based on abstract executions, see Cerone, Bernardi, &amp; Gotsman’s <a href="http://drops.dagstuhl.de/opus/volltexte/2015/5375/pdf/15.pdf">A Framework for Transactional Consistency Models with Atomic Visibility</a>, which specifies serializability as a combination of three properties:</p>
+<ul>
+<li>Internal consistency: within a transaction, reads observe that transaction’s most recent writes (if any)</li>
+<li>External consistency: reads <em>without</em> a preceding write in transaction T1 must observe the state written by a transaction T0, such that T0 is visible to T1, and no more recent transaction wrote to that object.</li>
+<li>Total visibility: the visibility relationship must be a <em>total</em> order.</li>
+</ul>
+<p>For a state-based formalization, see Crooks, Pu, Alvisi, &amp; Clement: <a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seeing-tr.pdf">Seeing is Believing: A Client-Centric Specification of Database Isolation</a>.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>12Repeatable Read</title>
+    <url>/2022/05/27/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/12Repeatable%20Read/</url>
+    <content><![CDATA[<h3 id="Repeatable-Read"><a href="#Repeatable-Read" class="headerlink" title="Repeatable Read"></a>Repeatable Read</h3><p>可重复读类似于序列化，但是与之不同的是，它允许幻读：事务T1使用谓词进行读取，比如“所有名为Dikembe”的人员集合，另一个事务T2在T1提交之前，新增了或者修改了名为”Dikembe”的人员信息。虽然单个对象在读取时是稳定的，但谓词本身可能不是。</p>
+<span id="more"></span>
+<p>Repeatable read is closely related to <a href="https://jepsen.io/consistency/models/serializable">serializability</a>, but unlike serializable, it allows <a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">phantoms</a>: if a transaction T1 reads a predicate, like “the set of all people with the name “Dikembe”, then another transaction T2 may create or modify a person with the name “Dikembe” before T1 commits. Individual <em>objects</em> are stable once read, but the <em>predicate itself</em> may not be.</p>
+<p>可重复读是一种“事务”模型：操作（通常称为“事务”）可以包括按顺序执行的几个子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Repeatable read is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>可重复读在网络分区的场景下也不是完全可用；在存在网络分区的情况下，一些或所有节点可能无法取得进展。为了获得完全可用性，需要以允许不可重复读为代价，考虑<a href="https://jepsen.io/consistency/models/read-committed">读已提交</a>.</p>
+<p>Repeatable read cannot be totally available; in the presence of network partitions, some or all nodes may be unable to make progress. For total availability, at the cost of allowing fuzzy reads, consider <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>.</p>
+<p>可重复读取意味着<a href="https://jepsen.io/consistency/models/cursor-stability">游标稳定性</a>，<a href="https://jepsen.io/consistency/models/read-committed">读已提交</a>等。</p>
+<p>Repeatable read implies <a href="https://jepsen.io/consistency/models/cursor-stability">cursor stability</a>, <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>, etc.</p>
+<p>需要注意的是，可重复读不会有实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。如果想要事务模型有实际时间上的约束，考虑<a href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>。</p>
+<p>Note that repeatable read does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，可重复读也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, repeatable read does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<p>像串行化一样，可重复读允许重排序。比如，一个可重复读的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>Like <a href="https://jepsen.io/consistency/models/serializable">serializability</a>, repeatable read allows pathological orderings. For instance, a repeatable-read database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="Formally-正式定义"><a href="#Formally-正式定义" class="headerlink" title="Formally 正式定义"></a>Formally 正式定义</h4><p><a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999规范</a>将可重复读取指定为<a href="https://jepsen.io/consistency/models/read-committed">读已提交</a>但不允许现象P2：</p>
+<blockquote>
+<p>P2（“不可重复读取”）：SQL事务T1读取一行。然后，SQL事务T2修改或删除该行并执行提交。如果T1随后尝试重新读取该行，它可能会读到修改后的值或发现该行已被删除。</p>
+</blockquote>
+<p>The <a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999 spec</a> specifies repeatable read as <a href="https://jepsen.io/consistency/models/read-committed">read committed</a> but disallowing phenomenon P2:</p>
+<blockquote>
+<p>P2 (“Non-repeatable read”): SQL-transaction T1 reads a row. SQL-transaction T2 then modifies or deletes that row and performs a COMMIT. If T1 then attempts to reread the row, it may receive the modified value or discover that the row has been deleted.</p>
+</blockquote>
+<p>然而，正如<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson、Bernstein等人观察到的</a>，ANSI规范允许有多种解释，其中一种解释（“异常解释”）仍然允许“可串行化”系统的非串行化历史。相反，我们更喜欢<a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的形式化</a>，它提供了预防性解释的简明定义。在此模型中，可重复读取禁止：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+</ul>
+<p>但允许：</p>
+<ul>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。”…”表示除了commit或abort之外的子操作。p表示谓词。请注意，与ANSI SQL规范不同，T1不一定执行第二次读取；对谓词的修改就足够了。</p>
+<p>However, as <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson, Bernstein, et al observed</a>, the ANSI specification allows multiple intepretations, and one of those interpretations (the “anomaly interpretation) still admits nonserializable histories for “serializable” systems. Instead, we prefer <a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a>, which provides a concise definition of the preventative interpretation. In this model, repeatable read prohibits:</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>Here <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. The notation “…” indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate. Note that unlike the ANSI SQL spec, T1 does not necessarily execute a second read; modification of the predicate is enough.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>13Snapshot Isolation</title>
+    <url>/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/</url>
+    <content><![CDATA[<h3 id="Snapshot-Isolation-快照隔离"><a href="#Snapshot-Isolation-快照隔离" class="headerlink" title="Snapshot Isolation     快照隔离"></a>Snapshot Isolation     快照隔离</h3><p>在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对<em>x</em>的写入，则T1必须中止。</p>
+<span id="more"></span>
+<p>In a snapshot isolated system, each transaction appears to operate on an independent, consistent <em>snapshot</em> of the database. Its changes are visible only to that transaction until commit time, when all changes become visible atomically to any transaction which begins at a later time. If transaction T1 has modified an object <em>x</em>, and another transaction T2 committed a write to <em>x</em> after T1’s snapshot began, and before T1’s commit, then T1 must abort.</p>
+<p>快照隔离是一种“事务性”模型：操作（通常称为“事务”）包括几个按顺序执行的基本子操作；它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Snapshot isolation is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>快照隔离不能完全可用；存在网络分区的情况下，一些或所有节点可能无法取得进展。如果需要完全可用性，以允许长分叉异常为代价，可以考虑<a href="http://www.news.cs.nyu.edu/~%E9%87%91%E9%98%B3/%E9%85%92%E5%90%A7/%E6%B2%83%E5%B0%94%E7%89%B9-sosp11.pdf">并行快照隔离</a>，或者是更弱一些的，但是更广泛支持的<a href="https://jepsen.io/consistency/models/read-committed">读已提交</a>。</p>
+<p>Snapshot isolation cannot be totally available; in the presence of network partitions, some or all nodes may be unable to make progress. For total availability, at the cost of allowing long-fork anomalies, consider <a href="http://www.news.cs.nyu.edu/~jinyang/pub/walter-sosp11.pdf">parallel snapshot isolation</a>, or (weaker, but more commonly supported) <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>.</p>
+<p>与序列化要求事务之间的全序关系不同，快照隔离仅需要事务是偏序的：一个事务中的子操作可以与其他事务中的子操作交错执行。快照隔离允许的最显著现象是<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">写倾斜</a>，它允许事务读取重叠状态，修改不相交的对象集后提交；以及允许<a href="https://www.cs.umb.edu/~poneil/ROAnom.pdf">只读事务异常</a>，涉及部分不相交的写入集。</p>
+<p>Unlike <a href="https://jepsen.io/consistency/models/serializable">serializability</a>, which enforces a total order of transactions, snapshot isolation only forces a <em>partial</em> order: sub-operations in one transaction may interleave with those from other transactions. The most notable phenomena allowed by snapshot isolation are <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">write skews</a>, which allow transactions to read overlapping state, modify disjoint sets of objects, then commit; and <a href="https://www.cs.umb.edu/~poneil/ROAnom.pdf">a read-only transaction anomaly</a>, involving partially disjoint write sets.</p>
+<p>快照隔离意味着读已提交。但是它没有任何实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。一些数据库提供快照隔离变体来支持实际时间上的约束。类似于<a href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>，它提供了全序关系以及实际时间上的保证。</p>
+<p>Snapshot isolation implies <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>. However, it does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. Some databases provide real-time variants of snapshot isolation. Compare with <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>, which provides a total order <em>and</em> real-time guarantees.</p>
+<p>此外，快照隔离也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。如果需要强制同一进程中的事务按顺序执行，请考虑<a href="http://www.inf.usi.ch/faculty/pedone/Paper/2004/IC_TECH_REPORT_200421.pdf">前缀一致快照隔离</a>.</p>
+<p>Moreover, snapshot isolation does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions. To enforce that transactions from the same process appear to execute in order, consider <a href="http://www.inf.usi.ch/faculty/pedone/Paper/2004/IC_TECH_REPORT_200421.pdf">prefix-consistent snapshot isolation</a>.</p>
+<p>在其广义形式中，快照隔离允许重排序。比如，一个快照隔离的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>In its generalized form, snapshot isolation allows pathological orderings. For instance, a snapshot isolated database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="A-Range-of-Snapshot-Isolations-一系列快照隔离"><a href="#A-Range-of-Snapshot-Isolations-一系列快照隔离" class="headerlink" title="A Range of Snapshot Isolations     一系列快照隔离"></a><a href="https://jepsen.io/consistency/models/snapshot-isolation#a-range-of-snapshot-isolations">A Range of Snapshot Isolations</a>     一系列快照隔离</h4><p>不同的论文对快照隔离允许的操作历史的限制程度各不相同。<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson等人的原始论文</a>对于提交和开始时间戳与挂钟时间之间的关系，以及<a href="https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.78.1363&amp;rep=rep1&amp;type=pdf">Daudjee&amp;Salem</a>的后续工作建立了“经典&#x2F;强”和“广义&#x2F;弱”的快照隔离级别（SI levels），有些含糊不清。<a href="https://pmg.csail.mit.edu/papers/adya-phd.pdf">阿德亚</a>对SI正式定义假设我们将调度程序所做的特定选择视为给定：操作历史是否是SI的取决于调度程序所做的操作。这就会根据调度器的实现方式产生一系列可能的快照隔离。</p>
+<p>Papers vary in how strictly they constrain snapshot isolation’s allowed histories. The original paper by <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson et al</a> is somewhat ambiguous about the relationship between commit and start timestamps and wall-clock time, and subsequent work by <a href="https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.78.1363&rep=rep1&type=pdf">Daudjee &amp; Salem</a> established “classic&#x2F;strong” and “generalized&#x2F;weak” SI levels. <a href="https://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya</a>’s formalism for SI assumes that we take as given specific choices made by the scheduler: whether a history is SI or not depends on what the scheduler does. This gives rise to a range of possible snapshot isolations depending on how the scheduler is implemented.</p>
+<p>如果将SI解释为强制事务总是选择一个高于每个已提交事务的提交时间的开始时间，那么快照隔离显然比序列化有优势：它约束了实际时间，但是序列化没有。</p>
+<p>If one interprets SI as enforcing that transactions always choose a start time higher than every committed transaction’s commit time, then snapshot isolation is clearly incomparable to serializability: it forces a real-time order which serializability does not.</p>
+<p>在与Bailis、Crooks、Fekete、Hellerstein、Sutra和Shapiro进行了广泛的讨论之后，Jepsen采用更宽松的方式解释快照隔离：SI禁止事务见形成依赖环，这些事务包含多个相邻的读写反依赖边。在这种广义定义下，快照隔离严格弱于序列化。此定义与更广泛的实现集兼容。</p>
+<p>Following extensive conversation with Bailis, Crooks, Fekete, Hellerstein, Sutra, and Shapiro, Jepsen interprets snapshot isolation in a more relaxed way: we take SI to prohibit dependency cycles between transactions which contain more than one adjacent read-write anti-dependency edge. Under this generalized definition, snapshot isolation is strictly weaker than serializability. This definition is compatible with a broader set of implementations.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a href="https://jepsen.io/consistency/models/snapshot-isolation#formally">Formally</a></h4><p>Berenson、Bernstein等<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">首次定义的快照隔离</a>：</p>
+<blockquote>
+<p>…将事务开始读取已提交的数据快照中的数据时的时间戳，作为开始时间戳。此时间戳可以是事务首次读取数据之前的任何时间。只要自开始时间戳以来的快照数据是可维护的，那运行在快照隔离中的事务的读操作将永远不会被阻塞。事务的写操作（更新、插入和删除）也会反映到快照中，如果事务再次访问（读取或更新）数据，则将再次读取该快照。开始时间戳之后的其他事务的更新操作，对于本事务是不可见的。</p>
+<p>当事务T1准备提交时，它将获得一个提交时间戳，该时间戳将大于任何现有的开始时间戳或提交时间戳。只有不存在符合下面条件的事务T2的情况下，T1才能提交成功：T2的提交时间戳在T1执行期间，即[开始时间戳，提交时间戳]期间，并且T2和T1对同一份数据进行了写操作。如果存在这样的T2，那T1将会中止。这种被称为First-committer-wins的特性，防止了更新丢失的现象（现象P4）。T1提交后，其更新对于开始时间戳大于T1提交时间戳的所有事物都可见了。</p>
+</blockquote>
+<p>如果想要增加单个进程内的顺序，或者实际时间上的顺序，可以对开始时间戳和提交时间戳增加约束。</p>
+<p>Berenson, Bernstein, et al <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">first defined snapshot isolation</a> in terms of an abstract algorithm:</p>
+<blockquote>
+<p>… each transaction reads reads data from a snapshot of the (committed) data as of the time the transaction started, called its Start-Timestamp. This time may be any time before the transaction’s first Read. A transaction running in Snapshot Isolation is never blocked attempting a read as long as the snapshot data from its Start-Timestamp can be maintained. The transaction’s writes (updates, inserts, and deletes) will also be reflected in this snapshot, to be read again if the transaction accesses (i.e., reads or updates) the data a second time. Updates by other transactions active after the transaction Start-Timestamp are invisible to the transaction.</p>
+<p>When the transaction T1 is ready to commit, it gets a Commit-Timestamp, which is larger than any existing Start-Timestamp or Commit-Timestamp. The transaction successfully commits only if no other transaction T2 with a Commit-Timestamp in T1’s execution interval [StartTimestamp, Commit-Timestamp] wrote data that T1 also wrote. Otherwise, T1 will abort. This feature, called First-committer-wins prevents lost updates (phenomenon P4). When T1 commits, its changes become visible to all transactions whose Start-Timestamps are larger than T1‘s Commit-Timestamp.</p>
+</blockquote>
+<p>有关基于抽象执行的合理直观的正式定义，请参阅Cerone、Bernardi和Gotsman的<a href="http://drops.dagstuhl.de/opus/volltexte/2015/5375/pdf/15.pdf">具有原子可见性的事务一致性模型框架</a>，它将快照隔离指定为四个属性的组合：</p>
+<ul>
+<li>内部一致性：在事务内部，读操作能观察该事务最近的写操作（如果有）；</li>
+<li>外部一致性：T1中针对某个对象的读操作（之前没有写操作）能够观察到T0写入的状态，即T0对T1是可见的（没有其他的事务对该对象进行了写入）；</li>
+<li>前缀：事务能被所有节点以相同的顺序被观察到；</li>
+<li>无冲突：如果另个事务写同一个对象，那其中一个必须对另一个是可见的。</li>
+</ul>
+<p>有关基于状态的正式定义，请参阅Crooks、Pu、Alvisi和Clement：<a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seing-tr.pdf">眼见为实：以客户机为中心的数据库隔离规范</a>。</p>
+<p>For a reasonably intuitive formalization based on abstract executions, see Cerone, Bernardi, &amp; Gotsman’s <a href="http://drops.dagstuhl.de/opus/volltexte/2015/5375/pdf/15.pdf">A Framework for Transactional Consistency Models with Atomic Visibility</a>, which specifies snapshot isolation as a combination of four properties:</p>
+<ul>
+<li>Internal consistency: within a transaction, reads observe that transaction’s most recent writes (if any)</li>
+<li>External consistency: reads <em>without</em> a preceding write in transaction T1 must observe the state written by a transaction T0, such that T0 is visible to T1, and no more recent transaction wrote to that object.</li>
+<li>Prefix: transactions become visible to all nodes in the same order</li>
+<li>NoConflict: if two transactions write to the same object, one must be visible to the other.</li>
+</ul>
+<p>For a state-based formalization, see Crooks, Pu, Alvisi, &amp; Clement: <a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seeing-tr.pdf">Seeing is Believing: A Client-Centric Specification of Database Isolation</a>.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>14Cursor Stability</title>
+    <url>/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/</url>
+    <content><![CDATA[<h3 id="Cursor-Stability"><a href="#Cursor-Stability" class="headerlink" title="Cursor Stability"></a>Cursor Stability</h3><p>游标稳定性是一种一致性模型，它是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标，当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。</p>
+<span id="more"></span>
+<p>Cursor stability is a consistency model which strengthens <a href="https://jepsen.io/consistency/models/read-committed">read committed</a> by preventing <em>lost updates</em>. It introduces the concept of a <em>cursor</em>, which refers to a particular object being accessed by a transaction. Transactions may have multiple cursors. When a transaction reads an object using a cursor, that object cannot be modified by any other transaction until the cursor is released, or the transaction commits.</p>
+<p>游标稳定性可以防止更新丢失，即事务T1读取、修改和写回对象x，但另一个事务T2在T1读取x后更新x，这就导致T2的更新丢失了。</p>
+<p>This prevents lost updates, where transaction T1 reads, modifies, and writes back an object <em>x</em>, but a different transaction T2 transaction also updates <em>x</em> after T1 read <em>x</em>—causing T2’s update to be effectively lost.</p>
+<p>游标稳定性是一种“事务性”模型：操作（通常称为“事务”）可以包括按顺序执行的几个基本子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Cursor stability is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>游标稳定性不是完全可用的；在网络分区的情况下，一些或所有节点可能无法取得进展。为了获得完全可用性，以允许更新丢失为代价，可以考虑<a href="https://jepsen.io/consistency/models/read-committed">读已提交</a>. 如果需要更强的一致性，即确保每个记录读取对象的稳定性，而非特定的游标的稳定性，可以考虑<a href="https://jepsen.io/consistency/models/repeatable-read">可重复读</a>.</p>
+<p>Cursor stability cannot be totally available; in the presence of network partitions, some or all nodes may be unable to make progress. For total availability, at the cost of allowing lost updates, consider <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>. For a stronger level, which ensures the stability of every record read, rather than cursors, consider <a href="https://jepsen.io/consistency/models/repeatable-read">repeatable read</a>.</p>
+<p>需要注意的是，游标稳定性没有任何的实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。如果想要实际时间上的约束，考虑<a href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>。</p>
+<p>Note that cursor stability does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，游标稳定性也不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, cursor stability does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a href="https://jepsen.io/consistency/models/cursor-stability#formally">Formally</a></h4><p><a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义中</a>，通过禁止两种现象来定义光标稳定性：</p>
+<ul>
+<li>G1：见下面；</li>
+<li>G-cursor(x)：针对单个对象x的有向序列图中，必须包含一个反依赖环，以及至少一个写依赖的边；</li>
+</ul>
+<p><a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a> defines cursor stability in terms of two prohibited phenomena:</p>
+<ul>
+<li>G1: See below.</li>
+<li>G-cursor(x): the directed serialization graph, restricted to a single object <em>x</em>, contains an anti-dependency cycle and at least one write-dependency edge.</li>
+</ul>
+<p>G1包含了三种禁止的现象：</p>
+<ul>
+<li>G1a（中止读取）：事务A中能观察被中止事务B修改的对象（可能通过谓词）。说白了，就是事务必须“提交”后，我们才能读取它们。</li>
+<li>G1b（中间读取）：事务A中能观察到其他事务B修改的对象（可能通过谓词），而且事务B中对该对象还会有后续的修改。说白了，就是事务必须在完成之后，我们才能读取它；</li>
+<li>G1c（环形信息流）：事务的有向序列化图包含完全由依赖边组成的有向环。直白的说，就是如果T1收到了T2的影响，那T2就不能受T1的影响；</li>
+</ul>
+<p>G1 encompasses three disallowed phenomena:</p>
+<ul>
+<li>G1a (Aborted Reads): A transaction observes an object (perhaps via a predicate) modified by an aborted transaction. Intuitively, transactions have to <em>commit</em> for us to read them.</li>
+<li>G1b (Intermediate Reads): A transaction observes an object (perhaps via a predicate) modified by a transaction which was not that transaction’s final modification of that object. Intuitively, transactions have to <em>finish</em> before we can read them,</li>
+<li>G1c (Circular Information Flow): the Directed Serialization Graph of transactions contains a directed cylce consisting entirely of dependency edges. Intuitively, if transaction T1 is affected by T2, T2 can’t be affected by T1.</li>
+</ul>
+<p>因为游标稳定性要强于读已提交，所以它还禁止ANSI定义的如下现象：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+</ul>
+<p>但是允许下面的现象：</p>
+<ul>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。…表示除了commit或abort之外的子操作。p表示谓词。对于不使用游标的对象，有可能会发生“不可重复读”。</p>
+<p>Since cursor stability is strictly stronger than read committed, it also prohibits the ANSI phenomena:</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>In this notation, <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. … indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate. Fuzzy reads are possible where cursors are not used.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>15Monotonic Atomic View</title>
+    <url>/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/</url>
+    <content><![CDATA[<h3 id="Monotonic-Atomic-View-单调原子视图"><a href="#Monotonic-Atomic-View-单调原子视图" class="headerlink" title="Monotonic Atomic View     单调原子视图"></a>Monotonic Atomic View     单调原子视图</h3><p>单调原子视图是一种一致性模型，它比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。</p>
+<span id="more"></span>
+<p>Monotonic atomic view is a consistency model which strengthens <a href="https://jepsen.io/consistency/models/read-committed">read committed</a> by preventing transactions from observing some, but not all, of a previously committed transaction’s effects. It <a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">expresses</a> the atomic constraint from ACID that all (or none) of a transaction’s effects should take place. Once a write from transaction T1 is observed by transaction T2, then <em>all</em> effects of T1 should be visible to T2. This is particularly helpful in enforcing foreign key constraints and ensuring indices and materialized views reflect their underlying objects.</p>
+<p>单调原子视图是一种“事务”模型：操作（通常称为“事务”）可以包括按顺序执行的几个基本子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Monotonic atomic view is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>单调原子视图可以<a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">完全可用</a>：在存在网络分区的情况下，每个节点都可以取得进展。如果愿意牺牲完全可用性，考虑使用<a href="https://jepsen.io/consistency/models/repeatable-read">可重复读取</a>和<a href="https://jepsen.io/consistency/models/snapshot-isolation">快照隔离</a>提供更有力的保障。</p>
+<p>Monotonic atomic view can be <a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">totally available</a>: in the presence of network partitions, every node can make progress. If you are willing to sacrifice total availability, both <a href="https://jepsen.io/consistency/models/repeatable-read">repeatable read</a> and <a href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a> offer stronger guarantees.</p>
+<p>注意，单调原子视图不会施加任何实际时间上的约束。如果进程A完成写操作w，进程B开始读操作r，r不一定保证能看到w的结果。如果需要提供实时约束的事务模型，请考虑<a href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>.</p>
+<p>Note that monotonic atomic view does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，单调原子视图不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, monotonic atomic view does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<p>类似于<a href="https://jepsen.io/consistency/models/serializable">串行化</a>，单调原子视图允许重排序。比如，一个单调原子视图的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>Like <a href="https://jepsen.io/consistency/models/serializable">serializability</a>, monotonic atomic view allows pathological orderings. For instance, a monotonic atomic view database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a href="https://jepsen.io/consistency/models/monotonic-atomic-view#formally">Formally</a></h4><p>单调原子视图在文献中并不常见，这个概念由Bailis、Davidson、Fekete等人在<a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">《高可用交易：优点和局限性》</a>中提出. 论文中将其描述为：</p>
+<blockquote>
+<p>在MAV（Monotonic Atomic View）下，一旦一个事务Ti的一些操作结果被另一个事务Tj观察到，此后，Ti的所有操作结果都能被Tj观察到。也就是说，如果事务Tj读取事务Ti写入的对象的某个版本，则Tj稍后读取的对象无法返回Ti应用了更高版本的值。</p>
+</blockquote>
+<p>Monotonic Atomic View is not commonly discussed in the literature, but was coined by Bailis, Davidson, Fekete, et al in <a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">Highly Available Transactions: Virtues and Limitations</a>. They describe it as:</p>
+<blockquote>
+<p>Under MAV, once some of the effects of a transaction Ti are observed by another transaction Tj, thereafter, all effects of Ti are observed by Tj. That is, if a transaction Tj reads a version of an object that transaction Ti wrote, then a later read by Tj cannot return a value whose later version is installed by Ti.</p>
+</blockquote>
+<p>根据<a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义</a>，单调原子视图禁止：</p>
+<ul>
+<li>G1b（中间读取）：事务A（可能通过谓词）观察到由事务B修改的对象，而事务B后续还会对该对象进行修改。说白了就是，在能读取之前，事务必须是已完成的。</li>
+</ul>
+<p>由于单调原子视图强于读已提交，因此它也禁止了下面的ANSI现象：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+</ul>
+<p>但允许：</p>
+<ul>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。”…”表示除了commit或abort之外的子操作。p表示谓词。</p>
+<p>In terms of <a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a>, monotonic atomic view prohibits:</p>
+<ul>
+<li>G1b (Intermediate Reads): A transaction observes an object (perhaps via a predicate) modified by a transaction which was not that transaction’s final modification of that object. Intuitively, transactions have to <em>finish</em> before we can read them,</li>
+</ul>
+<p>And since monotonic atomic view is strictly stronger than read committed, it also prohibits the ANSI phenomena…</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>Here <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. The notation “…” indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>16Read Committed</title>
+    <url>/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/</url>
+    <content><![CDATA[<h3 id="Read-Committed-读已提交"><a href="#Read-Committed-读已提交" class="headerlink" title="Read Committed     读已提交"></a>Read Committed     读已提交</h3><p>读已提交是这样的一致性模型，它加强了<a href="https://jepsen.io/consistency/models/read-uncommitted">Read uncommitted（读未提交）</a>，防止了脏读：不允许事务观察到未提交事务的写操作。</p>
+<span id="more"></span>
+<p>Read committed is a consistency model which strengthens <a href="https://jepsen.io/consistency/models/read-uncommitted">read uncommitted</a> by preventing <em>dirty reads</em>: transactions are not allowed to observe writes from transactions which do not commit.</p>
+<p>读已提交是一种“事务”模型：操作（通常称为“事务”）可以包括按顺序执行的几个原语子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Read committed is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>Read committed可以是<a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">完全可用</a>的：存在网络分区的情况下，每个节点都可以取得进展。在不牺牲可用性的情况下，还可以通过选择更强的单调原子视图来确保能同时观察到事务的效果. 如果想提高性能从而允许脏读，可以考虑<a href="https://jepsen.io/consistency/models/read-uncommitted">读未提交</a>.</p>
+<p>Read committed can be <a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">totally available</a>: in the presence of network partitions, every node can make progress. Without sacrificing availability, you can also ensure that transactions effects are observed <em>together</em> by choosing the stronger <a href="https://jepsen.io/consistency/models/monotonic-atomic-view">monotonic atomic view</a>. For performance, you may wish to allow dirty reads, and relax to <a href="https://jepsen.io/consistency/models/read-uncommitted">read uncommitted</a>.</p>
+<p>请注意，读已提交没有任何实际时间上的约束。如果进程A完成写操作w，然后进程B开始读操作r，则r不一定保证能观察到w。如果需要实际时间约束的事务模型，可以考虑<a href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>.</p>
+<p>Note that read committed does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，读已提交也不保证单个进程上的多个事务之间的顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, read committed does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<p>类似于<a href="https://jepsen.io/consistency/models/serializable">串行化</a>，读已提交允许重排序。比如，一个读已提交的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>Like <a href="https://jepsen.io/consistency/models/serializable">serializability</a>, read committed allows pathological orderings. For instance, a read commmitted database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a href="https://jepsen.io/consistency/models/read-committed#formally">Formally</a></h4><p><a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999规范</a>通过禁止现象P1来指定读已提交：</p>
+<blockquote>
+<p>P1（“脏读”）：SQL事务T1修改了某行。然后，SQL事务T2在T1执行提交之前读取该行。如果T1随后执行回滚，T2将读取到从未提交过的行，可以认为该行从未存在过。</p>
+</blockquote>
+<p>The <a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999 spec</a> specifies repeatable read by disallowing phenomenon P1:</p>
+<blockquote>
+<p>P1 (“Dirty read”): SQL-transaction T1 modifies a row. SQL-transaction T2 then reads that row before T1 performs a COMMIT. If T1 then performs a ROLLBACK, T2 will have read a row that was never committed and that may thus be considered to have never existed.</p>
+</blockquote>
+<p>然而，正如<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson、Bernstein等人观察到的</a>，ANSI规范允许多种解释，其中一种解释（“异常解释”）仍然允许“可串行化”系统的非串行化历史。相反，我们更喜欢<a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义</a>，它提供了预防性解释的简明定义。在此模型中，读已提交禁止：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+</ul>
+<p>但允许：</p>
+<ul>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。”…”表示除了commit或abort之外的子操作。p表示谓词。</p>
+<p>基于状态的正式定义，请参阅Crooks、Pu、Alvisi和Clement：<a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seing-tr.pdf">眼见为实：以Client为中心的数据库隔离规范</a>。</p>
+<p>However, as <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson, Bernstein, et al observed</a>, the ANSI specification allows multiple intepretations, and one of those interpretations (the “anomaly interpretation) still admits nonserializable histories for “serializable” systems. Instead, we prefer <a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a>, which provides a concise definition of the preventative interpretation. In this model, read committed prohibits:</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>Here <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. The notation “…” indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate.</p>
+<p>For a state-based formalization, see Crooks, Pu, Alvisi, &amp; Clement: <a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seeing-tr.pdf">Seeing is Believing: A Client-Centric Specification of Database Isolation</a>.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>17Read Uncommitted</title>
+    <url>/2022/06/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/17Read%20Uncommitted/</url>
+    <content><![CDATA[<h3 id="Read-Uncommitted-读未提交"><a href="#Read-Uncommitted-读未提交" class="headerlink" title="Read Uncommitted    读未提交"></a>Read Uncommitted    读未提交</h3><p>读未提交是这样的一致性模型，它禁止脏写，即两个事务在提交之前同时修改同一对象。在ANSI SQL规范中，读未提交是默认的，也是最宽松的一致性模型，它允许所有行为。然而，基于Berenson等人的<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">讨论</a>，它实际上禁止了脏写。</p>
+<span id="more"></span>
+<p>Read uncommitted is a consistency model which prohibits <em>dirty writes</em>, where two transactions modify the same object concurrently before committing. In the ANSI SQL specification, read uncommitted is presumed to be the default, most permissive consistency model, allowing all behaviors; however, Berenson et al <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">argued</a> that it should, in fact, prohibit dirty writes.</p>
+<p>读未提交是一种“事务性”模型：操作（通常称为“事务”）可能涉及按顺序执行的几个基本子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Read uncommitted is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>读未提交可以是<a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">完全可用</a>：存在网络分区的情况下，每个节点都可以取得进展。在不牺牲可用性的情况下，还可以通过选择更强的读取已提交来确保事务不会读取未提交状态。</p>
+<p>Read uncommitted can be <a href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">totally available</a>: in the presence of network partitions, every node can make progress. Without sacrificing availability, you can also ensure that transactions do not read uncommitted state by choosing the stronger <a href="https://jepsen.io/consistency/models/read-committed">read committed</a>.</p>
+<p>请注意，读未提交没有任何实际时间上的约束。如果进程A完成写操作w，然后进程B开始读操作r，则r不一定保证能观察到w。如果需要实际时间约束的事务模型，可以考虑<a href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>.</p>
+<p>Note that read uncommitted does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，读未提交也不保证单个进程上的多个事务之间的顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, read uncommitted does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<p>类似于<a href="https://jepsen.io/consistency/models/serializable">串行化</a>，读未提交允许重排序。比如，一个读已提交的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>Like <a href="https://jepsen.io/consistency/models/serializable">serializability</a>, read uncommitted allows pathological orderings. For instance, a read uncommmitted database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a href="https://jepsen.io/consistency/models/read-uncommitted#formally">Formally</a></h4><p><a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999规范</a>中，读未提交的行为基本上没有任何限制。任何奇怪的行为都是允许的。</p>
+<p>然而，正如<a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson、Bernstein等人观察到的</a>，ANSI规范允许多种解释，其中一种解释（“异常解释”）仍然允许“可串行化”系统的非串行化历史。相反，我们更喜欢<a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义</a>，它提供了预防性解释的简明定义。在此模型中，读未提交禁止：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+</ul>
+<p>但允许：</p>
+<ul>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。”…”表示除了commit或abort之外的子操作。p表示谓词。</p>
+<p>基于状态的正式定义，请参阅Crooks、Pu、Alvisi和Clement：<a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seing-tr.pdf">眼见为实：以Client为中心的数据库隔离规范</a>。</p>
+<p>The <a href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999 spec</a> places essentially no constraints on the behavior of read uncommitted. Any and all weird behavior is fair game.</p>
+<p>However, as <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson, Bernstein, et al observed</a>, the ANSI specification allows multiple intepretations, and one of those interpretations (the “anomaly interpretation) still admits nonserializable histories for “serializable” systems. Instead, we prefer <a href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a>, which provides a concise definition of the preventative interpretation. In this model, read uncommitted prohibits:</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>Here <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. The notation “…” indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate.</p>
+<p>For a state-based formalization, see Crooks, Pu, Alvisi, &amp; Clement: <a href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seeing-tr.pdf">Seeing is Believing: A Client-Centric Specification of Database Isolation</a>.</p>
+]]></content>
+      <categories>
+        <category>分布式</category>
+        <category>一致性</category>
+        <category>jepsen</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+      </tags>
+  </entry>
 </search>

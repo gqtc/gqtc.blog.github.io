@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="基本概念系统系统由状态，以及一些能够转换该状态的操作组成。随着系统的运行，它通过一些操作历史（history of operations，个人理解就是一系列操作，以及每个操作后的状态，以及操作的调起和完成时间），从一种状态转换到另一种状态。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="000总结">
+<meta property="og:url" content="http://example.com/2021/12/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/000%E6%80%BB%E7%BB%93/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="基本概念系统系统由状态，以及一些能够转换该状态的操作组成。随着系统的运行，它通过一些操作历史（history of operations，个人理解就是一系列操作，以及每个操作后的状态，以及操作的调起和完成时间），从一种状态转换到另一种状态。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/000%E6%80%BB%E7%BB%93/image-20220309083251705.png">
+<meta property="article:published_time" content="2021-12-10T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-07-02T00:51:18.014Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/000%E6%80%BB%E7%BB%93/image-20220309083251705.png">
+
+<link rel="canonical" href="http://example.com/2021/12/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/000%E6%80%BB%E7%BB%93/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>000总结 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/000%E6%80%BB%E7%BB%93/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          000总结
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-11 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-11T00:00:00+08:00">2021-12-11</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:51:18" itemprop="dateModified" datetime="2022-07-02T08:51:18+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/000%E6%80%BB%E7%BB%93/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/000%E6%80%BB%E7%BB%93/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="基本概念"><a href="#基本概念" class="headerlink" title="基本概念"></a>基本概念</h3><h4 id="系统"><a href="#系统" class="headerlink" title="系统"></a>系统</h4><p>系统由状态，以及一些能够转换该状态的操作组成。随着系统的运行，它通过一些操作历史（history of operations，个人理解就是一系列操作，以及每个操作后的状态，以及操作的调起和完成时间），从一种状态转换到另一种状态。</p>
+<span id="more"></span>
+<h4 id="进程"><a href="#进程" class="headerlink" title="进程"></a>进程</h4><p>进程是一个逻辑上的单线程程序，执行计算和调起操作。</p>
+<h4 id="操作"><a href="#操作" class="headerlink" title="操作"></a>操作</h4><p>操作会引起系统从一个状态到另一个状态的转换。例如，一个单变量系统可能有“read”和“write”这样的操作；计数器可能具有诸如递增、递减和读取之类的操作；SQL存储可能具有诸如selects和updates之类的操作。</p>
+<h4 id="调起时间和完成时间"><a href="#调起时间和完成时间" class="headerlink" title="调起时间和完成时间"></a>调起时间和完成时间</h4><p>操作是需要时间的。比如在多线程系统中，一个函数调用就是一种操作；在分布式系统中，一个操作可能就是发送请求到服务节点，然后收到一个响应；</p>
+<p>每个操作都有一个调起时间，完成时有一个更大的完成时间；这两个时间都由假想的、完全同步的全球可访问的时钟提供。我们认为这些时钟提供的是<font color=red>实际时间顺序（real-time order）的时钟</font>；与之相反的就是只跟踪因果顺序的时钟；</p>
+<h4 id="并发"><a href="#并发" class="headerlink" title="并发"></a>并发</h4><p>因为操作需要耗时，所以两个并发的操作在时间上就有可能重叠。比如操作A和B，A先开始，然后B开始，然后A结束，之后B结束。只要他们在时间上有重叠，那我们说操作A和B是并发的。</p>
+<h4 id="一致性模型"><a href="#一致性模型" class="headerlink" title="一致性模型"></a>一致性模型</h4><p>网络分区是不可避免的，消息总会延迟、丢弃、重发或者乱序。所以我们希望软件能保持某种<font color=red>直观的正确性。</font>但是如何定义正确呢？</p>
+<p>给定一些与<font color=red>操作和状态相关的“规则”</font>，针对系统的操作历史应该始终遵循这些规则。我们称这些规则为“一致性模型”。（一致性模型，就是规则的集合，就是符合规则的操作历史的集合。什么是正确？符合规则就是正确！）</p>
+<p>正式的说法是，<font color=red>一致性模型是所有允许的操作历史的集合。</font>如果运行一个程序，执行了某种操作后得到了某种结果，该操作以及结果在允许的操作历史集合中，那就说这种操作是一致的（满足这种一致性模型的）。某个操作历史不在一致性模型中，那就是这种操作历史是不一致的（不满足这种一致性模型）。如果每个可能的执行都在允许的范围内，则说系统满足这种一致性模型。我们当然是希望真实系统满足“直观正确的”一致性模型，这样我们就可以编写可预测的程序。<font color=red>比如当我们说一个操作历史不符合序列化一致性时，就表示该操作历史不是序列性模型的历史集合中的成员；</font></p>
+<p>正式的说法就是：<font color=red>我们把更严格，集合更小的一致性模型成为更强的一致性模型；而集合更大，要求更宽松的一致性模型称为较弱的一致性模型；</font></p>
+<h4 id="total-order"><a href="#total-order" class="headerlink" title="total order !!!"></a>total order !!!</h4><p>所有操作都能按照某种顺序排序。这个顺序不一定就是实际时间（real-time）上的顺序，只要有顺序就行。</p>
+<blockquote>
+<p>假设A是一个集合 {1,2,3} ；R是集合A上的关系，例如{&lt;1,1&gt;,&lt;2,2&gt;,&lt;3,3&gt;,&lt;1,2&gt;,&lt;1,3&gt;,&lt;2,3&gt;}</p>
+<ul>
+<li>自反性：任取一个A中的元素x，如果都有&lt;x,x&gt;在R中，那么R是自反的。</li>
+<li>对称性：任取一个A中的元素x,y，如果&lt;x,y&gt; 在关系R上,那么&lt;y,x&gt; 也在关系R上，那么R是对称的。</li>
+<li>反对称性：任取一个A中的元素x,y(x!&#x3D;y)，如果&lt;x,y&gt; 在关系R上,那么&lt;y,x&gt; 不在关系R上，那么R是反对称的。</li>
+<li>传递性：任取一个A中的元素x,y,z，如果&lt;x,y&gt;,&lt;y,z&gt; 在关系R上，那么 &lt;x,z&gt; 也在关系R上，那么R是对称的。</li>
+</ul>
+<p>偏序： 设R是非空集合A上的关系，如果R是自反的，反对称的，和传递的，则称R是A上的偏序关系。</p>
+<p>全序：如果R是A上的偏序关系，那么对于任意的A集合上的 x,y，都有 x &lt;&#x3D; y，或者 y &lt;&#x3D; x，二者必居其一，那么则称R是A上的全序关系。</p>
+<p>偏序关系就是指存在“序”这个概念，满足自反性、反对称性和传递性。但是并不是任何两个元素之间都有这个序的先后关系。比如集合之间的包含关系，就是一个偏序关系。但并不是任何两个集合之间都存在包含关系。</p>
+<p align=right>以上内容来自于：https://www.zhihu.com/question/36758436/answer/680927456</p>
+</blockquote>
+<p>因此，total order应该就是说：操作历史集合中的操作，都是可以排序的，而且满足自反、反对称和传递的特点。</p>
+<hr>
+<h4 id="real-time"><a href="#real-time" class="headerlink" title="real-time !!!"></a>real-time !!!</h4><p>上面介绍调起时间和完成时间时：每个操作都有一个调起时间，完成时有一个更大的完成时间；这两个时间都由假想的、完全同步的全球可访问的时钟提供。我们认为这些时钟提供的是<font color=red>实际时间顺序（real-time order）的时钟</font>；与之相反的就是只跟踪因果顺序的时钟；</p>
+<p>一种一致性模型如果需要满足real time的要求，那它肯定也满足total order。</p>
+<hr>
+<h3 id="一致性的强弱"><a href="#一致性的强弱" class="headerlink" title="一致性的强弱"></a>一致性的强弱</h3><p>下面的图（改编自 <a target="_blank" rel="noopener" href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Bailis, Davidson, Fekete et al</a> 和<a target="_blank" rel="noopener" href="https://arxiv.org/pdf/1512.00168.pdf">Viotti &amp; Vukolic</a>的论文）展示了一致性模型之间的关系。其中的箭头表示了一致性模型之间的包含关系。比如严格序列化（Strict serializable）一致性意味着它既满足序列化（serializability）一致性，也满足线性（linearizability）一致性。图中的颜色表示在异步网络环境下的可用性。</p>
+<p><img src="/img/000%E6%80%BB%E7%BB%93/image-20220309083251705.png" alt="image-20220309083251705"></p>
+<p>上图展示了按层次结构排列的一致性模型。<font color=red>最强模型是严格序列化（Strict serializable），它统一了两个不相交的一致性模型族：多对象事务上的一致性模型族和单对象操作的一致性模型族。</font>当我们说模型x意味着y时，我们的意思是，对于x中约定的操作历史，也肯定满足y的规则约束，所以x比y“强”。</p>
+<p>在多对象这一边，强序列化意味着序列化；序列化又意味着可重复读（repeatable read）和快照隔离（snapshot isolation）；而可重复读和快照隔离又都意味着单调原子视图（monotonic atomic view）。可重复读还意味着cursor stability；cursor stability和单调原子视图又同时意味着read committed；read committed意味着read uncommitted；</p>
+<p>在单对象这一边，强序列化意味着线性一致性；线性一致性又意味着顺序（sequential）一致性；顺序一致性意味着因果（causal）一致性；因果一致性意味着writes follow reads和PRAM；PRAM意味着单调读、单调写和read your writes；</p>
+<p>可用性方面：</p>
+<ul>
+<li>粉红色的Unavailable：表示发生网络错误时是不可用的。一些或者所有节点必须暂停操作，以便保证安全性；</li>
+<li>橙色的Sticky可用：表示只要client只与相同节点通信，那在无故障节点上是可用的；</li>
+<li>蓝色的完全可用：表示即使网络瘫痪了，在非故障节点上也是可用的；</li>
+</ul>
+<hr>
+<h3 id="一致性带来的成本"><a href="#一致性带来的成本" class="headerlink" title="一致性带来的成本"></a>一致性带来的成本</h3><p><a target="_blank" rel="noopener" href="http://lpd.epfl.ch/sgilbert/pubs/BrewersConjecture-SigAct.pdf">CAP定理</a>表示对于一致性，可用性和分区容错性三者而言，任何系统最多能保证其中两个属性。虽然Eric Brewer的CAP是用非正式术语描述的，但是CAP定理有着非常精确的定义：</p>
+<ol>
+<li><font color=red>一致性这里就是线性一致性</font>，所以<font color=red>CAP定理适用于所有的线性一致性系统；</font></li>
+<li>可用性表示对于非失败节点发起的请求必须能成功完成。因为网络分区的时间可能持续任意长的时间，这就表示节点不能简单地将响应延迟到分区修复之后；</li>
+<li>分区容错性意味着允许发生网络分区。在网络正常的情况下提供线性一致性和可用性是很容易的，但是<font color=red>当网络不可靠时，同时提供这两种特性是不可能的。</font>因此如果网络不是完全可靠的（实际上它就是不可靠的），你就不能选择CA，所以构建在商用硬件之上的实际分布式系统中，最多可以保证AP或者CP。</li>
+</ol>
+<p>你可能会有这样的疑问：线性一致性不是一致性模型的唯一模型，我可以通过提供顺序一致性、串行一致性或者快照隔离，来绕过CAP定理。但是有其他证据表明，你也无法构建具有顺序一致性、序列一致性、可重复读、分区隔离，cursor stability等，或是更强的一致性模型的完全可用系统。在Peter Bailis的论文<a target="_blank" rel="noopener" href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Highly Available Transactions paper</a>中指出，上图中基于红色区域的一致性模型的系统时不可能完全可用的。</p>
+<p>更强的一致性模型意味着更多的协调（更多的消息交互），以确保这些操作按照正确的顺序进行。这不仅造成了<font color=red>可用性较低，而且还暴露出更高的延迟。</font></p>
+<p>我们采用的是混合的数据存储系统或者数据库，融合不同的一致性模型来实现冗余、可用性、性能和安全性目标。<font color=red>在保证可用性和性能方面，尽可能采用弱一致性模型，如果算法需要有严格的操作顺序要求，则采用强一致性模型。</font></p>
+<hr>
+<h3 id="一致性"><a href="#一致性" class="headerlink" title="一致性"></a>一致性</h3><h4 id="Strict-Serializability-严格序列化"><a href="#Strict-Serializability-严格序列化" class="headerlink" title="Strict Serializability     严格序列化"></a>Strict Serializability     严格序列化</h4><p>不那么正式地说法，严格序列化意味着操作以跟这些操作的实时顺序（real-time ordering，即由上面提到的全局时钟保证的）一致的顺序进行执行。比如，如果操作A的完成时间比B的开始时间要早，那在序列化的顺序中，A要出现B的前面。</p>
+<p>特点：</p>
+<ul>
+<li>total order和real time：具有实时顺序的序列化系统。</li>
+<li>“事务性”模型：操作（通常称为“事务”）包括几个按顺序执行的子操作。严格序列化保证操作（事务）以原子方式进行：即事务的子操作不会与其他事务的子操作交叉。</li>
+<li>“多对象”模型：操作针对的是系统中的多个对象。</li>
+<li>在网络分区的情况下，不是完全或粘性（sticky）可用的；即网络分区时，部分或所有节点将无法继续执行操作。</li>
+</ul>
+<p>严格序列化意味着序列化（serializability）和线性化（linearizability）。可以认为严格序列化，是在保证事务性多对象操作的序列化顺序的基础上，增加了线性化的实时顺序约束；或者可以这样认为，严格序列化的数据库就是把整个数据库视为一个对象的线性化系统。</p>
+<hr>
+<h4 id="单对象操作一致性"><a href="#单对象操作一致性" class="headerlink" title="单对象操作一致性"></a>单对象操作一致性</h4><h5 id="Linearizability-线性一致性"><a href="#Linearizability-线性一致性" class="headerlink" title="Linearizability 线性一致性"></a>Linearizability 线性一致性</h5><p>假设有一个所有进程都可以访问的全局状态，针对这个全局状态的操作都是<font color=red>原子</font>的，而不是相互交织的，这就得到了线性一致性的模型：每个操作都会在其调起和完成之间的某个时刻<strong>原子地</strong>生效。</p>
+<p>线性一致性有个很重要的一个约束：一旦一个操作完成了，那所有人必须都能看到该操作的结果（或者是更加靠后的结果）。因为操作起作用的时间，肯定不会晚于其结束时间，而该操作之后（即调起时间晚于该操作完成时间的操作）操作，它发生作用的时间肯定要晚于其调起的时间，进而肯定要晚于前一个操作的结束时间。举例而言：如果一个操作成功写入了<code>b</code>，那该写操作之后的读操作，必须能读到<code>b</code>（或者如果同时有其他写操作的话，能读到更新的值）。</p>
+<p>线性一致性在时间上的约束，也保证所有修改后的结果，都能在操作完成之后的其他读操作是可见的。所以，线性一致性不允许出现读取到旧数据的情况；也不允许出现非单调读的现象——即先读到新值，然后又读到了旧值。</p>
+<p>特点：</p>
+<ul>
+<li>最强的单对象一致性模型之一；</li>
+<li>满足<font color=red>total order和real time</font>，即每个操作都是<font color=red>原子的，按照这些操作的实时顺序发生的</font>；</li>
+<li>在网络分区的情况下，不是完全或粘性（sticky）可用的；即网络分区时，部分或所有节点将无法继续执行操作。</li>
+</ul>
+<hr>
+<h5 id="sequential-顺序一致性"><a href="#sequential-顺序一致性" class="headerlink" title="sequential 顺序一致性"></a>sequential 顺序一致性</h5><p>直白的说，允许操作在时间上不那么严格，即操作可以在调用之前或完成之后生效，但保留了进程内部的操作必须按该进程规定的顺序进行的约束，这就是比线性一致性稍弱的一致性模型：顺序一致性。</p>
+<p>特点：</p>
+<ul>
+<li>total order，并且事件顺序与每个进程内的操作顺序一致（即保证总顺序中，<font color=red>单个进程内的操作还是按real-time的顺序进行的</font>）。</li>
+<li>在有网络分区的情况下不是完全可用或粘性可用的；即网络发生分区时，若干或者所有节点都无法再继续取得进展；</li>
+<li>可以读取过期的状态，但一旦进程A观察到进程B的某些操作，它就不可能再观察到B之前的状态。这种约束与total order属性相结合，使得顺序一致性也是一种强一致性模型。</li>
+</ul>
+<hr>
+<h5 id="Causal-Consistency-因果一致性"><a href="#Causal-Consistency-因果一致性" class="headerlink" title="Causal Consistency   因果一致性"></a>Causal Consistency   因果一致性</h5><p>不强制一个进程内的所有操作都是按序执行的，而只要求具有因果依赖关系的操作必须按序。这种一致性模型要比约束同一进程内所有操作必须按序的一致性稍弱，同一进程内没有因果依赖的操作可以以任意顺序出现。</p>
+<p>特点：</p>
+<ul>
+<li><p>因果相关的操作应该<font color=red>以相同的顺序被所有进程观察到</font>，但是每个进程对于因果不相关的操作的顺序可能会有不同的看法。</p>
+</li>
+<li><p><font color=red>粘性可用</font>：发生网络分区时，只要CLIENT始终访问的是同一个无故障节点，那该节点上肯定会有所进展。</p>
+</li>
+<li><p>不是total order。</p>
+</li>
+<li><p>因果一致性首次来源于Lamport对<code>happens-before</code>关系的定义，它通过将一个操作与同一进程之前的操作，以及其他进程上的相关操作（通过消息交互使得操作的结果可见）关联起来，捕捉到了潜在因果关系的概念。</p>
+</li>
+</ul>
+<hr>
+<h5 id="PRAM-流水线随机访问存储系统"><a href="#PRAM-流水线随机访问存储系统" class="headerlink" title="PRAM    流水线随机访问存储系统"></a>PRAM    流水线随机访问存储系统</h5><p>PRAM（Pipeline Random Access Memory）这个概念来源于Lipton &amp; Sandberg的论文《PRAM: A Scalable Shared Memory》，这种一致性模型的约束是：<font color=red>由单个进程进行的多个写操作，会按照该进程执行它们的顺序被其他所有进程观察到；然而多个进程的写操作则可能以不同的顺序被外部观察到。</font></p>
+<p>特点：</p>
+<ul>
+<li>PRAM实际上等同于read your writes，单调写和单调读；</li>
+<li>粘性可用：在网络分区的情况下，只要client始终访问的是同一个节点，那所有进程都可以取得进展。</li>
+<li>无total order;</li>
+</ul>
+<hr>
+<h5 id="Read-Your-Writes-读你的写"><a href="#Read-Your-Writes-读你的写" class="headerlink" title="Read Your Writes     读你的写"></a>Read Your Writes     读你的写</h5><p>read your writes，或者叫read my writes保证这样的规则：如果一个进程执行了写操作w，然后该进程又执行了读操作r，那r必须能够看到w的结果；</p>
+<p>注意：read your writes不是应用于不同进程上的规则。比如它不保证，如果进程1写成功了，那进程2一定能观察到写操作的结果；</p>
+<p>特点：</p>
+<ul>
+<li>粘性可用：如果发生了网络分区，那只要CLIENT始终访问的是同一个节点，那该节点依然可以取得进展；</li>
+<li>Viotti 和 Vukolić在论文中定义了read your writes：如果对于特定进程而言，其执行的写操作在读操作之前完成，那写操作的结果必须是对该读操作而言是可见的。换句话说，会话顺序（仅限于相同进程中的先写后读），必须是可见顺序的子集；</li>
+</ul>
+<hr>
+<h5 id="Writes-Follow-Reads-读后写"><a href="#Writes-Follow-Reads-读后写" class="headerlink" title="Writes Follow Reads     读后写"></a>Writes Follow Reads     读后写</h5><p>writes follow reads：也叫做会话因果关系，保证这样的规则：如果一个进程读到了v，v来自于写操作w1，然后该进程执行写操作w2，那w2必须在w1之后可见。Once you’ve read something, you can’t change that read’s past.</p>
+<p>writes follow reads是完全可用的，即使发生网络分区，那每个节点依然可以取得进展；</p>
+<hr>
+<h5 id="Monotonic-Reads-单调读"><a href="#Monotonic-Reads-单调读" class="headerlink" title="Monotonic Reads 单调读"></a>Monotonic Reads 单调读</h5><p>单调读的规则：如果一个进程先执行读操作r1，然后是r2，那r2读取到的值，不能是r1所反映出的写操作之前的状态；</p>
+<p>直白点说就是读操作不能倒退：对于写操作w，以及读操作r1和r2，r1在r2之前执行，并且都是由相同的进程执行的，那如果r1见到了w的结果，那r2也必须能见到w的结果；</p>
+<p>特点：</p>
+<ul>
+<li>单调读的规则适用于相同进程的读操作，而不适用于不同进程的操作；</li>
+<li>完全可用的：即使发生了网络分区，那所有节点还是可以取得进展；</li>
+</ul>
+<hr>
+<h5 id="Monotonic-Writes-单调写"><a href="#Monotonic-Writes-单调写" class="headerlink" title="Monotonic Writes 单调写"></a>Monotonic Writes 单调写</h5><p>单调写保证这样的场景：一个进程先进行了写操作w1，然后是写操作w2，那其他所有进程都是先观察到w1，然后是w2；</p>
+<p>特点：</p>
+<ul>
+<li>只适用于相同进程的写操作，而非不同进程的写操作；</li>
+<li>完全可用：即使发生了网络分区，所有节点都可以取得进展；</li>
+</ul>
+<hr>
+<h4 id="多对象事务一致性"><a href="#多对象事务一致性" class="headerlink" title="多对象事务一致性"></a>多对象事务一致性</h4><p>下面的一致性模型都是“事务”一致性模型：操作（通常称为“事务”）包括按顺序执行的几个基本子操作。也都是“多对象”一致性模型：操作可以作用于系统中的多个对象上。</p>
+<p><a target="_blank" rel="noopener" href="http://web.cecs.pdx.edu/~len/sql1999.pdf">ANSI SQL 1999规范</a>定义的隔离异常现象有：</p>
+<blockquote>
+<p>P1（“脏读”）：SQL事务T1修改了某行。然后，SQL事务T2在T1执行提交之前读取该行。如果T1随后执行回滚，T2将读取到从未提交过的行，可以认为该行从未存在过。</p>
+<p>P2（“不可重复读取”）：SQL事务T1读取一行。然后，SQL事务T2修改或删除该行并执行提交。如果T1随后尝试重新读取该行，它可能会读到修改后的值或发现该行已被删除。</p>
+<p>P3（“幻读”）：事务T1读取满足某些搜索条件的行。事务T2执行SQL语句，这些语句会生成满足事务T1使用的搜索条件的一行或多行。如果事务T1随后以相同的搜索条件重复再次读取，它将获得不同的行集合。</p>
+</blockquote>
+<p>此外，还有脏写：</p>
+<blockquote>
+<p>脏写：假设T1修改了x，而且T2在T1提交或者回滚之前也修改了x，那如果T1或T1回滚的话，x的最终的值是未知的。</p>
+<p>Dirty Write—Suppose T1 modifies x and T2 further modifies x before T1 commits or<br>aborts. If either T1 or T2 aborts, it is unclear what the real value of x should be.</p>
+</blockquote>
+<hr>
+<h5 id="Serializability-序列化"><a href="#Serializability-序列化" class="headerlink" title="Serializability     序列化"></a>Serializability     序列化</h5><p><font color=red>如果操作历史相当于以某种单一原子顺序发生的，但不约束调用和完成时间，这就是所谓的序列化。</font>这种一致性可能比你预期的强很多，也弱很多。”弱”体现在，它对real-time没有限制；”强”体现在，它排除了很多操作历史，因为它需要有<font color=red>线性顺序：total order</font>：</p>
+<ul>
+<li>它在real-time上并无约束，即使在单进程上也没有。如果进程A完成了写操作w，然后进程B开始读操作r，那r不一定读到w的结果。</li>
+<li>它对total order有强约束，但它允许乱序。比如，一个序列化的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>特点：</p>
+<ul>
+<li>“事务”一致性模型：序列化保证事务以原子的方式进行：事务的子操作不会与其他事务的子操作交错执行。</li>
+<li>“多对象”一致性模型：实际上，序列化不仅作用于事务中涉及的特定对象，而且可以把整个系统当成一个整体—-操作可以作用于谓词之上（<em>比如where</em>），比如所有的cat。</li>
+<li>序列化无法达到完全或者粘性可用。如果发生了网络分区，那部分或所有节点将无法继续执行操作。</li>
+<li>序列化意味着可重复读，快照隔离等。</li>
+</ul>
+<p>隔离级别在SERIALIZABLE时，并行执行的事务保证是串行化的。串行执行就是下一个事务在上一个事务执行完成之后才能执行。如果用禁止的异常情况来定义其隔离级别：序列化不会出现P3（幻读）现象：</p>
+<blockquote>
+<p>P3（“幻读”）：事务T1读取满足某些搜索条件的行。事务T2执行SQL语句，这些语句会生成满足事务T1使用的搜索条件的一行或多行。如果事务T1随后以相同的搜索条件重复再次读取，它将获得不同的行集合。</p>
+</blockquote>
+<hr>
+<h5 id="Repeatable-Read"><a href="#Repeatable-Read" class="headerlink" title="Repeatable Read"></a>Repeatable Read</h5><p>可重复读类似于序列化，但是与之不同的是，它允许幻读：事务T1使用谓词进行读取，比如“所有名为Dikembe”的人员集合，另一个事务T2在T1提交之前，新增了名为”Dikembe”的人员信息。虽然单个对象在读取时是稳定的，但谓词本身可能不是。</p>
+<p>特点：</p>
+<ul>
+<li>在网络分区的场景下不是完全可用；在存在网络分区的情况下，一些或所有节点可能无法取得进展。</li>
+<li>可重复读取意味着<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/cursor-stability">游标稳定性</a>，<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">读已提交</a>等。</li>
+<li>没有real-time的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。</li>
+<li>也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>像序列化一样，可重复读允许重排序。比如，一个可重复读的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>可重复读不会出现P2（不可重复读取）现象：：</p>
+<blockquote>
+<p>P2（“不可重复读取”）：SQL事务T1读取一行。然后，SQL事务T2修改或删除该行并执行提交。如果T1随后尝试重新读取该行，它可能会读到修改后的值或发现该行已被删除。</p>
+</blockquote>
+<hr>
+<h5 id="Snapshot-Isolation-快照隔离"><a href="#Snapshot-Isolation-快照隔离" class="headerlink" title="Snapshot Isolation     快照隔离"></a>Snapshot Isolation     快照隔离</h5><p>在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对<em>x</em>的写入，则T1必须中止。</p>
+<p>特点：</p>
+<ul>
+<li>不能完全可用；存在网络分区的情况下，一些或所有节点可能无法取得进展。</li>
+<li>快照隔离意味着读已提交。但是它没有任何实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。</li>
+<li>快照隔离也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。</li>
+<li>快照隔离允许重排序。比如，一个快照隔离的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>Berenson、Bernstein等<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">首次定义的快照隔离</a>：</p>
+<blockquote>
+<p>…将事务开始读取已提交的数据快照中的数据时的时间戳，作为开始时间戳。此时间戳可以是事务首次读取数据之前的任何时间。只要自开始时间戳以来的快照数据是可维护的，那运行在快照隔离中的事务的读操作将永远不会被阻塞。事务的写操作（更新、插入和删除）也会反映到快照中，如果事务再次访问（读取或更新）数据，则将再次读取该快照。开始时间戳之后的其他事务的更新操作，对于本事务是不可见的。</p>
+<p>当事务T1准备提交时，它将获得一个提交时间戳，该时间戳将大于任何现有的开始时间戳或提交时间戳。只有不存在符合下面条件的事务T2的情况下，T1才能提交成功：T2的提交时间戳在T1执行期间，即[开始时间戳，提交时间戳]期间，并且T2和T1对同一份数据进行了写操作。如果存在这样的T2，那T1将会中止。这种被称为First-committer-wins的特性，防止了更新丢失的现象（现象P4）。T1提交后，其更新对于开始时间戳大于T1提交时间戳的所有事物都可见了。</p>
+</blockquote>
+<hr>
+<h5 id="Cursor-Stability-游标稳定性"><a href="#Cursor-Stability-游标稳定性" class="headerlink" title="Cursor Stability     游标稳定性"></a>Cursor Stability     游标稳定性</h5><p>游标稳定性是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标。当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。</p>
+<p>游标稳定性可以防止更新丢失，即事务T1读取、修改和写回对象x，但另一个事务T2在T1读取x后更新x，这就导致T2的更新丢失了。</p>
+<p>特点：</p>
+<ul>
+<li>不是完全可用的；在网络分区的情况下，一些或所有节点可能无法取得进展。</li>
+<li>游标稳定性没有任何的real-time上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。</li>
+<li>游标稳定性也不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+</ul>
+<p>游标稳定性要强于读已提交，所以它禁止ANSI定义的脏写和脏读，但是允许不可重复读和幻读。</p>
+<hr>
+<h5 id="Monotonic-Atomic-View-单调原子视图"><a href="#Monotonic-Atomic-View-单调原子视图" class="headerlink" title="Monotonic Atomic View     单调原子视图"></a>Monotonic Atomic View     单调原子视图</h5><p>单调原子视图比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。</p>
+<p>特点：</p>
+<ul>
+<li>完全可用：在存在网络分区的情况下，每个节点都可以取得进展。</li>
+<li>没有real-time的约束。如果进程A完成写操作w，进程B开始读操作r，r不一定保证能看到w的结果。</li>
+<li>不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>类似于<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/serializable">串行化</a>，单调原子视图允许重排序。比如，一个单调原子视图的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>单调原子视图是在Bailis、Davidson、Fekete等人在<a target="_blank" rel="noopener" href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">《高可用交易：优点和局限性》</a>中提出的：</p>
+<blockquote>
+<p>在MAV（Monotonic Atomic View）下，一旦一个事务Ti的一些操作结果被另一个事务Tj观察到，此后，Ti的所有操作结果都能被Tj观察到。也就是说，如果事务Tj读取事务Ti写入的对象的某个版本，则Tj稍后读取的对象无法返回Ti应用了更高版本的值。</p>
+</blockquote>
+<p>由于单调原子视图强于读已提交，因此它禁止了脏读和脏写，但是允许出现不可重复度和幻读。</p>
+<hr>
+<h5 id="Read-Committed-读已提交"><a href="#Read-Committed-读已提交" class="headerlink" title="Read Committed     读已提交"></a>Read Committed     读已提交</h5><p>读已提交加强了<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-uncommitted">Read uncommitted（读未提交）</a>，防止了脏读：不允许事务观察到未提交事务的写操作。</p>
+<p>特点：</p>
+<ul>
+<li>完全可用的：存在网络分区的情况下，每个节点都可以取得进展。；</li>
+<li>读已提交没有任何real-time上的约束。如果进程A完成写操作w，然后进程B开始读操作r，则r不一定保证能观察到w。</li>
+<li>读已提交也不保证单个进程上的多个事务之间的顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>类似于串行化，读已提交允许重排序。比如，一个读已提交的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+<p>读已提交不会出现P1（脏读）现象：</p>
+<blockquote>
+<p>P1（“脏读”）：SQL事务T1修改了某行。然后，SQL事务T2在T1执行提交之前读取该行。如果T1随后执行回滚，T2将读取到从未提交过的行，可以认为该行从未存在过。</p>
+</blockquote>
+<hr>
+<h5 id="Read-Uncommitted-读未提交"><a href="#Read-Uncommitted-读未提交" class="headerlink" title="Read Uncommitted    读未提交"></a>Read Uncommitted    读未提交</h5><p>读未提交是这样的一致性模型，它禁止脏写，即两个事务在提交之前同时修改同一对象。</p>
+<p>特点：</p>
+<ul>
+<li>完全可用：存在网络分区的情况下，每个节点都可以取得进展。</li>
+<li>读未提交没有任何实际时间上的约束。如果进程A完成写操作w，然后进程B开始读操作r，则r不一定保证能观察到w。</li>
+<li>也不保证单个进程上的多个事务之间的顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</li>
+<li>类似于<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/serializable">串行化</a>，读未提交允许重排序。比如，一个读已提交的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/" rel="prev" title="【转载】单节点变更的问题和工程实践">
+      <i class="fa fa-chevron-left"></i> 【转载】单节点变更的问题和工程实践
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/" rel="next" title="raft大论文翻译-04-1集群节点变更">
+      raft大论文翻译-04-1集群节点变更 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9F%BA%E6%9C%AC%E6%A6%82%E5%BF%B5"><span class="nav-number">1.</span> <span class="nav-text">基本概念</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%B3%BB%E7%BB%9F"><span class="nav-number">1.1.</span> <span class="nav-text">系统</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%9B%E7%A8%8B"><span class="nav-number">1.2.</span> <span class="nav-text">进程</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%93%8D%E4%BD%9C"><span class="nav-number">1.3.</span> <span class="nav-text">操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%B0%83%E8%B5%B7%E6%97%B6%E9%97%B4%E5%92%8C%E5%AE%8C%E6%88%90%E6%97%B6%E9%97%B4"><span class="nav-number">1.4.</span> <span class="nav-text">调起时间和完成时间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%B9%B6%E5%8F%91"><span class="nav-number">1.5.</span> <span class="nav-text">并发</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%B8%80%E8%87%B4%E6%80%A7%E6%A8%A1%E5%9E%8B"><span class="nav-number">1.6.</span> <span class="nav-text">一致性模型</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#total-order"><span class="nav-number">1.7.</span> <span class="nav-text">total order !!!</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#real-time"><span class="nav-number">1.8.</span> <span class="nav-text">real-time !!!</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E8%87%B4%E6%80%A7%E7%9A%84%E5%BC%BA%E5%BC%B1"><span class="nav-number">2.</span> <span class="nav-text">一致性的强弱</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E8%87%B4%E6%80%A7%E5%B8%A6%E6%9D%A5%E7%9A%84%E6%88%90%E6%9C%AC"><span class="nav-number">3.</span> <span class="nav-text">一致性带来的成本</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.</span> <span class="nav-text">一致性</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Strict-Serializability-%E4%B8%A5%E6%A0%BC%E5%BA%8F%E5%88%97%E5%8C%96"><span class="nav-number">4.1.</span> <span class="nav-text">Strict Serializability     严格序列化</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8D%95%E5%AF%B9%E8%B1%A1%E6%93%8D%E4%BD%9C%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.2.</span> <span class="nav-text">单对象操作一致性</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#Linearizability-%E7%BA%BF%E6%80%A7%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.2.1.</span> <span class="nav-text">Linearizability 线性一致性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#sequential-%E9%A1%BA%E5%BA%8F%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.2.2.</span> <span class="nav-text">sequential 顺序一致性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Causal-Consistency-%E5%9B%A0%E6%9E%9C%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.2.3.</span> <span class="nav-text">Causal Consistency   因果一致性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#PRAM-%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%9A%8F%E6%9C%BA%E8%AE%BF%E9%97%AE%E5%AD%98%E5%82%A8%E7%B3%BB%E7%BB%9F"><span class="nav-number">4.2.4.</span> <span class="nav-text">PRAM    流水线随机访问存储系统</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Read-Your-Writes-%E8%AF%BB%E4%BD%A0%E7%9A%84%E5%86%99"><span class="nav-number">4.2.5.</span> <span class="nav-text">Read Your Writes     读你的写</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Writes-Follow-Reads-%E8%AF%BB%E5%90%8E%E5%86%99"><span class="nav-number">4.2.6.</span> <span class="nav-text">Writes Follow Reads     读后写</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Monotonic-Reads-%E5%8D%95%E8%B0%83%E8%AF%BB"><span class="nav-number">4.2.7.</span> <span class="nav-text">Monotonic Reads 单调读</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Monotonic-Writes-%E5%8D%95%E8%B0%83%E5%86%99"><span class="nav-number">4.2.8.</span> <span class="nav-text">Monotonic Writes 单调写</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%9A%E5%AF%B9%E8%B1%A1%E4%BA%8B%E5%8A%A1%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.3.</span> <span class="nav-text">多对象事务一致性</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#Serializability-%E5%BA%8F%E5%88%97%E5%8C%96"><span class="nav-number">4.3.1.</span> <span class="nav-text">Serializability     序列化</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Repeatable-Read"><span class="nav-number">4.3.2.</span> <span class="nav-text">Repeatable Read</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Snapshot-Isolation-%E5%BF%AB%E7%85%A7%E9%9A%94%E7%A6%BB"><span class="nav-number">4.3.3.</span> <span class="nav-text">Snapshot Isolation     快照隔离</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Cursor-Stability-%E6%B8%B8%E6%A0%87%E7%A8%B3%E5%AE%9A%E6%80%A7"><span class="nav-number">4.3.4.</span> <span class="nav-text">Cursor Stability     游标稳定性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Monotonic-Atomic-View-%E5%8D%95%E8%B0%83%E5%8E%9F%E5%AD%90%E8%A7%86%E5%9B%BE"><span class="nav-number">4.3.5.</span> <span class="nav-text">Monotonic Atomic View     单调原子视图</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Read-Committed-%E8%AF%BB%E5%B7%B2%E6%8F%90%E4%BA%A4"><span class="nav-number">4.3.6.</span> <span class="nav-text">Read Committed     读已提交</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Read-Uncommitted-%E8%AF%BB%E6%9C%AA%E6%8F%90%E4%BA%A4"><span class="nav-number">4.3.7.</span> <span class="nav-text">Read Uncommitted    读未提交</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">46</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

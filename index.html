@@ -180,6 +180,109 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/17Read%20Uncommitted/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/06/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/17Read%20Uncommitted/" class="post-title-link" itemprop="url">17Read Uncommitted</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-06-25 00:00:00" itemprop="dateCreated datePublished" datetime="2022-06-25T00:00:00+08:00">2022-06-25</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:49:52" itemprop="dateModified" datetime="2022-07-02T08:49:52+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/06/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/17Read%20Uncommitted/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/06/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/17Read%20Uncommitted/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="Read-Uncommitted-读未提交"><a href="#Read-Uncommitted-读未提交" class="headerlink" title="Read Uncommitted    读未提交"></a>Read Uncommitted    读未提交</h3><p>读未提交是这样的一致性模型，它禁止脏写，即两个事务在提交之前同时修改同一对象。在ANSI SQL规范中，读未提交是默认的，也是最宽松的一致性模型，它允许所有行为。然而，基于Berenson等人的<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">讨论</a>，它实际上禁止了脏写。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/06/25/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/17Read%20Uncommitted/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/24/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/%E8%AE%BA%E6%96%87/Time,Clocks,and%20the%20Ordering%20of%20Events%20in%20a%20Distributed%20System/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -261,6 +364,418 @@
           <!--noindex-->
             <div class="post-button">
               <a class="btn" href="/2022/06/24/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/%E8%AE%BA%E6%96%87/Time,Clocks,and%20the%20Ordering%20of%20Events%20in%20a%20Distributed%20System/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/" class="post-title-link" itemprop="url">16Read Committed</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-06-15 00:00:00" itemprop="dateCreated datePublished" datetime="2022-06-15T00:00:00+08:00">2022-06-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:49:56" itemprop="dateModified" datetime="2022-07-02T08:49:56+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="Read-Committed-读已提交"><a href="#Read-Committed-读已提交" class="headerlink" title="Read Committed     读已提交"></a>Read Committed     读已提交</h3><p>读已提交是这样的一致性模型，它加强了<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-uncommitted">Read uncommitted（读未提交）</a>，防止了脏读：不允许事务观察到未提交事务的写操作。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/" class="post-title-link" itemprop="url">15Monotonic Atomic View</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-06-11 00:00:00" itemprop="dateCreated datePublished" datetime="2022-06-11T00:00:00+08:00">2022-06-11</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:51:09" itemprop="dateModified" datetime="2022-07-02T08:51:09+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="Monotonic-Atomic-View-单调原子视图"><a href="#Monotonic-Atomic-View-单调原子视图" class="headerlink" title="Monotonic Atomic View     单调原子视图"></a>Monotonic Atomic View     单调原子视图</h3><p>单调原子视图是一种一致性模型，它比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/" class="post-title-link" itemprop="url">14Cursor Stability</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-06-02 00:00:00" itemprop="dateCreated datePublished" datetime="2022-06-02T00:00:00+08:00">2022-06-02</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:52:21" itemprop="dateModified" datetime="2022-07-02T08:52:21+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="Cursor-Stability"><a href="#Cursor-Stability" class="headerlink" title="Cursor Stability"></a>Cursor Stability</h3><p>游标稳定性是一种一致性模型，它是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标，当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/" class="post-title-link" itemprop="url">13Snapshot Isolation</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-29 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-29T00:00:00+08:00">2022-05-29</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:52:18" itemprop="dateModified" datetime="2022-07-02T08:52:18+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="Snapshot-Isolation-快照隔离"><a href="#Snapshot-Isolation-快照隔离" class="headerlink" title="Snapshot Isolation     快照隔离"></a>Snapshot Isolation     快照隔离</h3><p>在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对<em>x</em>的写入，则T1必须中止。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -387,7 +902,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/27/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/12Repeatable%20Read/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -401,7 +916,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/" class="post-title-link" itemprop="url">etcd_raft源码解析-15Ready的处理</a>
+            <a href="/2022/05/27/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/12Repeatable%20Read/" class="post-title-link" itemprop="url">12Repeatable Read</a>
         </h2>
 
         <div class="post-meta">
@@ -411,14 +926,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2022-05-16 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-16T00:00:00+08:00">2022-05-16</time>
+              <time title="创建时间：2022-05-27 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-27T00:00:00+08:00">2022-05-27</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:22:23" itemprop="dateModified" datetime="2022-06-28T09:22:23+08:00">2022-06-28</time>
+                <time title="修改时间：2022-07-02 08:52:14" itemprop="dateModified" datetime="2022-07-02T08:52:14+08:00">2022-07-02</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -430,11 +945,11 @@
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
                 </span>
             </span>
 
@@ -447,8 +962,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/05/27/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/12Repeatable%20Read/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/27/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/12Repeatable%20Read/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -463,11 +978,10 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><code>raft状态机</code>以消息为输入，状态机运转之后产生输出，输出以<code>Ready</code>结构的形式传递给外部模块。</p>
-<p><code>raft状态机</code>的输出全都包含在<code>Ready</code>结构中，比如需要保存到<code>NVS</code>中的日志条目、Term、快照，以及需要向外发送的各种消息等等。</p>
+          <h3 id="Repeatable-Read"><a href="#Repeatable-Read" class="headerlink" title="Repeatable Read"></a>Repeatable Read</h3><p>可重复读类似于序列化，但是与之不同的是，它允许幻读：事务T1使用谓词进行读取，比如“所有名为Dikembe”的人员集合，另一个事务T2在T1提交之前，新增了或者修改了名为”Dikembe”的人员信息。虽然单个对象在读取时是稳定的，但谓词本身可能不是。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2022/05/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/15Ready%E7%9A%84%E5%A4%84%E7%90%86/#more" rel="contents">
+              <a class="btn" href="/2022/05/27/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/12Repeatable%20Read/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -491,7 +1005,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3[%E8%BD%AC%E8%BD%BD]TiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/23/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/11Serializability/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -505,7 +1019,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/" class="post-title-link" itemprop="url">【转载】TiDB 在 Raft 成员变更上踩的坑</a>
+            <a href="/2022/05/23/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/11Serializability/" class="post-title-link" itemprop="url">11Serializability</a>
         </h2>
 
         <div class="post-meta">
@@ -515,14 +1029,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2022-04-21 00:00:00" itemprop="dateCreated datePublished" datetime="2022-04-21T00:00:00+08:00">2022-04-21</time>
+              <time title="创建时间：2022-05-23 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-23T00:00:00+08:00">2022-05-23</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-29 13:51:25" itemprop="dateModified" datetime="2022-06-29T13:51:25+08:00">2022-06-29</time>
+                <time title="修改时间：2022-07-02 08:52:11" itemprop="dateModified" datetime="2022-07-02T08:52:11+08:00">2022-07-02</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -534,11 +1048,11 @@
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/" itemprop="url" rel="index"><span itemprop="name">转载</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
                 </span>
             </span>
 
@@ -551,8 +1065,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/05/23/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/11Serializability/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/23/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/11Serializability/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -567,10 +1081,11 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><em><font color=red>个人理解</font>：本文最核心的观点，就是针对<code>2n</code>这样偶数节点组成的集群，除了过半节点之外，人为增加一种Quorum，即将两个<code>n</code>节点组成的集合中的其中一个作为Quorum，只要集群中所有节点都遵守这个约定，则<code>2n</code>节点的集群发生分区形成<code>2</code>个<code>n</code>节点集合时，其中之一依然可以继续提供服务，而不是像之前那样直接不可用。</em></p>
+          <h3 id="Serializability"><a href="#Serializability" class="headerlink" title="Serializability"></a>Serializability</h3><p>非正式地说，序列化意味着事务似乎以某种总的顺序（total order, 全序?）发生。</p>
+<p>Informally, serializability means that transactions appear to have occurred in some total order.</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2022/04/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-3%5B%E8%BD%AC%E8%BD%BD%5DTiDB%20%E5%9C%A8%20Raft%20%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E4%B8%8A%E8%B8%A9%E7%9A%84%E5%9D%91/#more" rel="contents">
+              <a class="btn" href="/2022/05/23/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/11Serializability/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -594,7 +1109,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/17/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/10Monotonic%20Writes/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -608,7 +1123,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/" class="post-title-link" itemprop="url">etcd_raft源码解析-14领导权转移</a>
+            <a href="/2022/05/17/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/10Monotonic%20Writes/" class="post-title-link" itemprop="url">10Monotonic Writes</a>
         </h2>
 
         <div class="post-meta">
@@ -618,14 +1133,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2022-04-10 00:00:00" itemprop="dateCreated datePublished" datetime="2022-04-10T00:00:00+08:00">2022-04-10</time>
+              <time title="创建时间：2022-05-17 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-17T00:00:00+08:00">2022-05-17</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:39:00" itemprop="dateModified" datetime="2022-06-28T09:39:00+08:00">2022-06-28</time>
+                <time title="修改时间：2022-07-02 08:52:07" itemprop="dateModified" datetime="2022-07-02T08:52:07+08:00">2022-07-02</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -637,11 +1152,11 @@
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
                 </span>
             </span>
 
@@ -654,8 +1169,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/05/17/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/10Monotonic%20Writes/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/17/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/10Monotonic%20Writes/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -670,536 +1185,10 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>有时候需要将<code>Leader</code>的领导权转移到其他节点，比如<code>Leader</code>必须下线进行维护，或者是从集群中删除；或者某些情况下可能有更适合当<code>Leader</code>的节点。</p>
+          <h3 id="Monotonic-Writes-单调写"><a href="#Monotonic-Writes-单调写" class="headerlink" title="Monotonic Writes 单调写"></a>Monotonic Writes 单调写</h3><p>单调写保证这样的场景：一个进程先进行了写操作w1，然后是写操作w2，那其他所有进程都是先观察到w1，然后是w2；</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2022/04/10/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/14%E9%A2%86%E5%AF%BC%E6%9D%83%E8%BD%AC%E7%A7%BB/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/" class="post-title-link" itemprop="url">etcd_raft源码解析-13处理读请求</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2022-04-03 00:00:00" itemprop="dateCreated datePublished" datetime="2022-04-03T00:00:00+08:00">2022-04-03</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:38:42" itemprop="dateModified" datetime="2022-06-28T09:38:42+08:00">2022-06-28</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>对读请求的处理，可以像处理写请求那样，通过日志机制，在Majority节点上达成共识后返回给CLIENT结果。但是读请求并不修改状态，很自然的就能想到只读请求是否可以绕过RAFT的日志机制，这样性能上就能有所提升。</p>
-<p>如果没有额外的预防措施，<font color=red>绕过日志可能会导致读请求得到过时的结果。</font>比如，收到只读请求的Leader可能已经被分区隔离了，如果被隔离的Leader没有与集群中的其他节点沟通的情况下直接回复只读请求，CLIENT就可能得到一个过时的结果，这就不符合<font color=red>线性一致性（Linearizability ）</font>的约束了。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/04/03/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/13%E5%A4%84%E7%90%86%E8%AF%BB%E8%AF%B7%E6%B1%82/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/" class="post-title-link" itemprop="url">etcd_raft源码解析-12CheckQuorum和心跳消息处理</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2022-03-15 00:00:00" itemprop="dateCreated datePublished" datetime="2022-03-15T00:00:00+08:00">2022-03-15</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:39:47" itemprop="dateModified" datetime="2022-06-28T09:39:47+08:00">2022-06-28</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p><code>Leader</code>通过发送心跳消息到所有的<code>Follower</code>，来维护自己的权威。如果因网络分区导致某个<code>Follower</code>长时间收不到<code>Leader</code>的消息，该<code>Follower</code>会自增本地Term，发起选举流程。这种带有更大Term的选举消息会导致当前正常的<code>Leader</code>被迫转为<code>Follower</code>，从而导致集群暂时的不可用。RAFT的实现中，引入了<code>CheckQuorum</code>机制，即如果<code>Follower</code>在选举超时时间的最小值内收到过<code>Leader</code>的心跳消息，则<code>Follower</code>就认为该<code>Leader</code>是活跃的，从而会拒绝其他节点发来的<code>PreVote</code>或<code>Vote</code>消息，避免了这种无意义的选举。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/03/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/12CheckQuorum%E5%92%8C%E5%BF%83%E8%B7%B3%E6%B6%88%E6%81%AF%E5%A4%84%E7%90%86/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/" class="post-title-link" itemprop="url">etcd_raft源码解析-11成员变更2-流程</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2022-02-23 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-23T00:00:00+08:00">2022-02-23</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:39:51" itemprop="dateModified" datetime="2022-06-28T09:39:51+08:00">2022-06-28</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>以下内容，主要来自于Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中的“4 Cluster membership changes”。</p>
-<p>配置变更过程中，<font color=red>最重要的保证，就是协议的安全性，即集群中只能有一个 <code>Leader</code>，也就是要保证变更期间不能出现脑裂。</font>因集群中所有节点不可能同时自动切换到新配置，所以在变更期间，需要防止集群分裂为两个不相交的Majority集合。比如下图中的场景，集群中一部分节点使用<code>Cold</code>，另一部分节点使用<code>Cnew</code>，一旦发生网络分区，很有可能出现<code>Cold</code>集合和<code>Cnew</code>集合各自选出一个<code>Leader</code>来的情况。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-11成员变更1-confchange包</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2022-02-15 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-15T00:00:00+08:00">2022-02-15</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:39:40" itemprop="dateModified" datetime="2022-06-28T09:39:40+08:00">2022-06-28</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p><code>confchang</code>包中包含两个文件：<code>confchange.go</code>和<code>restore.go</code>。<code>confchange.go</code>主要实现了配置变更的具体操作；<code>restore.go</code>主要实现了节点崩溃时或者收到<code>snapshot</code>时恢复配置状态相关的一系列动作；</p>
-<p>本文介绍的是配置变更的基础模块，都是<code>confchange.go</code>中的实现逻辑。配置变更的流程细节请参考《配置变更2-流程》一同食用。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" class="post-title-link" itemprop="url">raft大论文翻译-06与Client的交互</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2022-02-12 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-12T00:00:00+08:00">2022-02-12</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 13:37:43" itemprop="dateModified" datetime="2022-06-28T13:37:43+08:00">2022-06-28</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="Chapter-6-Client-interaction-与Client的交互"><a href="#Chapter-6-Client-interaction-与Client的交互" class="headerlink" title="Chapter 6  Client interaction     与Client的交互"></a>Chapter 6  Client interaction     与Client的交互</h2><p>本章描述了几个客户端如何与基于 Raft 的复制状态机交互的问题：</p>
-<ul>
-<li><p>6.1节描述Client如何找到集群，即使是集群成员会随时变化的情况下；</p>
-</li>
-<li><p>6.2节描述Client请求如何路由到集群的Leader节点；</p>
-</li>
-<li><p>6.3节描述Raft如何提供线性一致性的；</p>
-</li>
-<li><p>6.4节描述Raft如何更高效的处理只读请求的；</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/#more" rel="contents">
+              <a class="btn" href="/2022/05/17/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/10Monotonic%20Writes/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -1222,7 +1211,7 @@
 
   
   <nav class="pagination">
-    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="page-number" href="/page/3/">3</a><a class="extend next" rel="next" href="/page/2/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><span class="space">&hellip;</span><a class="page-number" href="/page/5/">5</a><a class="extend next" rel="next" href="/page/2/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
   </nav>
 
 
@@ -1290,14 +1279,14 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-count">46</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-count">8</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">

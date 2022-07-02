@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Monotonic Atomic View     单调原子视图单调原子视图是一种一致性模型，它比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="15Monotonic Atomic View">
+<meta property="og:url" content="http://example.com/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Monotonic Atomic View     单调原子视图单调原子视图是一种一致性模型，它比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-06-10T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-07-02T00:51:09.816Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>15Monotonic Atomic View | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          15Monotonic Atomic View
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-06-11 00:00:00" itemprop="dateCreated datePublished" datetime="2022-06-11T00:00:00+08:00">2022-06-11</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:51:09" itemprop="dateModified" datetime="2022-07-02T08:51:09+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="Monotonic-Atomic-View-单调原子视图"><a href="#Monotonic-Atomic-View-单调原子视图" class="headerlink" title="Monotonic Atomic View     单调原子视图"></a>Monotonic Atomic View     单调原子视图</h3><p>单调原子视图是一种一致性模型，它比读已提交要强一些，防止事务读到之前提交的事务部分（非全部）结果。它表示ACID中的原子约束，即事务中的所有操作要么全生效，要么全不生效。只要T1中的某个写操作能被T2观察到，那T1的所有操作的结果都对T2都是可见的。这在强制外键约束和确保索引和物化视图反映其底层对象方面尤其有用。</p>
+<span id="more"></span>
+<p>Monotonic atomic view is a consistency model which strengthens <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">read committed</a> by preventing transactions from observing some, but not all, of a previously committed transaction’s effects. It <a target="_blank" rel="noopener" href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">expresses</a> the atomic constraint from ACID that all (or none) of a transaction’s effects should take place. Once a write from transaction T1 is observed by transaction T2, then <em>all</em> effects of T1 should be visible to T2. This is particularly helpful in enforcing foreign key constraints and ensuring indices and materialized views reflect their underlying objects.</p>
+<p>单调原子视图是一种“事务”模型：操作（通常称为“事务”）可以包括按顺序执行的几个基本子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Monotonic atomic view is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>单调原子视图可以<a target="_blank" rel="noopener" href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">完全可用</a>：在存在网络分区的情况下，每个节点都可以取得进展。如果愿意牺牲完全可用性，考虑使用<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/repeatable-read">可重复读取</a>和<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/snapshot-isolation">快照隔离</a>提供更有力的保障。</p>
+<p>Monotonic atomic view can be <a target="_blank" rel="noopener" href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">totally available</a>: in the presence of network partitions, every node can make progress. If you are willing to sacrifice total availability, both <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/repeatable-read">repeatable read</a> and <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a> offer stronger guarantees.</p>
+<p>注意，单调原子视图不会施加任何实际时间上的约束。如果进程A完成写操作w，进程B开始读操作r，r不一定保证能看到w的结果。如果需要提供实时约束的事务模型，请考虑<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>.</p>
+<p>Note that monotonic atomic view does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，单调原子视图不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, monotonic atomic view does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<p>类似于<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/serializable">串行化</a>，单调原子视图允许重排序。比如，一个单调原子视图的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>Like <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/serializable">serializability</a>, monotonic atomic view allows pathological orderings. For instance, a monotonic atomic view database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/monotonic-atomic-view#formally">Formally</a></h4><p>单调原子视图在文献中并不常见，这个概念由Bailis、Davidson、Fekete等人在<a target="_blank" rel="noopener" href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">《高可用交易：优点和局限性》</a>中提出. 论文中将其描述为：</p>
+<blockquote>
+<p>在MAV（Monotonic Atomic View）下，一旦一个事务Ti的一些操作结果被另一个事务Tj观察到，此后，Ti的所有操作结果都能被Tj观察到。也就是说，如果事务Tj读取事务Ti写入的对象的某个版本，则Tj稍后读取的对象无法返回Ti应用了更高版本的值。</p>
+</blockquote>
+<p>Monotonic Atomic View is not commonly discussed in the literature, but was coined by Bailis, Davidson, Fekete, et al in <a target="_blank" rel="noopener" href="https://amplab.cs.berkeley.edu/wp-content/uploads/2013/10/hat-vldb2014.pdf">Highly Available Transactions: Virtues and Limitations</a>. They describe it as:</p>
+<blockquote>
+<p>Under MAV, once some of the effects of a transaction Ti are observed by another transaction Tj, thereafter, all effects of Ti are observed by Tj. That is, if a transaction Tj reads a version of an object that transaction Ti wrote, then a later read by Tj cannot return a value whose later version is installed by Ti.</p>
+</blockquote>
+<p>根据<a target="_blank" rel="noopener" href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义</a>，单调原子视图禁止：</p>
+<ul>
+<li>G1b（中间读取）：事务A（可能通过谓词）观察到由事务B修改的对象，而事务B后续还会对该对象进行修改。说白了就是，在能读取之前，事务必须是已完成的。</li>
+</ul>
+<p>由于单调原子视图强于读已提交，因此它也禁止了下面的ANSI现象：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+</ul>
+<p>但允许：</p>
+<ul>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。”…”表示除了commit或abort之外的子操作。p表示谓词。</p>
+<p>In terms of <a target="_blank" rel="noopener" href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a>, monotonic atomic view prohibits:</p>
+<ul>
+<li>G1b (Intermediate Reads): A transaction observes an object (perhaps via a predicate) modified by a transaction which was not that transaction’s final modification of that object. Intuitively, transactions have to <em>finish</em> before we can read them,</li>
+</ul>
+<p>And since monotonic atomic view is strictly stronger than read committed, it also prohibits the ANSI phenomena…</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>Here <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. The notation “…” indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate.</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/" rel="prev" title="14Cursor Stability">
+      <i class="fa fa-chevron-left"></i> 14Cursor Stability
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/06/15/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/16Read%20Committed/" rel="next" title="16Read Committed">
+      16Read Committed <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Monotonic-Atomic-View-%E5%8D%95%E8%B0%83%E5%8E%9F%E5%AD%90%E8%A7%86%E5%9B%BE"><span class="nav-number">1.</span> <span class="nav-text">Monotonic Atomic View     单调原子视图</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Formally"><span class="nav-number">1.1.</span> <span class="nav-text">Formally</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">46</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

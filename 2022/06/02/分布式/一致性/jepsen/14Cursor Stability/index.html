@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Cursor Stability游标稳定性是一种一致性模型，它是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标，当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="14Cursor Stability">
+<meta property="og:url" content="http://example.com/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Cursor Stability游标稳定性是一种一致性模型，它是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标，当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-06-01T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-07-02T00:52:21.645Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>14Cursor Stability | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          14Cursor Stability
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-06-02 00:00:00" itemprop="dateCreated datePublished" datetime="2022-06-02T00:00:00+08:00">2022-06-02</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:52:21" itemprop="dateModified" datetime="2022-07-02T08:52:21+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="Cursor-Stability"><a href="#Cursor-Stability" class="headerlink" title="Cursor Stability"></a>Cursor Stability</h3><p>游标稳定性是一种一致性模型，它是读已提交的增强版，可以防止updates的丢失。它引入了游标（cursor）的概念，用于指向事务访问的特定对象。事务中可以包含多个游标，当事务中使用游标读取某个对象时，在释放游标或提交事务之前，任何其他事务都不能修改该对象。</p>
+<span id="more"></span>
+<p>Cursor stability is a consistency model which strengthens <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">read committed</a> by preventing <em>lost updates</em>. It introduces the concept of a <em>cursor</em>, which refers to a particular object being accessed by a transaction. Transactions may have multiple cursors. When a transaction reads an object using a cursor, that object cannot be modified by any other transaction until the cursor is released, or the transaction commits.</p>
+<p>游标稳定性可以防止更新丢失，即事务T1读取、修改和写回对象x，但另一个事务T2在T1读取x后更新x，这就导致T2的更新丢失了。</p>
+<p>This prevents lost updates, where transaction T1 reads, modifies, and writes back an object <em>x</em>, but a different transaction T2 transaction also updates <em>x</em> after T1 read <em>x</em>—causing T2’s update to be effectively lost.</p>
+<p>游标稳定性是一种“事务性”模型：操作（通常称为“事务”）可以包括按顺序执行的几个基本子操作。它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Cursor stability is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>游标稳定性不是完全可用的；在网络分区的情况下，一些或所有节点可能无法取得进展。为了获得完全可用性，以允许更新丢失为代价，可以考虑<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">读已提交</a>. 如果需要更强的一致性，即确保每个记录读取对象的稳定性，而非特定的游标的稳定性，可以考虑<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/repeatable-read">可重复读</a>.</p>
+<p>Cursor stability cannot be totally available; in the presence of network partitions, some or all nodes may be unable to make progress. For total availability, at the cost of allowing lost updates, consider <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">read committed</a>. For a stronger level, which ensures the stability of every record read, rather than cursors, consider <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/repeatable-read">repeatable read</a>.</p>
+<p>需要注意的是，游标稳定性没有任何的实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。如果想要实际时间上的约束，考虑<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>。</p>
+<p>Note that cursor stability does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. For a transactional model that provides real-time constraints, consider <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>.</p>
+<p>此外，游标稳定性也不保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。</p>
+<p>Moreover, cursor stability does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/cursor-stability#formally">Formally</a></h4><p><a target="_blank" rel="noopener" href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya对事务隔离级别的正式定义中</a>，通过禁止两种现象来定义光标稳定性：</p>
+<ul>
+<li>G1：见下面；</li>
+<li>G-cursor(x)：针对单个对象x的有向序列图中，必须包含一个反依赖环，以及至少一个写依赖的边；</li>
+</ul>
+<p><a target="_blank" rel="noopener" href="http://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya’s formalization of transactional isolation levels</a> defines cursor stability in terms of two prohibited phenomena:</p>
+<ul>
+<li>G1: See below.</li>
+<li>G-cursor(x): the directed serialization graph, restricted to a single object <em>x</em>, contains an anti-dependency cycle and at least one write-dependency edge.</li>
+</ul>
+<p>G1包含了三种禁止的现象：</p>
+<ul>
+<li>G1a（中止读取）：事务A中能观察被中止事务B修改的对象（可能通过谓词）。说白了，就是事务必须“提交”后，我们才能读取它们。</li>
+<li>G1b（中间读取）：事务A中能观察到其他事务B修改的对象（可能通过谓词），而且事务B中对该对象还会有后续的修改。说白了，就是事务必须在完成之后，我们才能读取它；</li>
+<li>G1c（环形信息流）：事务的有向序列化图包含完全由依赖边组成的有向环。直白的说，就是如果T1收到了T2的影响，那T2就不能受T1的影响；</li>
+</ul>
+<p>G1 encompasses three disallowed phenomena:</p>
+<ul>
+<li>G1a (Aborted Reads): A transaction observes an object (perhaps via a predicate) modified by an aborted transaction. Intuitively, transactions have to <em>commit</em> for us to read them.</li>
+<li>G1b (Intermediate Reads): A transaction observes an object (perhaps via a predicate) modified by a transaction which was not that transaction’s final modification of that object. Intuitively, transactions have to <em>finish</em> before we can read them,</li>
+<li>G1c (Circular Information Flow): the Directed Serialization Graph of transactions contains a directed cylce consisting entirely of dependency edges. Intuitively, if transaction T1 is affected by T2, T2 can’t be affected by T1.</li>
+</ul>
+<p>因为游标稳定性要强于读已提交，所以它还禁止ANSI定义的如下现象：</p>
+<ul>
+<li>P0（脏写）：w1（x）…w2（x）</li>
+<li>P1（脏读）：w1（x）…r2（x）</li>
+</ul>
+<p>但是允许下面的现象：</p>
+<ul>
+<li>P2（不可重复读）：r1（x）…w2（x）</li>
+<li>P3（幻读）：r1（P）…w2（P中的y）</li>
+</ul>
+<p>这里w表示写，r表示读，下标表示执行操作的事务。…表示除了commit或abort之外的子操作。p表示谓词。对于不使用游标的对象，有可能会发生“不可重复读”。</p>
+<p>Since cursor stability is strictly stronger than read committed, it also prohibits the ANSI phenomena:</p>
+<ul>
+<li>P0 (Dirty Write): w1(x) … w2(x)</li>
+<li>P1 (Dirty Read): w1(x) … r2(x)</li>
+</ul>
+<p>but allows:</p>
+<ul>
+<li>P2 (Fuzzy Read): r1(x) … w2(x)</li>
+<li>P3 (Phantom): r1(P) … w2(y in P)</li>
+</ul>
+<p>In this notation, <em>w</em> denotes a write, <em>r</em> denotes a read, and subscripts indicate the transaction which executed that operation. … indicates a series of micro-operations <em>except</em> for a commit or abort. P indicates a predicate. Fuzzy reads are possible where cursors are not used.</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/" rel="prev" title="13Snapshot Isolation">
+      <i class="fa fa-chevron-left"></i> 13Snapshot Isolation
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/06/11/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/15Monotonic%20Atomic%20View/" rel="next" title="15Monotonic Atomic View">
+      15Monotonic Atomic View <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Cursor-Stability"><span class="nav-number">1.</span> <span class="nav-text">Cursor Stability</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Formally"><span class="nav-number">1.1.</span> <span class="nav-text">Formally</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">46</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

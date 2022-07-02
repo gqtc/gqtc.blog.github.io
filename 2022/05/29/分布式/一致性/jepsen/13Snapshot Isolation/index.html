@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Snapshot Isolation     快照隔离在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对x的写入，则T1必须中止。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="13Snapshot Isolation">
+<meta property="og:url" content="http://example.com/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="Snapshot Isolation     快照隔离在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对x的写入，则T1必须中止。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-05-28T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-07-02T00:52:18.345Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>13Snapshot Isolation | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          13Snapshot Isolation
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-05-29 00:00:00" itemprop="dateCreated datePublished" datetime="2022-05-29T00:00:00+08:00">2022-05-29</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:52:18" itemprop="dateModified" datetime="2022-07-02T08:52:18+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/05/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/13Snapshot%20Isolation/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="Snapshot-Isolation-快照隔离"><a href="#Snapshot-Isolation-快照隔离" class="headerlink" title="Snapshot Isolation     快照隔离"></a>Snapshot Isolation     快照隔离</h3><p>在快照隔离的系统中，每个事务像是在独立且一致的数据库快照上进行操作。在提交之前，其更改仅对本事务可见，提交后，该事务的所有修改对其之后开始的事务才是原子可见的。如果事务T1修改了对象x，而另一个事务T2在T1的快照开始之后、T1提交之前提交了对<em>x</em>的写入，则T1必须中止。</p>
+<span id="more"></span>
+<p>In a snapshot isolated system, each transaction appears to operate on an independent, consistent <em>snapshot</em> of the database. Its changes are visible only to that transaction until commit time, when all changes become visible atomically to any transaction which begins at a later time. If transaction T1 has modified an object <em>x</em>, and another transaction T2 committed a write to <em>x</em> after T1’s snapshot began, and before T1’s commit, then T1 must abort.</p>
+<p>快照隔离是一种“事务性”模型：操作（通常称为“事务”）包括几个按顺序执行的基本子操作；它也是一个“多对象”属性：操作可以作用于系统中的多个对象。</p>
+<p>Snapshot isolation is a <em>transactional</em> model: operations (usually termed “transactions”) can involve several primitive sub-operations performed in order. It is also a <em>multi-object</em> property: operations can act on multiple objects in the system.</p>
+<p>快照隔离不能完全可用；存在网络分区的情况下，一些或所有节点可能无法取得进展。如果需要完全可用性，以允许长分叉异常为代价，可以考虑<a target="_blank" rel="noopener" href="http://www.news.cs.nyu.edu/~%E9%87%91%E9%98%B3/%E9%85%92%E5%90%A7/%E6%B2%83%E5%B0%94%E7%89%B9-sosp11.pdf">并行快照隔离</a>，或者是更弱一些的，但是更广泛支持的<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">读已提交</a>。</p>
+<p>Snapshot isolation cannot be totally available; in the presence of network partitions, some or all nodes may be unable to make progress. For total availability, at the cost of allowing long-fork anomalies, consider <a target="_blank" rel="noopener" href="http://www.news.cs.nyu.edu/~jinyang/pub/walter-sosp11.pdf">parallel snapshot isolation</a>, or (weaker, but more commonly supported) <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">read committed</a>.</p>
+<p>与序列化要求事务之间的全序关系不同，快照隔离仅需要事务是偏序的：一个事务中的子操作可以与其他事务中的子操作交错执行。快照隔离允许的最显著现象是<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">写倾斜</a>，它允许事务读取重叠状态，修改不相交的对象集后提交；以及允许<a target="_blank" rel="noopener" href="https://www.cs.umb.edu/~poneil/ROAnom.pdf">只读事务异常</a>，涉及部分不相交的写入集。</p>
+<p>Unlike <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/serializable">serializability</a>, which enforces a total order of transactions, snapshot isolation only forces a <em>partial</em> order: sub-operations in one transaction may interleave with those from other transactions. The most notable phenomena allowed by snapshot isolation are <a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">write skews</a>, which allow transactions to read overlapping state, modify disjoint sets of objects, then commit; and <a target="_blank" rel="noopener" href="https://www.cs.umb.edu/~poneil/ROAnom.pdf">a read-only transaction anomaly</a>, involving partially disjoint write sets.</p>
+<p>快照隔离意味着读已提交。但是它没有任何实际时间上的约束。如果进程A完成了写操作w，然后进程B开始读操作r，r不一定能观察到w。一些数据库提供快照隔离变体来支持实际时间上的约束。类似于<a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/strict-serializable">严格序列化</a>，它提供了全序关系以及实际时间上的保证。</p>
+<p>Snapshot isolation implies <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/read-committed">read committed</a>. However, it does not impose any real-time constraints. If process A completes write <em>w</em>, then process B begins a read <em>r</em>, <em>r</em> is not necessarily guaranteed to observe <em>w</em>. Some databases provide real-time variants of snapshot isolation. Compare with <a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/strict-serializable">strict serializability</a>, which provides a total order <em>and</em> real-time guarantees.</p>
+<p>此外，快照隔离也不需要保证单个进程内的事务顺序。一个进程可能之前还能观察到一个写操作，而在后续的事务中却无法再次观察到同一个写操作。事实上，如果发生在不同的事务中，那进程都可能无法观察到自己之前的写操作。如果需要强制同一进程中的事务按顺序执行，请考虑<a target="_blank" rel="noopener" href="http://www.inf.usi.ch/faculty/pedone/Paper/2004/IC_TECH_REPORT_200421.pdf">前缀一致快照隔离</a>.</p>
+<p>Moreover, snapshot isolation does not require a per-process order between transactions. A process can observe a write, then <em>fail</em> to observe that same write in a subsequent transaction. In fact, a process can fail to observe its own prior writes, if those writes occurred in different transactions. To enforce that transactions from the same process appear to execute in order, consider <a target="_blank" rel="noopener" href="http://www.inf.usi.ch/faculty/pedone/Paper/2004/IC_TECH_REPORT_200421.pdf">prefix-consistent snapshot isolation</a>.</p>
+<p>在其广义形式中，快照隔离允许重排序。比如，一个快照隔离的数据库中，如果读操作发生在time 0上，那这些读操作可能返回的是空状态；它可能会丢弃只写事务，因为允许把这些事务排在操作历史的最后，即排在所有读操作的后面；像自增这样的操作也可以被丢弃，即允许自增的结果永远无法被观察到。好在大多数实现一般不会再用这种程度的优化措施。</p>
+<p>In its generalized form, snapshot isolation allows pathological orderings. For instance, a snapshot isolated database can always return the empty state for any reads, by appearing to execute those reads at time 0. It can also discard write-only transactions by reordering them to execute at the very <em>end</em> of the history, after any reads. Operations like increments can also be discarded, assuming the result of the increment is never observed. Luckily, most implementations don’t seem to take advantage of these optimization opportunities.</p>
+<h4 id="A-Range-of-Snapshot-Isolations-一系列快照隔离"><a href="#A-Range-of-Snapshot-Isolations-一系列快照隔离" class="headerlink" title="A Range of Snapshot Isolations     一系列快照隔离"></a><a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/snapshot-isolation#a-range-of-snapshot-isolations">A Range of Snapshot Isolations</a>     一系列快照隔离</h4><p>不同的论文对快照隔离允许的操作历史的限制程度各不相同。<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson等人的原始论文</a>对于提交和开始时间戳与挂钟时间之间的关系，以及<a target="_blank" rel="noopener" href="https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.78.1363&amp;rep=rep1&amp;type=pdf">Daudjee&amp;Salem</a>的后续工作建立了“经典&#x2F;强”和“广义&#x2F;弱”的快照隔离级别（SI levels），有些含糊不清。<a target="_blank" rel="noopener" href="https://pmg.csail.mit.edu/papers/adya-phd.pdf">阿德亚</a>对SI正式定义假设我们将调度程序所做的特定选择视为给定：操作历史是否是SI的取决于调度程序所做的操作。这就会根据调度器的实现方式产生一系列可能的快照隔离。</p>
+<p>Papers vary in how strictly they constrain snapshot isolation’s allowed histories. The original paper by <a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">Berenson et al</a> is somewhat ambiguous about the relationship between commit and start timestamps and wall-clock time, and subsequent work by <a target="_blank" rel="noopener" href="https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.78.1363&rep=rep1&type=pdf">Daudjee &amp; Salem</a> established “classic&#x2F;strong” and “generalized&#x2F;weak” SI levels. <a target="_blank" rel="noopener" href="https://pmg.csail.mit.edu/papers/adya-phd.pdf">Adya</a>’s formalism for SI assumes that we take as given specific choices made by the scheduler: whether a history is SI or not depends on what the scheduler does. This gives rise to a range of possible snapshot isolations depending on how the scheduler is implemented.</p>
+<p>如果将SI解释为强制事务总是选择一个高于每个已提交事务的提交时间的开始时间，那么快照隔离显然比序列化有优势：它约束了实际时间，但是序列化没有。</p>
+<p>If one interprets SI as enforcing that transactions always choose a start time higher than every committed transaction’s commit time, then snapshot isolation is clearly incomparable to serializability: it forces a real-time order which serializability does not.</p>
+<p>在与Bailis、Crooks、Fekete、Hellerstein、Sutra和Shapiro进行了广泛的讨论之后，Jepsen采用更宽松的方式解释快照隔离：SI禁止事务见形成依赖环，这些事务包含多个相邻的读写反依赖边。在这种广义定义下，快照隔离严格弱于序列化。此定义与更广泛的实现集兼容。</p>
+<p>Following extensive conversation with Bailis, Crooks, Fekete, Hellerstein, Sutra, and Shapiro, Jepsen interprets snapshot isolation in a more relaxed way: we take SI to prohibit dependency cycles between transactions which contain more than one adjacent read-write anti-dependency edge. Under this generalized definition, snapshot isolation is strictly weaker than serializability. This definition is compatible with a broader set of implementations.</p>
+<h4 id="Formally"><a href="#Formally" class="headerlink" title="Formally"></a><a target="_blank" rel="noopener" href="https://jepsen.io/consistency/models/snapshot-isolation#formally">Formally</a></h4><p>Berenson、Bernstein等<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">首次定义的快照隔离</a>：</p>
+<blockquote>
+<p>…将事务开始读取已提交的数据快照中的数据时的时间戳，作为开始时间戳。此时间戳可以是事务首次读取数据之前的任何时间。只要自开始时间戳以来的快照数据是可维护的，那运行在快照隔离中的事务的读操作将永远不会被阻塞。事务的写操作（更新、插入和删除）也会反映到快照中，如果事务再次访问（读取或更新）数据，则将再次读取该快照。开始时间戳之后的其他事务的更新操作，对于本事务是不可见的。</p>
+<p>当事务T1准备提交时，它将获得一个提交时间戳，该时间戳将大于任何现有的开始时间戳或提交时间戳。只有不存在符合下面条件的事务T2的情况下，T1才能提交成功：T2的提交时间戳在T1执行期间，即[开始时间戳，提交时间戳]期间，并且T2和T1对同一份数据进行了写操作。如果存在这样的T2，那T1将会中止。这种被称为First-committer-wins的特性，防止了更新丢失的现象（现象P4）。T1提交后，其更新对于开始时间戳大于T1提交时间戳的所有事物都可见了。</p>
+</blockquote>
+<p>如果想要增加单个进程内的顺序，或者实际时间上的顺序，可以对开始时间戳和提交时间戳增加约束。</p>
+<p>Berenson, Bernstein, et al <a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">first defined snapshot isolation</a> in terms of an abstract algorithm:</p>
+<blockquote>
+<p>… each transaction reads reads data from a snapshot of the (committed) data as of the time the transaction started, called its Start-Timestamp. This time may be any time before the transaction’s first Read. A transaction running in Snapshot Isolation is never blocked attempting a read as long as the snapshot data from its Start-Timestamp can be maintained. The transaction’s writes (updates, inserts, and deletes) will also be reflected in this snapshot, to be read again if the transaction accesses (i.e., reads or updates) the data a second time. Updates by other transactions active after the transaction Start-Timestamp are invisible to the transaction.</p>
+<p>When the transaction T1 is ready to commit, it gets a Commit-Timestamp, which is larger than any existing Start-Timestamp or Commit-Timestamp. The transaction successfully commits only if no other transaction T2 with a Commit-Timestamp in T1’s execution interval [StartTimestamp, Commit-Timestamp] wrote data that T1 also wrote. Otherwise, T1 will abort. This feature, called First-committer-wins prevents lost updates (phenomenon P4). When T1 commits, its changes become visible to all transactions whose Start-Timestamps are larger than T1‘s Commit-Timestamp.</p>
+</blockquote>
+<p>有关基于抽象执行的合理直观的正式定义，请参阅Cerone、Bernardi和Gotsman的<a target="_blank" rel="noopener" href="http://drops.dagstuhl.de/opus/volltexte/2015/5375/pdf/15.pdf">具有原子可见性的事务一致性模型框架</a>，它将快照隔离指定为四个属性的组合：</p>
+<ul>
+<li>内部一致性：在事务内部，读操作能观察该事务最近的写操作（如果有）；</li>
+<li>外部一致性：T1中针对某个对象的读操作（之前没有写操作）能够观察到T0写入的状态，即T0对T1是可见的（没有其他的事务对该对象进行了写入）；</li>
+<li>前缀：事务能被所有节点以相同的顺序被观察到；</li>
+<li>无冲突：如果另个事务写同一个对象，那其中一个必须对另一个是可见的。</li>
+</ul>
+<p>有关基于状态的正式定义，请参阅Crooks、Pu、Alvisi和Clement：<a target="_blank" rel="noopener" href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seing-tr.pdf">眼见为实：以客户机为中心的数据库隔离规范</a>。</p>
+<p>For a reasonably intuitive formalization based on abstract executions, see Cerone, Bernardi, &amp; Gotsman’s <a target="_blank" rel="noopener" href="http://drops.dagstuhl.de/opus/volltexte/2015/5375/pdf/15.pdf">A Framework for Transactional Consistency Models with Atomic Visibility</a>, which specifies snapshot isolation as a combination of four properties:</p>
+<ul>
+<li>Internal consistency: within a transaction, reads observe that transaction’s most recent writes (if any)</li>
+<li>External consistency: reads <em>without</em> a preceding write in transaction T1 must observe the state written by a transaction T0, such that T0 is visible to T1, and no more recent transaction wrote to that object.</li>
+<li>Prefix: transactions become visible to all nodes in the same order</li>
+<li>NoConflict: if two transactions write to the same object, one must be visible to the other.</li>
+</ul>
+<p>For a state-based formalization, see Crooks, Pu, Alvisi, &amp; Clement: <a target="_blank" rel="noopener" href="http://www.cs.utexas.edu/~ncrooks/2017-podc-seeing-tr.pdf">Seeing is Believing: A Client-Centric Specification of Database Isolation</a>.</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/05/28/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/%E8%AE%BA%E6%96%87/02The%20many%20faces%20of%20consistency#####/" rel="prev" title="The many faces of consistency">
+      <i class="fa fa-chevron-left"></i> The many faces of consistency
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/06/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/14Cursor%20Stability/" rel="next" title="14Cursor Stability">
+      14Cursor Stability <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Snapshot-Isolation-%E5%BF%AB%E7%85%A7%E9%9A%94%E7%A6%BB"><span class="nav-number">1.</span> <span class="nav-text">Snapshot Isolation     快照隔离</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#A-Range-of-Snapshot-Isolations-%E4%B8%80%E7%B3%BB%E5%88%97%E5%BF%AB%E7%85%A7%E9%9A%94%E7%A6%BB"><span class="nav-number">1.1.</span> <span class="nav-text">A Range of Snapshot Isolations     一系列快照隔离</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Formally"><span class="nav-number">1.2.</span> <span class="nav-text">Formally</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">46</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

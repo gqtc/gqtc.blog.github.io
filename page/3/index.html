@@ -180,7 +180,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -194,7 +194,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/" class="post-title-link" itemprop="url">etcd_raft源码解析-05raft包--log_unstable</a>
+            <a href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/" class="post-title-link" itemprop="url">etcd_raft源码解析-11成员变更2-流程</a>
         </h2>
 
         <div class="post-meta">
@@ -204,14 +204,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-10-24 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-24T00:00:00+08:00">2021-10-24</time>
+              <time title="创建时间：2022-02-23 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-23T00:00:00+08:00">2022-02-23</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 13:40:00" itemprop="dateModified" datetime="2022-06-28T13:40:00+08:00">2022-06-28</time>
+                <time title="修改时间：2022-06-28 09:39:51" itemprop="dateModified" datetime="2022-06-28T09:39:51+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -240,8 +240,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -256,10 +256,11 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><code>raft</code>包中的<code>log_unstable.go</code>定义了<code>unstable</code>结构，对应于<code>storage</code>结构，表示尚未保存到持久化存储中（即<code>storage</code>）的快照和日志信息。</p>
+          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>以下内容，主要来自于Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中的“4 Cluster membership changes”。</p>
+<p>配置变更过程中，<font color=red>最重要的保证，就是协议的安全性，即集群中只能有一个 <code>Leader</code>，也就是要保证变更期间不能出现脑裂。</font>因集群中所有节点不可能同时自动切换到新配置，所以在变更期间，需要防止集群分裂为两个不相交的Majority集合。比如下图中的场景，集群中一部分节点使用<code>Cold</code>，另一部分节点使用<code>Cnew</code>，一旦发生网络分区，很有可能出现<code>Cold</code>集合和<code>Cnew</code>集合各自选出一个<code>Leader</code>来的情况。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2021/10/24/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/05raft%E5%8C%85--log_unstable/#more" rel="contents">
+              <a class="btn" href="/2022/02/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B42-%E6%B5%81%E7%A8%8B/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -283,7 +284,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -297,7 +298,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/" class="post-title-link" itemprop="url">raft大论文翻译-02RAFT共识,状态机,动机</a>
+            <a href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-11成员变更1-confchange包</a>
         </h2>
 
         <div class="post-meta">
@@ -307,14 +308,118 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-10-23 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-23T00:00:00+08:00">2021-10-23</time>
+              <time title="创建时间：2022-02-15 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-15T00:00:00+08:00">2022-02-15</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 13:34:46" itemprop="dateModified" datetime="2022-06-28T13:34:46+08:00">2022-06-28</time>
+                <time title="修改时间：2022-06-28 09:39:40" itemprop="dateModified" datetime="2022-06-28T09:39:40+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>confchang</code>包中包含两个文件：<code>confchange.go</code>和<code>restore.go</code>。<code>confchange.go</code>主要实现了配置变更的具体操作；<code>restore.go</code>主要实现了节点崩溃时或者收到<code>snapshot</code>时恢复配置状态相关的一系列动作；</p>
+<p>本文介绍的是配置变更的基础模块，都是<code>confchange.go</code>中的实现逻辑。配置变更的流程细节请参考《配置变更2-流程》一同食用。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" class="post-title-link" itemprop="url">raft大论文翻译-06与Client的交互</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-02-12 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-12T00:00:00+08:00">2022-02-12</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:37:43" itemprop="dateModified" datetime="2022-06-28T13:37:43+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -343,8 +448,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/23/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/12RAFT%E5%85%B1%E8%AF%86,%E7%8A%B6%E6%80%81%E6%9C%BA,%E5%8A%A8%E6%9C%BA/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -359,65 +464,23 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p>本章介绍了共识算法和复制状态机的关系，以及设计RAFT的动机。重点在共识算法和复制状态机的关系。</p>
-<h3 id="2-Motivation-RAFT动机"><a href="#2-Motivation-RAFT动机" class="headerlink" title="2 Motivation RAFT动机"></a>2 Motivation RAFT动机</h3><p>共识是容错系统中的基本问题：即多个服务节点间，即使是有节点失效的情况下，如何就shared state达成一致。共识问题产生于需要提供高可用且不能损害一致性的各种系统中。因此，几乎所有的一致性大规模系统中都需要解决共识问题。2.1节描述了共识通常如何用于创建复制状态机，这是容错系统的通用构建块；2.2节讨论了在大型系统中使用复制状态机的各种方式；2.3节讨论了Paxos共识协议的问题，这也是设计RAFT协议的初衷。</p>
-<p>Consensus is a fundamental problem in fault-tolerant systems: how can servers reach agreement on shared state, even in the face of failures? This problem arises in a wide variety of systems that need to provide high levels of availability and cannot compromise on consistency; thus, consensus is used in virtually all consistent large-scale storage systems. Section 2.1 describes how consensus is typically used to create replicated state machines, a general-purpose building block for fault tolerant systems; Section 2.2 discusses various ways replicated state machines are used in larger systems; and Section 2.3 discusses the problems with the Paxos consensus protocol, which Raft aims to address.</p>
-<h4 id="2-1-Achieving-fault-tolerance-with-replicated-state-machines-通过复制状态机实现容错"><a href="#2-1-Achieving-fault-tolerance-with-replicated-state-machines-通过复制状态机实现容错" class="headerlink" title="2.1 Achieving fault tolerance with replicated state machines 通过复制状态机实现容错"></a>2.1 Achieving fault tolerance with replicated state machines 通过复制状态机实现容错</h4><p>共识算法通常出现在复制状态机（replicated state machines）的上下文中。在这种方法中，状态机运行于多个服务节点上，操作相同的状态副本，即使某些服务器下线，也可以继续运行。复制状态机用于解决分布式系统中的各种容错问题。复制状态机的实例，比如Chubby和ZooKeeper，他们用于为小规模配置数据提供分层键值对的存储。它们提供了基本的get和put操作，还提供了compare-and-swap等同步原语，使并发客户端能够安全地进行协调操作。</p>
-<p>Consensus algorithms typically arise in the context of replicated state machines [102]. In this approach, state machines on a collection of servers compute identical copies of the same state and can continue operating even if some of the servers are down. Replicated state machines are used to solve a variety of fault tolerance problems in distributed systems, as described in Section 2.2. Examples of replicated state machines include Chubby [11] and ZooKeeper [38], which both provide hierarchical key-value stores for small amounts of configuration data. In addition to basic operations such as get and put, they also provide synchronization primitives like compare-and-swap, enabling concurrent clients to coordinate safely.</p>
-<p><font color=red>复制状态机通常通过复制日志（replicated log）的方式来实现，</font>比如下面的图2.1展示的那样。每个服务器存储一个包含一系列命令的日志，其状态机按顺序执行这些命令。日志以相同的顺序包含相同的命令，因此每个状态机处理相同的命令序列。由于状态机是确定的，因此每个状态机操作相同的状态，并产生相同的输出序列。</p>
-<p>图2.1: <font color=red>复制状态机的架构。一致性算法管理复制日志，日志中包含来自客户端的状态机命令。状态机处理来自日志的相同命令序列，因此它们产生相同的输出。</font></p>
-<p><img src="/img/00RAFT/image-20210922190656584.png" alt="image-20210922190656584"></p>
-<p>Replicated state machines are typically implemented using a replicated log, as shown in Figure 2.1. Each server stores a log containing a series of commands, which its state machine executes in order. Each log contains the same commands in the same order, so each state machine processes the same sequence of commands. Since the state machines are deterministic, each computes the same state and the same sequence of outputs.</p>
-<p><font color=red>共识算法负责保持复制日志的一致性</font>。服务节点上的共识模块从客户端接收命令并将其添加到日志中。本节点的共识模块与其他服务节点上的共识模块通信，以确保每个日志最终以相同的顺序包含相同的请求，即使某些服务节点出现故障。一旦命令被正确复制，它们就被称为已提交的。<font color=red>每个服务节点上的状态机按日志顺序处理提交的命令，并将输出返回给客户端。</font>因此，多个服务节点就形成了一个单一的、高度可靠的状态机。</p>
-<p><em><font color=red>个人理解</font>：共识算法用于保证日志的一致性，而复制状态机以日志中的命令为输入，多个节点上的状态机，以相同的顺序处理相同的命令，从而产生相同的输出。</em></p>
-<p>Keeping the replicated log consistent is the job of the consensus algorithm. The consensus module on a server receives commands from clients and adds them to its log. It communicates with the consensus modules on other servers to ensure that every log eventually contains the same requests in the same order, even if some servers fail. Once commands are properly replicated, they are said to be committed. Each server’s state machine processes committed commands in log order, and the outputs are returned to clients. As a result, the servers appear to form a single, highly reliable state machine.</p>
-<p>实际系统中，共识算法通常具有如下属性：</p>
+          <h2 id="Chapter-6-Client-interaction-与Client的交互"><a href="#Chapter-6-Client-interaction-与Client的交互" class="headerlink" title="Chapter 6  Client interaction     与Client的交互"></a>Chapter 6  Client interaction     与Client的交互</h2><p>本章描述了几个客户端如何与基于 Raft 的复制状态机交互的问题：</p>
 <ul>
-<li>它们可以确保在所有非拜占庭条件下的安全性（从不返回错误结果），非拜占庭条件包括网络延迟、网络分区、数据包丢失、重复和乱序。</li>
-<li>只要大多数服务节点（超过半数）可以运行，且可以相互通信，且可以与客户机通信，它们就可以正常工作（可用）。因此，比如由五台服务节点组成的典型集群可以容忍任意两台服务节点的故障。假定服务节点因宕机而发生故障；它们可能稍后就能从稳定存储上的状态恢复并重新加入集群。</li>
-<li>它们不依赖于时间来确保日志的一致性：错误的时钟和极端的消息延迟在最坏的情况下会导致可用性问题。也就是说，它们保证异步模型下的安全，在异步模型中，消息和处理器以任意速度运行。</li>
-<li>在一般情况下，只要集群的大多数成员响应了一轮RPC，命令就可以完成；少数速度较慢的服务器不会影响总体系统性能。</li>
-</ul>
-<p>Consensus algorithms for practical systems typically have the following properties:</p>
-<ul>
-<li>They ensure safety (never returning an incorrect result) under all non-Byzantine conditions, including network delays, partitions, and packet loss, duplication, and reordering.</li>
-<li>They are fully functional (available) as long as any majority of the servers are operational and can communicate with each other and with clients. Thus, a typical cluster of five servers can tolerate the failure of any two servers. Servers are assumed to fail by stopping; they may later recover from state on stable storage and rejoin the cluster.</li>
-<li>They do not depend on timing to ensure the consistency of the logs: faulty clocks and extreme message delays can, at worst, cause availability problems. That is, they maintain safety under an asynchronous model [71], in which messages and processors proceed at arbitrary speeds.</li>
-<li>In the common case, a command can complete as soon as a majority of the cluster has responded to a single round of remote procedure calls; a minority of slow servers need not impact overall system performance.</li>
-</ul>
-<h4 id="2-2-Common-use-cases-for-replicated-state-machines-复制状态机的常见用例"><a href="#2-2-Common-use-cases-for-replicated-state-machines-复制状态机的常见用例" class="headerlink" title="2.2 Common use cases for replicated state machines  复制状态机的常见用例"></a>2.2 Common use cases for replicated state machines  复制状态机的常见用例</h4><p>复制状态机是使系统容错的通用模块。它们可以以多种方式使用，本节将讨论一些典型的使用模式。</p>
-<p>Replicated state machines are a general-purpose building block for making systems fault-tolerant. They can be used in a variety of ways, and this section discusses some typical usage patterns.</p>
-<p>最常见的共识部署通常只有三到五台服务器构成一个复制状态机。然后，其他服务器可以使用此状态机来协调其活动，如图2.2（a）所示。这些系统通常使用复制状态机来提供组织成员、配置管理，或分布式锁等功能。一个更具体的例子，复制状态机可以提供一个容错工作队列，其他服务器可以使用复制状态机进行协同操作，给自己分配工作队列中的工作任务。</p>
-<p>Most common deployments of consensus have just three or five servers forming one replicated state machine. Other servers can then use this state machine to coordinate their activities, as shown in Figure 2.2(a). These systems often use the replicated state machine to provide group membership, configuration management, or locks [38]. As a more specific example, the replicated state machine could provide a fault-tolerant work queue, and other servers could coordinate using the replicated state machine to assign work to themselves.</p>
-<p>2.2(a)：集群中的节点通过读写状态机来进行协同工作；</p>
-<p>2.2(b)：领导职管理集群中的其他节点，使用复制状态机记录状态。其他节点处于被动状态，直到领导节点崩溃；</p>
-<p><img src="/img/00RAFT/image-20210922193457068.png" alt="image-20210922193457068"></p>
-<p>图2.2（b）显示了这种用法的常见简化。在这种模式中，一台服务器充当领导者，管理其余的服务器。领导者将其关键数据存储在共识系统中。如果领导者失败，则其他备用服务器将争夺领导者的位置，如果成功，它们将使用共识系统中的数据继续运行。许多大型存储系统具有单一领导者，如GFS[30]、HDFS[105]和RAMCloud[90]，都使用这种方法。</p>
-<p>A common simplification to this usage is shown in Figure 2.2(b). In this pattern, one server acts as leader, managing the rest of the servers. The leader stores its critical data in the consensus system. In case it fails, other standby servers compete for the position of leader, and if they succeed, they use the data in the consensus system to continue operations. Many large-scale storage systems that have a single cluster leader, such as GFS [30], HDFS [105], and RAMCloud [90], use this approach.</p>
-<p>共识系统有时也用于复制大规模数据，如图2.3所示。大型存储系统，如Megastore[5]、Panner[20]和District[32]，因存储的数据太多，无法容纳在单个服务器组中。因此它们通过多个复制状态机将数据进行分区，而跨多个分区的操作使用两阶段提交协议（2PC）来保持一致性。</p>
-<p>Consensus is also sometimes used to replicate very large amounts of data, as shown in Figure 2.3. Large storage systems, such as Megastore [5], Spanner [20], and Scatter [32], store too much data to fit in a single group of servers. They partition their data across many replicated state machines, and operations that span multiple partitions use a two-phase commit protocol (2PC) to maintain consistency.</p>
-<p>图2.3：使用共识的大型分区存储系统。为了扩展性，数据在多个复制状态机之间进行分区。跨分区的操作使用两阶段提交协议。</p>
-<p><img src="/img/00RAFT/image-20210922194212887.png" alt="image-20210922194212887"></p>
-<h4 id="2-3-What’s-wrong-with-Paxos-Paxos算法的问题"><a href="#2-3-What’s-wrong-with-Paxos-Paxos算法的问题" class="headerlink" title="2.3 What’s wrong with Paxos?  Paxos算法的问题"></a>2.3 What’s wrong with Paxos?  Paxos算法的问题</h4><p>在过去十年中，Leslie Lamport的Paxos协议几乎就是共识的同义词：它是课程中最常教的协议，大多数共识系统都以其为起点进行实现。Paxos首先定义了一个能够就单个决策达成一致的协议，例如单个复制日志的条目。我们将该子集称为single-decree Paxos。然后，Paxos将single-decree Paxos的多个实例组合起来，以促进一系列决策的达成，这就是所谓的Multi-Paxos。图2.4总结了Single-decree Paxos，图A.5总结了Multi-Paxos。Paxos确保了安全性和活跃性（它最终达成了共识，并且假设使用足够的故障检测器来避免proposer的活锁问题），并且其正确性已经得到了证明。Multi-Paxos在正常情况下是有效的，而且Paxos支持集群成员的变更。</p>
-<p>Over the last ten years, Leslie Lamport’s Paxos protocol [48] has become almost synonymous with consensus: it is the protocol most commonly taught in courses, and most implementations of consensus use it as a starting point. Paxos first defines a protocol capable of reaching agreement on a single decision, such as a single replicated log entry. We refer to this subset as single-decree Paxos. Paxos then combines multiple instances of this protocol to facilitate a series of decisions such as a log (Multi-Paxos). Single-decree Paxos is summarized in Figure 2.4, and Multi-Paxos is summarized<br>in Figure A.5. Paxos ensures safety and liveness (it eventually reaches consensus, assuming an adequate failure detector is used to avoid proposer livelock), and its correctness has been proven. Multi-Paxos is efficient in the normal case, and Paxos supports changes in cluster membership [69].</p>
-<p><img src="/img/00RAFT/image-20210922195317445.png" alt="image-20210922195317445"></p>
-<p>不幸的是，Paxos有两个显著的缺点。第一个缺点是Paxos非常难以理解。Paxos的完整解释[48]是出了名的不透明；只有很少的人，在付出巨大努力的情况下，才能理解它。因此，有人试图用更简单的术语解释Paxos[49,60,61]。这些解释侧重于single-decree subset，但即使如此仍然具有挑战性。在2012年NSDI的一项非正式调查中，我们发现很少有人对Paxos感到满意，即使是在经验丰富的研究人员中也是如此。我们也是在阅读了几篇Paxos的解释，并设计了我们自己的替代方案之后，才能理解完整的Paxos方案，这一过程花了将近一年的时间。</p>
-<p>Unfortunately, Paxos has two significant drawbacks. The first drawback is that Paxos is exceptionally difficult to understand. The full explanation [48] is notoriously opaque; few people succeed in understanding it, and only with great effort. As a result, there have been several attempts to explain Paxos in simpler terms [49, 60, 61]. These explanations focus on the single-decree subset, yet they are still challenging. In an informal survey of attendees at NSDI 2012, we found few people who were comfortable with Paxos, even among seasoned researchers. We struggled with Paxos ourselves; we were not able to understand the complete protocol until after reading several explanations and designing our own alternative protocol, a process that took almost a year.</p>
-<p>我们认为Paxos的不透明性源于其选择Single-decree Paxos子集作为基础。Single-decree Paxos是笨拙而微妙的：它分为两个阶段，没有简单的直观解释，无法独立理解。因此，很难对Single-decree Paxos协议的工作原理形成直觉。而Multi-Paxos的组合规则增加了显著的额外复杂性和微妙性。我们认为，就多个决策（即，一个日志而不是一个条目）达成共识的总体问题可以以其他更直接和明显的方式进行分解。</p>
-<p>We hypothesize that Paxos’ opaqueness stems from its choice of the single-decree subset as its foundation. Single-decree Paxos is dense and subtle: it is divided into two stages that do not have simple intuitive explanations and cannot be understood independently. Because of this, it is difficult to develop intuitions about why the single-decree protocol works. The composition rules for Multi-Paxos add significant additional complexity and subtlety. We believe that the overall problem of reaching consensus on multiple decisions (i.e., a log instead of a single entry) can be decomposed<br>in other ways that are more direct and obvious.</p>
-<p>Paxos的第二个问题是它没有为构建实际的实现提供良好的基础。一个原因是，对于Multi-Paxos，没有广泛认可的算法。Lamport的描述大多是关于Single-decree Paxos；他勾勒出了实现Multi-Paxos的可能方法，但缺少许多细节。有几次尝试充实和优化Paxos，如[77]、[108]和[46]，但它们彼此不同，也不同于Lamport的草图。Chubby[15]等系统已经实现了类似Paxos的算法，但在大多数情况下，它们的详细信息尚未公布。</p>
-<p>The second problem with Paxos is that it does not provide a good foundation for building practical implementations. One reason is that there is no widely agreed-upon algorithm for Multi-Paxos. Lamport’s descriptions are mostly about single-decree Paxos; he sketched possible approaches to Multi-Paxos, but many details are missing. There have been several attempts to flesh out and optimize Paxos, such as [77], [108], and [46], but these differ from each other and from Lamport’s sketches. Systems such as Chubby [15] have implemented Paxos-like algorithms, but in most cases their details have not been published.</p>
-<p>此外，Paxos体系结构对于构建实际系统来说是一个糟糕的体系结构；这是single-decree Paxos分解的另一个结果。例如，独立地选择一组日志条目，然后将它们合并到一个顺序日志中，没有什么好处；这只会增加复杂性。直接围绕日志设计系统更简单也更有效，在日志中，新条目按受限顺序逐条追加。另一个问题是Paxos的核心采用了对称的点对点方法（尽管它也暗示了作为性能优化的一种弱领导形式）。这在一个简化的世界中是有意义的，在这个世界中只会做出一个决定，但很少有实际的系统使用这种方法。如果必须做出一系列决策，那么首先选举一位领导者，然后让领导者协调决策会更简单、更快。（第11章讨论了平等主义Paxos（Egalitarian Paxos），Paxos的一个最新变体，它不使用leader，但在某些情况下可能比使用leader的算法更有效；然而，该算法比基于leader的算法复杂得多。）</p>
-<p>Furthermore, the Paxos architecture is a poor one for building practical systems; this is another consequence of the single-decree decomposition. For example, there is little benefit to choosing a collection of log entries independently and then melding them into a sequential log; this just adds complexity. It is simpler and more efficient to design a system around a log, where new entries are appended sequentially in a constrained order. Another problem is that Paxos uses a symmetric peer-to-peer approach at its core (though it also suggests a weak form of leadership as a performance optimization). This makes sense in a simplified world where only one decision will be made, but few practical systems use this approach. If a series of decisions must be made, it is simpler and faster to first elect a leader, then have the leader coordinate the decisions. (Chapter 11 discusses Egalitarian Paxos, a recent variant of Paxos that does not use a leader but in some situations can be more efficient than algorithms that do; however, this algorithm is much more complex than leader based algorithms.)</p>
-<p>因此，实际系统与Paxos几乎没有相似之处。每个实现都从Paxos开始，发现实现它的困难，然后开发一个显著不同的体系结构。这既耗时又容易出错，理解Paxos的困难更加加剧了问题。Paxos的公式对于证明其正确性的定理来说可能是一个很好的公式，但实际实现与Paxos如此不同，以至于证明几乎没有价值。Chubby的作者的以下评论是典型的：</p>
-<blockquote>
-<p>Paxos算法的描述与现实系统的需求之间存在着巨大的鸿沟，…，最终系统将基于未经验证的协议来构建[15]。</p>
-</blockquote>
-<p>由于上面这些问题，我们得出结论，Paxos 没有提供一个良好的基础，无论是为系统建设，还是教授给学生。考虑到共识算法在大规模软件系统中的重要性，我们决定看看是否可以设计一种比Paxos具有更好的共识算法。RAFT就是这个实验的结果。</p>
-<p>As a result, practical systems bear little resemblance to Paxos. Each implementation begins with Paxos, discovers the difficulties in implementing it, and then develops a significantly different architecture. This is time-consuming and error-prone, and the difficulties of understanding Paxos exacerbate the problem. Paxos’ formulation may be a good one for proving theorems about its correctness, but real implementations are so different from Paxos that the proofs have little value. The following comment from the Chubby implementers is typical：</p>
-<p>There are significant gaps between the description of the Paxos algorithm and the needs of a real-world system. …  the final system will be based on an unproven protocol [15].</p>
-<p>Because of these problems, we concluded that Paxos does not provide a good foundation either for system building or for education. Given the importance of consensus in large-scale software systems, we decided to see if we could design an alternative consensus algorithm with better properties than Paxos. Raft is the result of that experiment.</p>
-
+<li><p>6.1节描述Client如何找到集群，即使是集群成员会随时变化的情况下；</p>
+</li>
+<li><p>6.2节描述Client请求如何路由到集群的Leader节点；</p>
+</li>
+<li><p>6.3节描述Raft如何提供线性一致性的；</p>
+</li>
+<li><p>6.4节描述Raft如何更高效的处理只读请求的；</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
       
     </div>
 
@@ -436,7 +499,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -450,7 +513,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/" class="post-title-link" itemprop="url">etcd_raft源码解析-04raft包--storage</a>
+            <a href="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" class="post-title-link" itemprop="url">etcd_raft源码解析-10日志压缩</a>
         </h2>
 
         <div class="post-meta">
@@ -460,14 +523,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-10-07 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-07T00:00:00+08:00">2021-10-07</time>
+              <time title="创建时间：2022-01-27 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-27T00:00:00+08:00">2022-01-27</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:40:10" itemprop="dateModified" datetime="2022-06-28T09:40:10+08:00">2022-06-28</time>
+                <time title="修改时间：2022-06-28 09:39:35" itemprop="dateModified" datetime="2022-06-28T09:39:35+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -496,8 +559,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -512,11 +575,11 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><code>raft</code>包中的<code>storage.go</code>定义了表示持久化状态的<code>Storage</code>接口，以及该接口的一个实现<code>MemoryStorage</code>。</p>
-<p>定义<code>Storage</code>接口，主要是为了让使用<code>raft</code>库的应用程序实现该接口，以便<code>raft</code>可以通过调用<code>Storage</code>的方法获取<code>NVS</code>中的持久化snapshot和日志条目等信息。<code>Storage</code>接口的定义如下：</p>
+          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志压缩的内容，主要节选自“5.1 Snapshotting memory-based state machines”。</p>
+<p>在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：<font color=red>服务器要么空间不足，要么启动时间过长。</font>因此，任何实际系统都需要某种形式的日志压缩方法。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2021/10/07/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/04raft%E5%8C%85--storage/#more" rel="contents">
+              <a class="btn" href="/2022/01/27/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/10%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -540,7 +603,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -554,7 +617,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/" class="post-title-link" itemprop="url">raft大论文翻译-01引言</a>
+            <a href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" class="post-title-link" itemprop="url">raft大论文翻译-05日志压缩</a>
         </h2>
 
         <div class="post-meta">
@@ -564,14 +627,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-10-05 00:00:00" itemprop="dateCreated datePublished" datetime="2021-10-05T00:00:00+08:00">2021-10-05</time>
+              <time title="创建时间：2022-01-08 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-08T00:00:00+08:00">2022-01-08</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 12:19:32" itemprop="dateModified" datetime="2022-06-28T12:19:32+08:00">2022-06-28</time>
+                <time title="修改时间：2022-06-28 12:32:32" itemprop="dateModified" datetime="2022-06-28T12:32:32+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -600,8 +663,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -616,11 +679,11 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <h2 id="Chapter-1-Introduction-引言"><a href="#Chapter-1-Introduction-引言" class="headerlink" title="Chapter 1 Introduction     引言"></a>Chapter 1 Introduction     引言</h2><p>当前的数据中心系统和应用程序运行在高度动态的环境中。它们使用额外的服务器资源进行横向扩展，并根据需要进行扩展和收缩。服务器和网络的故障也很常见：每年约有2–4%的磁盘驱动器发生故障[103]，服务器也经常崩溃[22]，每天都有数十条网络链路发生问题[31]。</p>
-<p>Today’s datacenter systems and applications run in highly dynamic environments. They scale out by leveraging the resources of additional servers, and they grow and shrink according to demand. Server and network failures are also commonplace: about 2–4% of disk drives fail each year [103], servers crash about as often [22], and tens of network links fail every day in modern datacenters [31].</p>
+          <h2 id="Chapter-5-Log-compaction"><a href="#Chapter-5-Log-compaction" class="headerlink" title="Chapter 5 Log compaction"></a>Chapter 5 Log compaction</h2><p>在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长。随着日志增多，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：<font color=red>服务器要么空间不足，要么启动时间过长。</font>因此，任何实际系统都需要某种形式的日志压缩方法。</p>
+<p>Raft’s log grows during normal operation as it incorporates more client requests. As it grows larger, it occupies more space and takes more time to replay. Without some way to compact the log, this will eventually cause availability problems: servers will either run out of space, or they will take too long to start. Thus, some form of log compaction is necessary for any practical system.</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2021/10/05/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/11%E5%BC%95%E8%A8%80/#more" rel="contents">
+              <a class="btn" href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -644,7 +707,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -658,7 +721,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-03tracker包</a>
+            <a href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/" class="post-title-link" itemprop="url">etcd_raft源码解析-09日志追加</a>
         </h2>
 
         <div class="post-meta">
@@ -668,14 +731,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-09-21 00:00:00" itemprop="dateCreated datePublished" datetime="2021-09-21T00:00:00+08:00">2021-09-21</time>
+              <time title="创建时间：2022-01-02 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-02T00:00:00+08:00">2022-01-02</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:40:06" itemprop="dateModified" datetime="2022-06-28T09:40:06+08:00">2022-06-28</time>
+                <time title="修改时间：2022-06-28 09:39:26" itemprop="dateModified" datetime="2022-06-28T09:39:26+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -704,8 +767,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" itemprop="commentCount"></span>
+    <a title="valine" href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -720,20 +783,11 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><code>tracker</code>包主要实现了节点日志追加和节点配置相关的底层逻辑。其中主要实现了三个数据结构：</p>
-<ul>
-<li><code>Inflights</code>结构：实现节点日志追加的流量控制；</li>
-<li><code>Progress</code>结构：记录节点追加日志的“进度”；</li>
-<li><code>ProgressTracker</code>结构：实现配置变更和日志追加的主要数据结构；</li>
-</ul>
-<hr>
-<h3 id="Inflights结构"><a href="#Inflights结构" class="headerlink" title="Inflights结构"></a>Inflights结构</h3><p><code>tracker</code>包中的<code>Inflights</code>结构用于<code>Leader</code>对某个<code>Follower</code>发起的<code>pb.MsgApp</code>（日志追加消息）做流量控制。其中记录了所有已发出，但未收到回复的日志条目索引信息，该结构主要针对的是<code>Progress</code>处于<code>StateReplicate</code>状态的节点。</p>
-<ul>
-<li><code>Leader</code>在发送<code>pb.MsgApp</code>消息之前，必须调用<code>Inflights.Full</code>方法，判断是否可以继续发送消息；</li>
-<li>发送<code>pb.MsgApp</code>消息时必须调用<code>Inflights.Add</code>方法记录最后一条日志条目的Index；收到<code>pb.MsgAppResp</code>响应消息后调用<code>Inflights.FreeLE</code>接口更新记录信息。
+          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于日志追加的内容，节选自“3.5 Log replication”和“3.6.2 Committing entries from previous terms”。</p>
+<p>选出Leader后，它就可以处理Client的请求。Client的请求中包含了要在复制状态机（the replicated state machine）中执行的命令。Leader将该命令作为新的条目追加到其日志中，然后向所有Follower发送AppendEntries RPC使他们复制该条目。当该条目安全的复制到大多数Follower上之后，Leader将该条目应用到状态机，并且将执行结果回复给Client。如果Follower崩溃或者运行的太慢，或者网络中丢包了，Leader会不断的重发AppendEntries（即使Leader已经回复Client了），直到所有Follower最终都保存了该条目为止。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/#more" rel="contents">
+              <a class="btn" href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -757,7 +811,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -771,7 +825,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-02quorum包</a>
+            <a href="/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/" class="post-title-link" itemprop="url">00Strong consistency models--aphyr</a>
         </h2>
 
         <div class="post-meta">
@@ -781,14 +835,117 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-09-02 00:00:00" itemprop="dateCreated datePublished" datetime="2021-09-02T00:00:00+08:00">2021-09-02</time>
+              <time title="创建时间：2021-12-29 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-29T00:00:00+08:00">2021-12-29</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:40:02" itemprop="dateModified" datetime="2022-06-28T09:40:02+08:00">2022-06-28</time>
+                <time title="修改时间：2022-07-02 08:51:23" itemprop="dateModified" datetime="2022-07-02T08:51:23+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>网络分区是不可避免的，交换机、网卡、主机硬件、操作系统、磁盘，虚拟化层、程序的语义等等，都会使我们的消息延迟、丢弃、重发或者乱序。所以我们希望我们的软件保持某种<font color=red>直观的正确性。</font></p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/" class="post-title-link" itemprop="url">etcd_raft源码解析-08选举和状态转换</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-20 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-20T00:00:00+08:00">2021-12-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:56" itemprop="dateModified" datetime="2022-06-28T09:39:56+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -817,8 +974,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/" itemprop="commentCount"></span>
+    <a title="valine" href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -833,14 +990,12 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><code>quorum</code>包中包含三个文件：<code>majority.go, quorum.go joint.go</code>。该包主要实现了基于当前配置的节点集合计算出集群最大<code>CommitIndex</code>和投票结果的功能：</p>
-<ul>
-<li><code>majority.go</code>：定义了<code>MajorityConfig</code>类型及其方法，它实际上是个<code>节点ID</code>形成的<code>set</code>，并在此基础上实现了<code>CommittedIndex</code>（计算<code>Majority</code>节点的最大提交索引）和<code>VoteResult</code>（计算<code>Majority</code>节点的投票结果）方法；</li>
-<li><code>quorum.go</code>：定义了<code>AckedIndexer</code>接口，该接口唯一的方法<code>AckedIndex</code>就是提供<code>节点ID</code>到日志<code>Index</code>的转换功能；</li>
-<li><code>joint.go</code>：在<code>MajorityConfig</code>的基础上定义了<code>JointConfig</code>类型，即联合共识（Joint Consensus）节点变更算法中<code>Cold,new</code>的配置。并在此基础上实现了<code>CommittedIndex</code>和<code>VoteResult</code>方法；
+          <h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><h4 id="基本算法"><a href="#基本算法" class="headerlink" title="基本算法"></a>基本算法</h4><p>下面是Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于Leader选举的基本内容，节选自“3.4 Leader election ”和“3.6.2 Election restriction”。</p>
+<p>当节点启动时，它们都是Follower。节点只要能从Leader或Candidate收到有效的RPC，它就会一直保持Follower状态。Leader周期性的向Follower发送心跳消息来维护自己的领导地位。如果一个Follower在一段时间（称为选举超时时间）内没有收到任何消息，那该Follower就会开始选举流程。</p>
+<p>节点间通信时会交换当前Term值。如果一个节点当前Term比其他节点的小，该节点会将自己的Term更新为较大的那个值。如果一个 Candidate 或 Leader 发现自己的Term过期（较小）了，它会立即回到 Follower 状态。如果一个节点接收到一个包含过期（较小）Term的RPC消息，它会直接拒绝&#x2F;忽略这个RPC消息。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/#more" rel="contents">
+              <a class="btn" href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -864,7 +1019,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -878,7 +1033,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/" class="post-title-link" itemprop="url">etcd_raft源码解析-01概述</a>
+            <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/" class="post-title-link" itemprop="url">raft大论文翻译-04-1成员变更总结</a>
         </h2>
 
         <div class="post-meta">
@@ -888,14 +1043,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2021-08-31 00:00:00" itemprop="dateCreated datePublished" datetime="2021-08-31T00:00:00+08:00">2021-08-31</time>
+              <time title="创建时间：2021-12-20 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-20T00:00:00+08:00">2021-12-20</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 09:39:15" itemprop="dateModified" datetime="2022-06-28T09:39:15+08:00">2022-06-28</time>
+                <time title="修改时间：2022-06-28 13:39:34" itemprop="dateModified" datetime="2022-06-28T13:39:34+08:00">2022-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -911,7 +1066,7 @@
                 </span>
                   ，
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
                 </span>
             </span>
 
@@ -924,8 +1079,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/" itemprop="commentCount"></span>
+    <a title="valine" href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -940,12 +1095,118 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p><em>本文以及接下来的一系列文章主要就是分析etcd&#x2F;raft的代码。本文的主要内容，主要来自于etcd&#x2F;raft&#x2F;README.md，以及知乎上的<a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/54846720">《etcd raft 设计与实现》</a>一文。</em></p>
-<h3 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h3><p><code>etcd/raft</code>库是Raft算法的开源实现。该Raft库稳定且完备，目前已广泛应用到各种开源软件中，比如cockroachdb、dgraph、etcd、tikv等等。</p>
-<p>大部分Raft实现都具有大而全的设计，其中囊括了存储，消息序列化，网络传输等等基础组件。而<code>etcd/raft</code>库采用简约的设计原则，只实现了Raft算法的核心部分，而像网络&#x2F;磁盘IO这种的实现留给了库的使用者实现。因此使用该库时，必须自己实现Raft节点间消息交互的传输层，以及持久化Raft日志和状态的存储层。</p>
+          <p>以下内容，是对Raft博士论文《CONSENSUS: BRIDGING THEORY AND PRACTICE》中关于配置变更的总结，内容来自于“4 Cluster membership changes”。</p>
+<p>成员变更的最大风险，是可能会同时出现 2 个领导者。比如有一个由节点 A、B、C 组成的 Raft 集群，现在需要增加另外 2 个节点，扩展为由节点 A、B、C、D、E， 5 个节点组成的新集群。在进行成员变更时，节点 A、B 和 C 之间发生了分区错误，节点 A、B 组成旧配置中的“大多数”，也就是变更前的 3 节点集群中的“大多数”，那么这时节点 A和B采用旧配置，可以选出Leader，而节点 C 和新节点 D、E 组成了新配置的“大多数”，它们可能会选举出新的Leader。那么这时，就出现了同时存在 2 个领导者的情况。这就破坏了 Raft 集群的领导者唯一性，影响了集群的运行。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/#more" rel="contents">
+              <a class="btn" href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-1%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B4%E6%80%BB%E7%BB%93/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/" class="post-title-link" itemprop="url">raft大论文翻译-04-1集群节点变更</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-16 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-16T00:00:00+08:00">2021-12-16</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 13:36:57" itemprop="dateModified" datetime="2022-06-28T13:36:57+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="4-Cluster-membership-changes-集群节点变更"><a href="#4-Cluster-membership-changes-集群节点变更" class="headerlink" title="4 Cluster membership changes    集群节点变更"></a>4 Cluster membership changes    集群节点变更</h2><p>到现在为止我们都是假设集群配置（集群中参与共识算法的节点集合）是保持不变的。但是实际场景中，经常需要更改配置，比如需要替换坏掉的节点，或者增加复制的程度。可以手动通过下面的方法进行修改：</p>
+<ul>
+<li><p>将这个集群下线，更新配置文件，然后重启集群。但是这种方法使得更改期间集群不可用；</p>
+</li>
+<li><p>新节点通过配置旧节点的地址的方式替代旧节点。但是管理员需要保证旧节点不会再次出现，否则系统直接丧失了安全性的保证。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2021/12/16/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/14-0%E9%9B%86%E7%BE%A4%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -968,7 +1229,7 @@
 
   
   <nav class="pagination">
-    <a class="extend prev" rel="prev" href="/page/2/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><a class="page-number" href="/page/2/">2</a><span class="page-number current">3</span>
+    <a class="extend prev" rel="prev" href="/page/2/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><a class="page-number" href="/page/2/">2</a><span class="page-number current">3</span><a class="page-number" href="/page/4/">4</a><a class="page-number" href="/page/5/">5</a><a class="extend next" rel="next" href="/page/4/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
   </nav>
 
 
@@ -1036,14 +1297,14 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-count">46</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-count">8</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">

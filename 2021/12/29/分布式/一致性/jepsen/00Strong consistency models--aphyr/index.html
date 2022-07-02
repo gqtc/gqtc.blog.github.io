@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="网络分区是不可避免的，交换机、网卡、主机硬件、操作系统、磁盘，虚拟化层、程序的语义等等，都会使我们的消息延迟、丢弃、重发或者乱序。所以我们希望我们的软件保持某种直观的正确性。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="00Strong consistency models--aphyr">
+<meta property="og:url" content="http://example.com/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="网络分区是不可避免的，交换机、网卡、主机硬件、操作系统、磁盘，虚拟化层、程序的语义等等，都会使我们的消息延迟、丢弃、重发或者乱序。所以我们希望我们的软件保持某种直观的正确性。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/image-20220224122231411.png">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/concurrent-read.jpg">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/finite-concurrency-bounds.jpg">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/linearizability-complete-visibility.jpg">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/sequential-history.jpg">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/serializable-history.jpg">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/family-tree.jpg">
+<meta property="og:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/weak-not-unsafe.jpg">
+<meta property="article:published_time" content="2021-12-28T16:00:00.000Z">
+<meta property="article:modified_time" content="2022-07-02T00:51:23.392Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/00Strong%20consistency%20models--aphyr/image-20220224122231411.png">
+
+<link rel="canonical" href="http://example.com/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>00Strong consistency models--aphyr | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          00Strong consistency models--aphyr
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-12-29 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-29T00:00:00+08:00">2021-12-29</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-07-02 08:51:23" itemprop="dateModified" datetime="2022-07-02T08:51:23+08:00">2022-07-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/" itemprop="url" rel="index"><span itemprop="name">一致性</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/" itemprop="url" rel="index"><span itemprop="name">jepsen</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/29/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/00Strong%20consistency%20models--aphyr/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>网络分区是不可避免的，交换机、网卡、主机硬件、操作系统、磁盘，虚拟化层、程序的语义等等，都会使我们的消息延迟、丢弃、重发或者乱序。所以我们希望我们的软件保持某种<font color=red>直观的正确性。</font></p>
+<span id="more"></span>
+<p>Network partitions <a target="_blank" rel="noopener" href="http://aphyr.com/posts/288-the-network-is-reliable">are going to happen</a>. Switches, NICs, host hardware, operating systems, disks, virtualization layers, and language runtimes, not to mention program semantics themselves, all conspire to delay, drop, duplicate, or reorder our messages. In an uncertain world, we want our software to maintain some sense of <em>intuitive correctness</em>.</p>
+<p>但是如何定义正确呢？本文中我们将介绍一些“强”一致性模型，看看它们是如何结合在一起的。</p>
+<p>Well, obviously we want intuitive correctness. Do The Right Thing(TM)! But what exactly <em>is</em> the right thing? How might we describe it? In this essay, we’ll take a tour of some “strong” consistency models, and see how they fit together.</p>
+<h3 id="Correctness-什么是正确"><a href="#Correctness-什么是正确" class="headerlink" title="Correctness  什么是正确"></a>Correctness  什么是正确</h3><p>首先，我们这样定义算法的抽象行为：一个系统由状态，以及一些能够转换该状态的操作组成。随着系统的运行，它通过一些操作历史（history of operations，个人理解就是一系列操作，以及每个操作后的状态），从一种状态转换到另一种状态。</p>
+<p>There are many ways to express an algorithm’s abstract behavior–but just for now, let’s say that a <em>system</em> is comprised of a <em>state</em>, and some <em>operations</em> that transform that state. As the system runs, it moves from state to state through some history of operations.</p>
+<p>比如某个系统中，状态就是一个变量，而操作就是对变量的读写。那下面的Ruby代码，就是对这个变量的赋值和打印：</p>
+<p>For instance, our state might be a variable, and the <em>operations</em> on the state could be the writes to, and reads from, that variable. In this simple Ruby program, we write and read a variable several times, printing it to the screen to illustrate the reads.</p>
+<figure class="highlight ruby"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">x = <span class="string">&quot;a&quot;</span>; puts x; puts x</span><br><span class="line">x = <span class="string">&quot;b&quot;</span>; puts x</span><br><span class="line">x = <span class="string">&quot;c&quot;</span></span><br><span class="line">x = <span class="string">&quot;d&quot;</span>; puts x</span><br></pre></td></tr></table></figure>
+
+<p>看到上面的代码，我们已经有了这个程序正确性的直观模型：它应该打印“aabd”。</p>
+<p>We already have an <em>intuitive</em> model of this program’s correctness: it should print “aabd”. Why? Because each of the statements <em>happen in order</em>. First we <code>write the value a</code>, then <code>read the value a</code>, then <code>read the value a</code>, then <code>write the value b</code>, and so on.</p>
+<p>这样的系统中，我们设置了变量的值为<code>a</code>，那后续就应该读到<code>a</code>，即读操作应该返回最近一次写入的值（register系统的<font color=red>不变式</font>），我们称这样的系统（具有单一值的单个变量）为register系统。</p>
+<p>Once we set a variable to some value, like <code>a</code>, reading it should return <code>a</code>, until we change the value again. Reading a variable returns the most recently written value. We call this kind of system–a variable with a single value–a <em>register</em>.</p>
+<p>给变量赋值了<code>a</code>，然后读该变量就应该返回<code>a</code>。我们认为这是理所应当的，但是系统可能会返回任意值，比如<code>A</code>，<code>d</code>甚至是<code>the moon</code>，如果确实如此，那直观上我们会说系统是不正确的。</p>
+<p>We’ve had this model drilled into our heads from the first day we started writing programs, so it feels like second nature–but this is <em>not</em> the only way variables could work. A variable could return <em>any</em> value for a read: <code>a</code>, <code>d</code>, or <code>the moon</code>. If that happened, we’d say the system was <em>incorrect</em>, because those operations don’t align with our <em>model</em> of how variables are supposed to work.</p>
+<p>这暗示了系统的“正确性”定义：给定一些与<font color=red>操作和状态相关的“规则”</font>，针对系统的操作历史应该始终遵循这些规则。我们称这些规则为“一致性模型”。（一致性模型，就是规则的集合，就是符合规则的操作历史的集合。什么是正确？符合规则就是正确！）</p>
+<p>This hints at a definition of <em>correctness</em> for a system: given some <em>rules</em> which relate the operations and state, the history of operations in the system should always <em>follow those rules</em>. We call those rules a <em>consistency model</em>.</p>
+<p>我们将register系统的规则表述为简单的英语语句，但规则也可以是任意复杂的数学结构。比如“读操作返回两次写入之前的值，如果该值是4，则返回cat或dog；否则将其值加上3后返回”，<font color=red>这就是规则，就是一致性模型</font>；或者“每次读取总是返回0”也是一致性模型；甚至说“根本没有规则，任何操作都是允许的”，这也是一种一致性模型，这是最容易满足的一致性模型。</p>
+<p>We phrased our rules for registers as simple English statements, but they could be arbitrarily complicated mathematical structures. “A read returns the value from two writes ago, plus three, except when the value is four, in which case the read may return either cat or dog” is a consistency model. As is “Every read always returns zero”. We could even say “There are no rules at all; every operation is permitted”. That’s the <em>easiest</em> consistency model to satisfy; every system obeys it trivially.</p>
+<p>正式的说法是，<font color=red>一致性模型是所有允许的操作历史的集合。</font>如果我们运行一个程序，并且在允许的操作集合中执行了一系列操作，那么就说这种特定的执行是一致的（满足这种一致性模型的）。如果程序的操作历史不在一致性模型中，并且程序偶尔出错，那么我们说这种操作历史是不一致的（不满足这种一致性模型）。如果每个可能的执行都在允许的范围内，则说系统满足这种一致性模型。我们当然是希望真实系统满足“直观正确的”一致性模型，这样我们就可以编写可预测的程序。</p>
+<p>More formally, we say that a consistency model is the <em>set of all allowed histories of operations</em>. If we run a program and it goes through a sequence of operations in the allowed set, that particular execution <em>is consistent</em>. If the program screws up occasionally and goes through a history <em>not</em> in the consistency model, we say the history was <em>inconsistent</em>. If <em>every</em> possible execution falls into the allowed set, the system <em>satisfies</em> the model. We want real systems to satisfy “intuitively correct” consistency models, so that we can write predictable programs.</p>
+<hr>
+<h3 id="Concurrent-histories-并发操作"><a href="#Concurrent-histories-并发操作" class="headerlink" title="Concurrent histories   并发操作"></a>Concurrent histories   并发操作</h3><p>假设现在有两个控制线程（这里也可以是进程，或者是其他可以并行进行的操作）对同一个register进行修改，那上面的register不变式就被打破了。</p>
+<p>Now imagine a concurrent program, like one written in Node.js or Erlang. There are multiple logical threads of control, which we term “processes”. If we run a concurrent program with two processes, each of which works with the same register, our earlier register invariant could be violated.</p>
+<img src="/img/00Strong consistency models--aphyr/image-20220224122231411.png" alt="image-20220224122231411" style="zoom:50%;" />
+
+<p>假设两个线程分别是<code>top</code>和<code>bottom</code>。<code>top</code>进行的操作是：<code>write a, read, read</code>。<code>bottom</code>同时进行操作是<code>read, write b, read</code>。因为程序是并发的，所以两个线程的操作交织在一起，交织的操作序列可以有很多种排序—-只要单个线程的操作按照指定的顺序执行就行。在上图中展示出的操作序列是：<code>top write a, bottom read a, top read a, bottom write b, top read b, bottom read b</code>。</p>
+<p>There are two processes at work here: call them “top” and “bottom”. The top process tries to write a , read , read . The bottom process, meanwhile, tries to read , write b , read . Because the program is concurrent, the operations from these two processes could interleave in more than one order–so long as the operations for a single process happen in the order that process specifies. In this particular case, top writes a , bottom reads a , top reads a , bottom writes b , top reads b , and bottom reads b .</p>
+<p>并发是无处不在的，多线程的操作以任意顺序交织在一起。但是单个线程对操作历史有个约束：属于单个线程的操作必须按照顺序完成。</p>
+<p>In this light, the concept of concurrency takes on a different shape. We might imagine every program as concurrent by default–when executed, operations could happen in any order. A thread, a process–in the logical sense, anyway–is a constraint over the history: operations belonging to the same thread must take place in order. Logical threads impose a partial order over the allowed operations.</p>
+<p>引入并发后，即使是从单个线程的角度看，我们的register系统的不变式也被打破了。比如<code>top</code>线程，先是写入了<code>a</code>，然后读到了 <code>a</code>，最后读到了<code>b</code>，这个<code>b</code>并不是自己写入的。所以我们必须对一致性模型就行某种程度上的relax，以便能适应这种并发的情况：一个线程允许读到其他线程最近写入的值。这样的register系统中，两个线程就会进行协调和同步，因为他们共享了状态。</p>
+<p>Even with that order, our register invariant–from the point of view of an individual process–no longer holds. The process on top wrote a , read a , then read b –which is not the value it wrote. We must relax our consistency model to usefully describe concurrency. Now, a process is allowed to read the most recently written value from any process, not just itself. The register becomes a place of coordination between two processes; they share state.</p>
+<h3 id="Light-cones-光锥（实际就是指操作的时间区间）"><a href="#Light-cones-光锥（实际就是指操作的时间区间）" class="headerlink" title="Light cones 光锥（实际就是指操作的时间区间）"></a>Light cones 光锥（实际就是指操作的时间区间）</h3><p>然而，现实世界中，线程间的距离是遥远的，操作是需要耗时的。</p>
+<p>However, this is not the full story: in almost every real-world system, processes are distant from each other. An uncached value in memory, for instance, is likely on a DIMM thirty centimeters away from the CPU. It takes light over a full nanosecond to travel that distance–and real memory accesses are much slower. A value on a computer in a different datacenter could be thousands of kilometers–hundreds of milliseconds–away. We just can’t send information there any faster; physics, thus far, forbids it.</p>
+<p>这就表示<font color=red>操作不是瞬时的</font>，操作是有时间区间的。比如我们写一个变量，这个写操作会传递到内存，到另一个节点上，甚至到月亮上，然后内存中的状态被修改后，会返回一个确认消息，收到确认消息后，我们才知道操作发生并且完成了。</p>
+<p>This means our operations are <em>no longer instantaneous</em>. Some of them might be so fast as to be negligible, but in full generality, operations <em>take time</em>. We <em>invoke</em> a write of a variable; the write travels to memory, or another computer, or the moon; the memory changes state; a confirmation travels back; and then we <em>know</em> the operation took place.</p>
+<img src="/img/00Strong consistency models--aphyr/concurrent-read.jpg" alt="concurrent-read.jpg" style="zoom:50%;" />
+
+<p>消息发送的快慢，意味着操作历史的“模糊性”。如果消息传递的快些或者慢些，那操作历史中的操作顺序就可能会发生变化。比如这里的例子中，当值为<code>a</code>时，<code>bottom</code>线程发起读操作，读操作进行过程中，<code>top</code>线程写入了<code>b</code>，这个写动作在读操作之前到达，那<code>bottom</code>这里读到的就是<code>b</code>，而非<code>a</code>。</p>
+<p>The delay in sending messages from one place to another implies <em>ambiguity</em> in the history of operations. If messages travel faster or slower, they could take place in unexpected orders. Here, the bottom process invokes a read when the value is <code>a</code>. While the read is in flight, the top process writes <code>b</code>–and by happenstance, its write arrives <em>before</em> the read. The bottom process finally completes its read and finds <code>b</code>, not <code>a</code>.</p>
+<p>这就又违反了之前约定好的并发register系统的一致性模型。<code>bottom</code>线程读到的值，并不是在发起读操作那一时刻的值。那如果用操作完成时间，而非操作调用时间，来表示操作的true time呢？这还是有问题，如果读操作在写操作之前到达，那读操作会返回<code>a</code>，而非当前值（true time时刻的值）<code>b</code>。</p>
+<p>This history violates our concurrent register consistency model. The bottom process did <em>not</em> read the current value at the time it invoked the read. We might try to use the completion time, rather than the invocation time, as the “true time” of the operation, but this fails by symmetry as well; if the read arrives <em>before</em> the write, the process would receive <code>a</code> when the current value is <code>b</code>.</p>
+<p>在一个分布式系统中（操作需要时间的系统），必须再次relax一致性模型：<font color=red>允许这些模棱两可的顺序。</font></p>
+<p>In a distributed system–one in which it takes time for an operation to take place–we must <em>relax</em> our consistency model again; allowing these ambiguous orders to happen.</p>
+<p>How far must we go? Must we allow <em>all</em> orderings? Or can we still impose some sanity on the world?</p>
+<h3 id="Linearizability-线性一致性"><a href="#Linearizability-线性一致性" class="headerlink" title="Linearizability 线性一致性"></a>Linearizability 线性一致性</h3><img src="/img/00Strong consistency models--aphyr/finite-concurrency-bounds.jpg" alt="finite-concurrency-bounds.jpg" style="zoom:50%;" />
+
+<p>仔细考虑的话，事件的顺序并不是完全模糊的，它还是有界限在的：消息的发送总有一个起点；操作的结果肯定是在该操作调起之后才能返回。</p>
+<p>On careful examination, there are some bounds on the order of events. We can’t send a message back in time, so the <em>earliest</em> a message could reach the source of truth is, well, <em>instantly</em>. An operation cannot take effect <em>before</em> its invocation.</p>
+<p>同样，收到操作已完成的消息的时间也不会倒流，这就表示：任何操作在完成之后（收到完成的消息了），那他所作的修改肯定已经生效了。</p>
+<p>Likewise, the message informing the process that its operation completed cannot travel back in time, which means that no operation may take effect <em>after</em> its completion.</p>
+<p>我们假设有一个全局状态，所有线程都可以访问它；如果假设针对这个全局状态的操作都是<font color=red>原子</font>的，而不是相互交织的，那就可以排除掉很多不可能的操作历史。这就得到了线性一致性的模型：<font color=red>每个操作都会在其调起和完成之间的某个时刻<strong>原子地</strong>生效。</font></p>
+<p>If we assume that there is a single global state that each process talks to; if we assume that operations on that state take place <em>atomically</em>, without stepping on each other’s toes; then we can rule out a great many histories indeed. We know that <strong>each operation appears to take effect atomically at some point between its invocation and completion</strong>.</p>
+<p>我们称这种一致性模型就是线性一致性；尽管操作是并发执行的，但每个操作都是以线性顺序发生的。</p>
+<p>We call this consistency model <em>linearizability</em>; because although operations are concurrent, and take time, there is some place–or the appearance of a place–where every operation happens in a nice linear order.</p>
+<img src="/img/00Strong consistency models--aphyr/linearizability-complete-visibility.jpg" alt="linearizability-complete-visibility.jpg" style="zoom:50%;" />
+
+<p>“单一全局状态”不必是单个节点；操作实际上也不必是原子操作。状态可以分布在多台机器上，对其进行的操作也可以经历多个步骤才能完成。<font color=red>只要从外部观察者的角度来看，操作历史等同于原子的修改单一状态即可</font>。一般情况下，一个线性一致性的系统通常由多个协调性的线程组成，每个线程本身就是线性的。</p>
+<p>The “single global state” doesn’t have to be a single node; nor do operations actually have to be atomic. The state could be split across many machines, or take place in multiple steps–so long as the external history, from the point of view of the processes, appears <em>equivalent</em> to an atomic, single point of state. Often, a linearizable system is made up of smaller coordinating processes, each of which is itself linearizable; and <em>those</em> processes are made up of carefully coordinated smaller processes, and so on, down to <a target="_blank" rel="noopener" href="http://en.wikipedia.org/wiki/Compare-and-swap">linearizable operations provided by the hardware</a>.</p>
+<p>线性一致性有个很重要的一个约束，<font color=red>就是一旦一个操作完成了，那所有人必须都能看到该操作的结果（或者是更加靠后的结果）。</font>因为操作起作用的时间，肯定不会晚于其结束时间，而该操作之后（即调起时间晚于该操作完成时间的操作）操作，它发生作用的时间肯定要晚于其调起的时间，进而肯定要晚于前一个操作的结束时间。举例而言：如果一个操作成功写入了<code>b</code>，那该写操作之后的读操作，必须能读到<code>b</code>（或者如果同时有其他写操作的话，能读到更新的值）。</p>
+<p>Linearizability has powerful consequences. Once an operation is complete, <em>everyone</em> must see it–or some later state. We know this to be true because each operation <em>must</em> take place before its completion time, and any operation invoked subsequently <em>must</em> take place after the invocation–and by extension, after the original operation itself. Once we successfully write <code>b</code>, every subsequently invoked read <em>must</em> see <code>b</code>–or some later value, if more writes occur.</p>
+<p>我们可以用线性化的原子约束（atomic constraint of linearizability）来安全的修改状态。比如我们可以定义一个<code>compare-and-set</code>操作，这个操作只有当register的值是old-value的时候，才把register的值设置为new-value。我们可以用<code>compare-and-set</code>作为互斥锁、信号量、管道、计数器等等的基础。</p>
+<p>We can use the atomic constraint of linearizability to <em>mutate state safely</em>. We can define an operation like <code>compare-and-set</code>, in which we set the value of a register to a new value if, and only if, the register currently has some other value. We can use <code>compare-and-set</code> as the basis for mutexes, semaphores, channels, counters, lists, sets, maps, trees–all kinds of shared data structures become available. Linearizability guarantees us the safe interleaving of changes.</p>
+<p>此外，线性一致性在时间上的约束，也保证所有修改后的结果，都能在操作完成之后的其他读操作是可见的。所以，<font color=red>线性一致性不允许出现读取到旧数据的情况；也不允许出现非单调读的现象——即先读到新值，然后又读到了旧值。</font></p>
+<p>Moreover, linearizability’s time bounds guarantee that those changes will be visible to other participants after the operation completes. Hence, linearizability prohibits stale reads. Each read will see <em>some</em> current state between invocation and completion; but not a state prior to the read. It also prohibits <em>non-monotonic reads</em>–in which one reads a new value, then an old one.</p>
+<p>基于这些约束，这样就能解释为什么线性一致性的系统会被选为很多并发编程的基础。比如Javascript 中的所有变量都是（独立地）线性化的；Java中的volatile变量也是如此。很多语言都有互斥锁和信号量，这些也是线性的。</p>
+<p>Because of these strong constraints, linearizable systems are easier to reason about–which is why they’re chosen as the basis for many concurrent programming constructs. All variables in Javascript are (independently) linearizable; as are volatile variables in Java, atoms in Clojure, or individual processes in Erlang. Most languages have mutexes and semaphores; these are linearizable too. Strong assumptions yield strong guarantees.</p>
+<p>但如果我们不能满足这些假设，会发生什么呢？</p>
+<p>But what happens if we can’t satisfy those assumptions?</p>
+<h3 id="Sequential-consistency-顺序一致性"><a href="#Sequential-consistency-顺序一致性" class="headerlink" title="Sequential consistency 顺序一致性"></a>Sequential consistency 顺序一致性</h3><img src="/img/00Strong consistency models--aphyr/sequential-history.jpg" alt="sequential-history.jpg" style="zoom:50%;" />
+
+<p>如果我们允许进程在<font color=red>时间上不那么严格</font>，也就是说，操作就可以在调用之前或完成之后生效，但保留了线程内部的操作必须按该线程规定的顺序进行的约束，那么就得到一个比线性一致性稍弱的一致性模型：<font color=red>顺序一致性。</font></p>
+<p>If we allow processes to skew in time, such that their operations can take effect <em>before</em> invocation, or <em>after</em> completion–but retain the constraint that operations from any given process must take place in that process’ order–we get a weaker flavor of consistency: <em>sequential consistency</em>.</p>
+<p>顺序一致性要比线性一致性允许更多的操作历史。它实际上也非常有用，比如，用户将视频上传至YouTube时，YouTube将视频放到队列中进行处理，然后返回给用户该视频的网页，但是实际上用户当时还不能在网页上看到该视频，要等几分钟过后视频处理完成后才能看到。队列这里就起到了异步处理的作用，同时它还保留了顺序。</p>
+<p>Sequential consistency allows more histories than linearizability–but it’s still a useful model: one that we use every day. When a user uploads a video to YouTube, for instance, YouTube puts that video into a <em>queue</em> for processing, then returns a web page for the video right away. We can’t actually <em>watch</em> the video at that point; the video upload <em>takes effect</em> a few minutes later, when it’s been fully processed. Queues remove <em>synchronous</em> behavior while (depending on the queue) preserving order.</p>
+<p>很多缓存也是一种顺序一致性系统。比如在Twitter上写了tweet，或者在Facebook上发帖，需要时间才能渗透到缓存系统的各个层。不同的用户会在不同的时间看到我的消息，但<font color=red>能保证每个用户都会按顺序看到我的操作，一旦看到了，那帖子就不会消失，而且如果写了多条评论，它们将按顺序显示</font>。</p>
+<p>Many caches also behave like sequentially consistent systems. If I write a tweet on Twitter, or post to Facebook, it takes time to percolate through layers of caching systems. Different users will see my message at different times–but each user will see my operations <em>in order</em>. Once seen, a post shouldn’t disappear. If I write multiple comments, they’ll become visible sequentially, not out of order.</p>
+<h3 id="Causal-consistency-因果一致性"><a href="#Causal-consistency-因果一致性" class="headerlink" title="Causal consistency 因果一致性"></a>Causal consistency 因果一致性</h3><p>如果不强制一个线程的所有操作都是按序执行的，而只要求<font color=red>具有因果依赖关系的操作必须按序</font>。比如，每个人看到的针对一个blog的所有评论都是相同的顺序出现的，并且要保证只有某条回复A依赖的回复B可见之后，A才可见。如果把像”本操作依赖操作X”这样的因果关系显式编码到操作中，那数据库可以直到它依赖的所有操作都可见之后，才使得该操作可见。</p>
+<p>We don’t have to enforce the order of <em>every</em> operation from a process. Perhaps, only <em>causally related</em> operations must occur in order. We might say, for instance, that all comments on a blog post must appear in the same order for everyone, and insist that any <em>reply</em> be visible to a process <em>only after the post it replies to</em> is visible. If we encode those causal relationships like “I depend on operation X” as an explicit part of each operation, the database can delay making operations visible until it has all the operation’s dependencies.</p>
+<p>这种一致性模型要比约束同一线程内所有操作必须按序的一致性稍弱，这种模型中<font color=red>同一线程内没有因果依赖的操作可以以任意顺序出现。</font></p>
+<p>This is weaker than ordering every operation from the same process–operations from the same process with independent causal chains could execute in any relative order–but prevents many unintuitive behaviors.</p>
+<h3 id="Serializable-consistency-序列一致性"><a href="#Serializable-consistency-序列一致性" class="headerlink" title="Serializable consistency 序列一致性"></a>Serializable consistency 序列一致性</h3><img src="/img/00Strong consistency models--aphyr/serializable-history.jpg" alt="serializable-history.jpg" style="zoom:50%;" />
+
+<p><font color=red>如果操作历史相当于以某种单一原子顺序发生的，但不约束调用和完成时间，这就是所谓的序列一致性。</font>这种一致性可能比你预期的强很多，也弱很多。</p>
+<p>If we say that the history of operations is equivalent to one that took place in some single atomic order–but say nothing about the invocation and completion times–we obtain a consistency model known as <em>serializability</em>. This model is both much stronger and much weaker than you’d expect.</p>
+<p>序列化的”弱”体现在，他允许更多的操作历史，因为它对时间和顺序没有限制。在上面的图中，消息可以在过去，也可以在未来发送，这就造成了时间线的交叉。在序列化的数据库中，像<code>read x</code>这样的事务，是允许<code>x</code>在未初始化时的time 0进行的，也允许它被无限地推迟到遥远的未来！像<code>write 2 to x</code>这个事务可能会立即执行，也可以被推迟到时间线的末尾，即永远也不会发生。</p>
+<p>Serializability is <em>weak</em>, in the sense that it permits many types of histories, because it places no bounds on time or order. In the diagram to the right, it’s as if messages could be sent arbitrarily far into the past or future, that causal lines are allowed to cross. In a serializable database, a transaction like <code>read x</code> is always allowed to execute at time 0, when <code>x</code> had not yet been initialized. Or it might be delayed infinitely far into the future! The transaction <code>write 2 to x</code> could execute right now, <em>or</em> it could be delayed until the end of time, never appearing to occur.</p>
+<p>比如像下面的代码，可以打印出<code>nil</code>，<code>1</code>或<code>2</code>。因为这些操作可以以任意顺序执行。这就是序列化一致性弱的体现。这里我们假设每行代码代表单独的操作而且这些操作都执行成功了。</p>
+<p>For instance, in a serializable system, the program</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">x = 1</span><br><span class="line">x = x + 1</span><br><span class="line">puts x</span><br></pre></td></tr></table></figure>
+
+<p>is allowed to print <code>nil</code>, <code>1</code>, <em>or</em> <code>2</code>; because the operations can take place in any order. This is a surprisingly weak constraint! Here, we assume that each line represents a single operation and that all operations succeed.</p>
+<p>另一方面，序列化的强体现在，它也排除了很多操作历史，因为它需<font color=red>要有线性顺序</font>。比如下面的代码，只能有一种执行顺序，就是<code>x</code>的值从<code>nil -&gt; 1 -&gt; 2 -&gt; 3</code>，然后最后打印出<code>3</code>。</p>
+<p>On the other hand, serializability is <em>strong</em>, in the sense that it prohibits large classes of histories, because it demands a linear order. The program</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">print x if x = 3</span><br><span class="line">x = 1 if x = nil</span><br><span class="line">x = 2 if x = 1</span><br><span class="line">x = 3 if x = 2</span><br></pre></td></tr></table></figure>
+
+<p>can only be ordered in one way. It doesn’t happen in the same order we <em>wrote</em>, but it will reliably change <code>x</code> from <code>nil</code> -&gt; <code>1</code> -&gt; <code>2</code> -&gt; <code>3</code>, and finally print <code>3</code>.</p>
+<p>由于序列化允许操作的任意乱序执行（只要这些操作是原子的），因此它在实际应用中并不是很有用。大多数声称提供序列化的数据库实际上提供了<font color=red>强序列化</font>，它与线性一致性有相同的时间界限。更加复杂的是，大多数SQL数据库声称的序列一致性实际上表示<a target="_blank" rel="noopener" href="http://www.bailis.org/papers/hat-hotos2013.pdf">较弱的东西</a>，比如可重复读，cursor稳定性或者快照隔离。</p>
+<p>Because serializability allows arbitrary reordering of operations (so long as the order appears atomic), it is not particularly useful in real applications. Most databases which claim to provide serializability actually provide <em>strong serializability</em>, which has the same time bounds as linearizability. To complicate matters further, what most SQL databases term the SERIALIZABLE consistency level <a target="_blank" rel="noopener" href="http://www.bailis.org/papers/hat-hotos2013.pdf">actually means something weaker</a>, like repeatable read, cursor stability, or snapshot isolation.</p>
+<h3 id="Consistency-comes-with-costs-一致性带来的成本"><a href="#Consistency-comes-with-costs-一致性带来的成本" class="headerlink" title="Consistency comes with costs 一致性带来的成本"></a>Consistency comes with costs 一致性带来的成本</h3><p>我们说过，“弱”一致性模型比“强”一致性模型允许更多的操作历史。例如，线性一致性需要保证操作在调用时和完成时之间进行。然而，要求顺序就以为这需要协调。错略的说，我们需要排除的操作历史越多，那系统中的参与者就需要更加谨慎，更多的沟通。</p>
+<p>We’ve said that “weak” consistency models <em>allow more histories</em> than “strong” consistency models. Linearizability, for example, guarantees that operations take place between the invocation and completion times. However, <em>imposing order requires coordination</em>. Speaking loosely, the more histories we exclude, the more careful and communicative the participants in a system must be.</p>
+<p>你可能已经听说过<a target="_blank" rel="noopener" href="http://lpd.epfl.ch/sgilbert/pubs/BrewersConjecture-SigAct.pdf">CAP定理</a>，它表示对于一致性，可用性和分区容错性三者而言，任何系统最多能保证其中两个属性。虽然Eric Brewer的CAP是用非正式术语描述的，但是CAP定理有着非常精确的定义：</p>
+<ol>
+<li><font color=red>一致性这里就是线性一致性</font>，特别是对于一个线性一致性的<code>register</code>系统来说。<code>register</code>系统可以扩展到sets, lists, maps，关系数据库等等。所以<font color=red>CAP定理适用于所有的线性一致性系统；</font></li>
+<li>可用性表示对于非失败节点发起的请求必须能成功完成。因为网络分区的时间可能持续任意长的时间，这就表示节点不能简单地将响应延迟到分区修复之后；</li>
+<li>分区容错性意味着允许发生网络分区。在网络正常的情况下提供线性一致性和可用性是很容易的，但是<font color=red>当网络不可靠时，同时提供这两种特性是不可能的。</font>因此如果网络不是完全可靠的（实际上它就是不可靠的），你就不能选择CA，所以构建在商用硬件之上的实际分布式系统中，最多可以保证AP或者CP。</li>
+</ol>
+<p>You may have heard of the <a target="_blank" rel="noopener" href="http://lpd.epfl.ch/sgilbert/pubs/BrewersConjecture-SigAct.pdf">CAP theorem</a>, which states that given consistency, availability, and partition tolerance, any given system may guarantee <em>at most</em> two of those properties. While Eric Brewer’s CAP conjecture was phrased in these informal terms, the CAP <em>theorem</em> has very precise definitions:</p>
+<ol>
+<li>Consistency means linearizability, and in particular, a linearizable register. Registers are equivalent to other systems, including sets, lists, maps, relational databases, and so on, so the theorem can be extended to cover <em>all kinds</em> of linearizable systems.</li>
+<li>Availability means that every request to a non-failing node must complete successfully. Since network partitions are allowed to last <em>arbitrarily long</em>, this means that nodes cannot simply defer responding until after the partition heals.</li>
+<li>Partition tolerance means that partitions <em>can happen</em>. Providing consistency and availability when the network is reliable is <em>easy</em>. Providing both when the network is not reliable is <em>provably impossible</em>. If your network is <em>not</em> perfectly reliable–and it isn’t–you cannot choose CA. This means that all practical distributed systems on commodity hardware can guarantee, at maximum, either AP or CP.</li>
+</ol>
+<img src="/img/00Strong consistency models--aphyr/family-tree.jpg" alt="family-tree.jpg" style="zoom: 50%;" />
+
+
+
+<p>你可能会有这样的疑问：线性一致性不是一致性模型的唯一模型，我可以通过提供顺序一致性、串行一致性或者快照隔离，来绕过CAP定理。</p>
+<p>“Hang on!” you might exclaim. “Linearizability is not the end-all-be-all of consistency models! I could work around the CAP theorem by providing <em>sequential</em> consistency, or serializability, or snapshot isolation!”</p>
+<p>确实，CAP定理只是说我们不可能构建完全可用的线性一致性系统。但是问题是，有其他证据表明，你也无法构建具有顺序一致性、序列一致性、可重复读、分区隔离，cursor stability等，或是更强的一致性模型的完全可用系统。在Peter Bailis的论文<a target="_blank" rel="noopener" href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Highly Available Transactions paper</a>中指出，基于红色区域的一致性模型的系统时不可能完全可用的。</p>
+<p>This is true; the CAP theorem only says that we cannot build totally available linearizable systems. The problem is that we have <em>other</em> proofs which tell us that you cannot build totally available systems with sequential, serializable, repeatable read, snapshot isolation, or cursor stability–or any models stronger than those. In this map from Peter Bailis’ <a target="_blank" rel="noopener" href="http://www.vldb.org/pvldb/vol7/p181-bailis.pdf">Highly Available Transactions paper</a>, models shaded in red <em>cannot be fully available</em>.</p>
+<p>如果我们把可用性的概念relax一些，比如CLIENT只能与相同的节点进行通信，那有些类型的一致性模型就是可以实现的了，比如因果一致性，PRAM，以及read-your-write一致性。</p>
+<p>If we <em>relax</em> our notion of availability, such that client nodes must always talk to the same server, <em>some</em> types of consistency become achievable. We can provide causal consistency, PRAM, and read-your-writes consistency.</p>
+<p><font color=red>如果需要完全可用，那我们可以提供单调读（monotonic reads）、单调写（monotonic writes）、read committed、monotonic atomic view等等这样的一致性模型。</font>比如像Riak、Cassandra这样的分布式存储系统，低隔离级别的ANSI SQL数据库系统等等就是这样的。这些一致性模型不像前面那些图中画的那样有线性顺序，它们仅仅提供部分有序，这种部分有序可以组合成patchwork或者web，因为部分有序，所以这些一致性模型可以由更多的操作历史。</p>
+<p>If we demand <em>total</em> availability, then we can provide monotonic reads, monotonic writes, read committed, monotonic atomic view, and so on. These are the consistency models provided by distributed stores like Riak and Cassandra, or ANSI SQL databases on the lower isolation settings. These consistency models don’t have linear orders like the diagrams we’ve drawn before; instead, they provide <em>partial</em> orders which come together in a patchwork or web. The orders are <em>partial</em> because they admit a broader class of histories.</p>
+<h3 id="A-hybrid-approach-一种混合的方法"><a href="#A-hybrid-approach-一种混合的方法" class="headerlink" title="A hybrid approach 一种混合的方法"></a>A hybrid approach 一种混合的方法</h3><img src="/img/00Strong consistency models--aphyr/weak-not-unsafe.jpg" alt="weak-not-unsafe.jpg" style="zoom:50%;" />
+
+
+
+<p>有一些算法需要线性一致性来保证安全性，比如要构建一个分布式锁的服务，那就需要为线性一致性，因为如果没有时间约束的话，那就有可能持有一个过去或者未来的锁。另一方面，还有很多算法不需要线性一致性，比如最终一致性的sets, lists, trees, maps等等，只需要弱一些的一致性模型就行了。</p>
+<p>Some algorithms depend on linearizability for safety. If we want to build a distributed lock service, for instance, linearizability is <em>required</em>; without hard time boundaries, we could hold a lock from the future or from the past. On the other hand, many algorithms <em>don’t</em> need linearizability. Eventually consistent sets, lists, trees, and maps, for instance, can be safely expressed as <a target="_blank" rel="noopener" href="http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf">CRDTs</a> even in “weak” consistency models.</p>
+<p>更强的一致性模型意味着更多的协调（更多的消息交互），以确保这些操作按照正确的顺序进行。这不仅造成了<font color=red>可用性较低，而且还暴露出更高的延迟。</font>这也就就是为什么现代CPU的内存模型默认情况下并不是线性的，除非显式标注。现代CPU会将针对内存的操作进行重排序，这样做虽然难以理解，但是却带来了惊人的性能优势。现实中的节点分布在不同位置的分布式系统，节点间通信通常由数百毫秒的延迟，通常也会做出类似的权衡。</p>
+<p>Stronger consistency models also tend to require more coordination–more messages back and forth–to ensure their operations occur in the correct order. Not only are they less available, but they can also <em>impose higher latency constraints</em>. This is why modern CPU memory models are <em>not</em> linearizable by default–unless you explicitly say so, modern CPUs will reorder memory operations relative to other cores, or worse. While more difficult to reason about, the performance benefits are phenomenal. Geographically distributed systems, with hundreds of milliseconds of latency between datacenters, often make similar tradeoffs.</p>
+<p>所以在实际的应用中，我们采用的是混合的数据存储系统或者数据库，融合不同的一致性模型来实现冗余、可用性、性能和安全性目标。<font color=red>在保证可用性和性能方面，尽可能采用弱一致性模型，如果算法需要有严格的操作顺序要求，则采用强一致性模型。</font>比如，可以向S3，Riak或Cassandra中写入大量数据，然后将这些数据的指针线性的写入Postgres，Zookeeper或者Etcd中。一些数据库支持多个一致性模型，比如关系数据库中的隔离级别是可以调整的，或者Cassandra和Riak中的线性化事务，这有助于减少使用的系统数量。不过，底线是：任何人如果说他们的一致性模型是唯一正确的选择，那么这种说法很可能只是一种销售策略，不可能存在两全其美的东西。</p>
+<p>So in practice, we use <em>hybrid</em> data storage, mixing databases with varying consistency models to achieve our redundancy, availability, performance, and safety objectives. “Weaker” consistency models wherever possible, for availability and performance. “Stronger” consistency models where necessary, because the algorithm being expressed demands a stricter ordering of operations. You can write huge volumes of data to S3, Riak or Cassandra, for instance, then write a <em>pointer</em> to that data, linearizably, to Postgres, Zookeeper or Etcd. Some databases admit multiple consistency models, like tunable isolation levels in relational databases, or Cassandra and Riak’s linearizable transactions, which can help cut down on the number of systems in play. Bottom line, though: anyone who says their consistency model is the only right choice is likely trying to sell something. You can’t have your cake and eat it too.</p>
+<p>说了这么多一致性模型相关的东西之后，下一篇文章中我想谈谈我们如何验证线性一致性系统的正确性。</p>
+<p>Armed with a more nuanced understanding of consistency models, I’d like to talk about how we go about <em>verifying</em> the correctness of a linearizable system. In the next Jepsen post, we’ll discuss the linearizability checker I’ve built for testing distributed systems: <a target="_blank" rel="noopener" href="http://aphyr.com/posts/314-computational-techniques-in-knossos">Knossos</a>.</p>
+<p>For a more formal definition of these models, try Dziuma, Fatourou, and Kanellou’s <a target="_blank" rel="noopener" href="http://www.ics.forth.gr/tech-reports/2013/2013.TR439_Survey_on_Consistency_Conditions.pdf">Survey on consistency conditions</a></p>
+<hr>
+<p>原文：<a target="_blank" rel="noopener" href="https://aphyr.com/posts/313-strong-consistency-models">https://aphyr.com/posts/313-strong-consistency-models</a></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/20/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/08%E9%80%89%E4%B8%BE%E5%92%8C%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/" rel="prev" title="etcd_raft源码解析-08选举和状态转换">
+      <i class="fa fa-chevron-left"></i> etcd_raft源码解析-08选举和状态转换
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/" rel="next" title="etcd_raft源码解析-09日志追加">
+      etcd_raft源码解析-09日志追加 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Correctness-%E4%BB%80%E4%B9%88%E6%98%AF%E6%AD%A3%E7%A1%AE"><span class="nav-number">1.</span> <span class="nav-text">Correctness  什么是正确</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Concurrent-histories-%E5%B9%B6%E5%8F%91%E6%93%8D%E4%BD%9C"><span class="nav-number">2.</span> <span class="nav-text">Concurrent histories   并发操作</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Light-cones-%E5%85%89%E9%94%A5%EF%BC%88%E5%AE%9E%E9%99%85%E5%B0%B1%E6%98%AF%E6%8C%87%E6%93%8D%E4%BD%9C%E7%9A%84%E6%97%B6%E9%97%B4%E5%8C%BA%E9%97%B4%EF%BC%89"><span class="nav-number">3.</span> <span class="nav-text">Light cones 光锥（实际就是指操作的时间区间）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Linearizability-%E7%BA%BF%E6%80%A7%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">4.</span> <span class="nav-text">Linearizability 线性一致性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Sequential-consistency-%E9%A1%BA%E5%BA%8F%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">5.</span> <span class="nav-text">Sequential consistency 顺序一致性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Causal-consistency-%E5%9B%A0%E6%9E%9C%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">6.</span> <span class="nav-text">Causal consistency 因果一致性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Serializable-consistency-%E5%BA%8F%E5%88%97%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">7.</span> <span class="nav-text">Serializable consistency 序列一致性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Consistency-comes-with-costs-%E4%B8%80%E8%87%B4%E6%80%A7%E5%B8%A6%E6%9D%A5%E7%9A%84%E6%88%90%E6%9C%AC"><span class="nav-number">8.</span> <span class="nav-text">Consistency comes with costs 一致性带来的成本</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#A-hybrid-approach-%E4%B8%80%E7%A7%8D%E6%B7%B7%E5%90%88%E7%9A%84%E6%96%B9%E6%B3%95"><span class="nav-number">9.</span> <span class="nav-text">A hybrid approach 一种混合的方法</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">46</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
