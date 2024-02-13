@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本章主要将针对不同的场景，数据库是如何保存数据的，又是如何有效检索数据的。  非内存数据库，数据最终都落在磁盘上，数据很多，如何提高读的速度，这就引入了索引；">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DDIA笔记-03数据存储与检索">
+<meta property="og:url" content="http://example.com/2022/12/12/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="本章主要将针对不同的场景，数据库是如何保存数据的，又是如何有效检索数据的。  非内存数据库，数据最终都落在磁盘上，数据很多，如何提高读的速度，这就引入了索引；">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230609164013287.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230609164658064.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230610141721102.png">
+<meta property="og:image" content="http://example.com/img/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/image-20230610141740165.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230612185141125.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230612185907691.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230617111132960.png">
+<meta property="og:image" content="http://example.com/img/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/image-20230617111504900.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230617122329374.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230617135245464.png">
+<meta property="og:image" content="http://example.com/img/03数据存储与检索/image-20230617145119598.png">
+<meta property="article:published_time" content="2022-12-11T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-13T09:37:51.774Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta property="article:tag" content="数据库">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/03数据存储与检索/image-20230609164013287.png">
+
+<link rel="canonical" href="http://example.com/2022/12/12/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>DDIA笔记-03数据存储与检索 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/12/12/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          DDIA笔记-03数据存储与检索
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-12-12 00:00:00" itemprop="dateCreated datePublished" datetime="2022-12-12T00:00:00+08:00">2022-12-12</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-02-13 17:37:51" itemprop="dateModified" datetime="2024-02-13T17:37:51+08:00">2024-02-13</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/" itemprop="url" rel="index"><span itemprop="name">数据密集型应用系统设计读书笔记</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/12/12/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/12/12/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本章主要将针对不同的场景，数据库是如何保存数据的，又是如何有效检索数据的。</p>
+<ul>
+<li>非内存数据库，数据最终都落在磁盘上，数据很多，如何提高读的速度，这就引入了索引；<span id="more"></span></li>
+<li>索引有很多种，从最简单的哈希索引开始介绍索引的概念，然后从哈希索引引申出SSTable和LSM-Tree，在引申出最常用的B-tree索引。然后进行对比，不同的索引适用于不同的场景；</li>
+<li>上面是基本的索引结构，但是还有一些问题需要解决：索引中除了保存key之外，value如何保存；索引只能查找一维的数据，想要查找二维的数据怎么办？针对模糊查询的快速检索，上面的索引不适合，应该用什么方式？</li>
+<li>之前的内容基本都是针对传统的OLTP模式，如果是用于分析的OLAP模式，提出了数据仓库的概念。数据仓库的行数和列数很多，而基本只关心特定的几列，然后做统计运算，针对这种场景如何存储数据？引出了列式存储的概念。</li>
+</ul>
+<p>问题：B-tree中页的引用时指向磁盘的，如何在应用程序中创建指向磁盘位置的引用，没见过这样的API？</p>
+<p>回答：所谓对磁盘位置的引用，可以理解为某个文件中的偏移量即可。</p>
+<hr>
+<p>本质而言，数据库只做两件事情：<font color=red>保存插入的数据；返回查询的数据</font>。</p>
+<h3 id="数据库核心：数据结构"><a href="#数据库核心：数据结构" class="headerlink" title="数据库核心：数据结构"></a>数据库核心：数据结构</h3><p>来看一个最简单的数据库， 它由两个Bash函数实现：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_">#</span><span class="language-bash">!/bin/bash</span></span><br><span class="line">db_set () &#123;</span><br><span class="line">	echo ”$1,$2” &gt;&gt; database</span><br><span class="line">&#125;</span><br><span class="line">db_get () &#123;</span><br><span class="line">	grep &quot;^$1, ” database | sed -e &quot;s/^$1,//&quot; | tail -n 1</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这两个函数实现了一个kv存储。调用<code>db_set key value</code> ，它在数据库中保存输入的key和value。调用<code>db_get key</code> ，它查找与输入key相关联的最新值并返回。</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">db_set 123456 <span class="string">&#x27;&#123;” name”:” London ”,”attractions &quot;:[”Big Ben”,” London Eye”]&#125;·</span></span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash"><span class="string">db_set 42 &#x27;</span>&#123;”name” :”San Francisco”,”attractions ”:[ ”Golden Gate Bridge”]&#125;’</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">db_get 42</span></span><br><span class="line">&#x27;&#123;”name” :”San Francisco”,”attractions ”:[ ”Golden Gate Bridge”]&#125;’</span><br></pre></td></tr></table></figure>
+
+<p>它底层的存储格式非常简单：一个纯文本文件。其中每行包含一个kv对，用逗号分隔（大致像一个csv文件）。每次调用<code>db_set</code>追加新内容到文件末尾，如果多次更新某个key，旧版本的值不会被覆盖，而是需查看文件中最后一次出现的key（因此在<code>db_get</code> 中使用<code>tail -n 1</code> ）。</p>
+<p>对于简单的情况，追加到文件尾部的方式通常足够高效，因而<code>db_set</code>函数性能很好。与<code>db_set</code>相似，<font color=red>许多数据库内都使用日志，日志是一个仅支持追加式更新的数据文件。</font></p>
+<p>如果文件保存了大量记录，那<code>db_get</code>的性能会非常差，查找的开销是O(n)。<font color=red>为高效地查找数据库中特定键的值，需要新的数据结构：索引。</font>索引是基于原始数据生成的额外数据结构。维护额外的结构势必会引入开销，每次写数据时，需要更新索引，因此任何类型的索引通常都会降低写的速度。</p>
+<p>这就涉及存储系统中重要的权衡设计：<font color=red>适当的索引可以加速读取查询，但每个索引都会减慢写速度。</font>默认情况下，数据库通常不会对所有内容进行索引，它需要应用开发人员或数据库管理员，基于对应用程序典型查询模式的了解，手动选择索引。目的是为应用程序提供最有利加速的同时，避免引入过多不必要的开销。</p>
+<h4 id="哈希索引"><a href="#哈希索引" class="headerlink" title="哈希索引"></a>哈希索引</h4><p>假设数据存储全部采用追加式文件，如之前的例子所示。<font color=red>最简单的索引策略就是：内存中维护<code>hashmap</code>，把每个键一一映射到数据文件中特定的字节偏移，</font>如图3-1所示。当在文件中追加新的kv对时，需更新<code>hashmap</code>来反映刚刚写入数据的偏移量。当查找某个值时，使用<code>hashmap</code>找到文件中的偏移，然后读取内容。</p>
+<img src="/img/03数据存储与检索/image-20230609164013287.png" alt="image-20230609164013287" style="zoom:67%;" />
+
+<p>这是Bitcask（Riak中的默认存储引擎）采用的核心做法。只需所有的key放入内存（因为hashmap需保存在内存中），而value数据量可以超过内存大小。只需一次磁盘寻址，就能将value从磁盘加载到内存。像Bitcask这样的存储引擎<font color=red>非常适合每个键的值频繁更新的场景。</font></p>
+<p>只追加到一个文件，如何避免用尽磁盘空间？一个好的解决方案是将文件分解成一定大小的段，当文件达到一定大小时就关闭，后续写入新的段文件中。然后可以在这些段上执行压缩，也可以在压缩的同时将多个段合并在一起。如图3-2。压缩意味着在日志中丢弃重复的键，只保留每个键最近的更新。</p>
+<img src="/img/03数据存储与检索/image-20230609164658064.png" alt="image-20230609164658064" style="zoom:67%;" />
+
+<p><font color=red>每个段现在都有自己的内存哈希表</font>，将键映射到文件的偏移。为找到键的值，首先检查最新的段的<code>hashmap</code>，如果键不存在，检查第二最新的段，以此类推。</p>
+<p>还有很多细节方面需要考虑才能使得这个简单的想法在实际中行之有效。简而言之，实现中有以下重要问题：</p>
+<ul>
+<li>文件格式：csv不是日志的最佳格式。更快更简单的方法是使用二进制格式，比如先以字节为单位来记录字符串长度，之后跟上原始字符串。</li>
+<li>删除记录：如果要删除键和它关联的值，则必须在数据文件中追加一个特殊的删除记录。当合并日志段时，一旦发现该标记，就丢弃这个己删除键的所有值。</li>
+<li><font color=red>崩溃恢复</font>：如果数据库重新启动，内存中的<code>hashmap</code>将丢失。原则上可以通过从头到尾读取整个段文件，来恢复每个段的<code>hashmap</code>。但如果分段文件很大，扫描可能需要很长时间。Bitcask通过将每个段的<code>hashmap</code>的快照存储在磁盘上，可以更快地加载到内存中。</li>
+<li>部分写入的记录：数据库随时可能崩溃，包括将记录追加到日志的过程中。Bitcask文件包括校验值，这样可以发现损坏部分并丢弃。</li>
+<li>并发控制：由于写入以严格的先后顺序追加到日志中，通常的实现选择是只有一个写线程。数据文件段是追加的，并且是不可变的， 所以他们可以被多个线程同时读取。</li>
+</ul>
+<p>结果证明<font color=red>追加式的设计非常不错</font>，主要原因有以下几个：</p>
+<ul>
+<li>追加和分段合并主要是<font color=red>顺序写，它通常比随机写快得多</font>，特别是在旋转式磁性硬盘上。某种程度上，顺序写在基于闪存的固态硬盘上也是适合的。</li>
+<li>如果段文件是追加的或不可变的，则并发和崩溃恢复要简单得多。例如，不必担心在重写值时发生崩溃的情况，留下一个包含部分旧值和部分新值混杂在一起的文件。</li>
+<li>合并旧段可以避免随着时间的推移数据文件出现碎片化的问题。</li>
+</ul>
+<p>但是，哈希表索引也有其局限性：</p>
+<ul>
+<li><font color=red>哈希表必须全部放入内存</font>。原则上可以在磁盘上维护<code>hashmap</code>，但磁盘上的<code>hashmap</code>需要大量的随机访问IO，当哈希变满时，继续增长代价昂贵，并且哈希冲突时需复杂的处理逻辑；</li>
+<li><font color=red>区间查询效率不高</font>。例如，不能简单地支持扫描<code>kitty00000</code>到<code>kitty99999</code>区间内的所有键，只能逐个查找每个键。</li>
+</ul>
+<h4 id="SSTables和LSM-Tree"><a href="#SSTables和LSM-Tree" class="headerlink" title="SSTables和LSM-Tree"></a>SSTables和LSM-Tree</h4><p>现在简单地<font color=red>改变段文件的格式：要求kv对的顺序按键排序</font>。这种格式称为排序字符串表，或简称为<font color=red>SSTable</font>。它要求每个键在每个合并的段文件中只出现一次（压缩过程已经确保了）。SSTable相比哈希索引的日志段，有以下优点：</p>
+<ul>
+<li><p>合并段更加简单高效，使用类似归并排序的算法，并发读取多个输入段文件，比较每个文件的第一个键，把最小的键拷贝到输出文件，并重复这个过程。如果相同的键出现在多个输入段，保留最新段的值，丢弃旧段中的值。</p>
+<img src="/img/03数据存储与检索/image-20230610141721102.png" alt="image-20230610141721102" style="zoom:67%;" />
+</li>
+<li><p><font color=red>无需在内存中保存所有键的索引。</font>以图3-5为例，假设正在查找键<code>handiwork</code>，且不知道该键在段文件中的确切偏移。但如果知道键<code>handbag</code>和键<code>handsome</code>的偏移量，键<code>handiwork</code>一定位于两者之间。因此可以跳到<code>handbag</code>的偏移，从那里开始扫描，直到找到<code>handiwork</code>，所以，仍需要一个<font color=red>内存索引来记录某些键的偏移，但它可以是稀疏的</font>。</p>
+<p><img src="/img/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/image-20230610141740165.png" alt="image-20230610141740165"></p>
+</li>
+<li><p>由于读请求往往需要扫描请求范围内的多个kv对，可以考虑将这些记录保存到一个块中并在写磁盘之前将其压缩（如图3-5中阴影区域）。然后稀疏内存索引的每个条目指向压缩块的开头。除了节省磁盘空间，还减少IO带宽的占用。</p>
+</li>
+</ul>
+<h5 id="构建和维护SSTables"><a href="#构建和维护SSTables" class="headerlink" title="构建和维护SSTables"></a>构建和维护SSTables</h5><p>如何让数据按键排序呢？内存排序有很多广为人知的树状数据结构，例如红黑树或AVL树。使用这些数据结构，可以按任意顺序插入键并以排序后的顺序读取它们。<font color=red>存储引擎的基本工作流程如下</font>：</p>
+<ul>
+<li>写入时，将其添加到内存中的平衡树数据结构中。这个内存中的树有时被称为内存表。</li>
+<li>当内存表大于阈值时，将其作为SSTable文件写入磁盘。由于树已经维护了按键排序的kv对，写磁盘可以比较高效。新的SSTable文件成为数据库的最新部分。SSTable写磁盘的同时，写入可以继续添加到一个新的内存表实例。</li>
+<li>读取时，首先尝试在内存表中查找键，然后是最新的磁盘段文件，接下来是次新的磁盘段文件，以此类推。</li>
+<li>后台进程周期性地执行段合并与压缩过程，以合并多个段文件，并丢弃那些已被覆盖或删除的值。</li>
+</ul>
+<p>上述方案还存在一个问题： 如果数据库崩溃，最近的写入（在内存表中但尚未写入磁盘）将会丢失。为避免该问题，可以在磁盘上保留单独的日志，每个写入都会立即追加到该日志，就像上一节所述。那个日志文件无需按键排序，因为它的唯一目的是在崩溃后恢复内存表。每当将内存表写入SSTable时，相应的日志可以被丢弃。</p>
+<h5 id="从SSTables到LSM-Tree"><a href="#从SSTables到LSM-Tree" class="headerlink" title="从SSTables到LSM-Tree"></a>从SSTables到LSM-Tree</h5><p><font color=red>基于合并和压缩排序文件原理的存储引擎通常都被称为LSM存储引擎。</font></p>
+<h5 id="性能优化"><a href="#性能优化" class="headerlink" title="性能优化"></a>性能优化</h5><p>还有很多细节值得深入优化。例如，查找数据库中某个不存在的键时， LSM-Tree算法可能很慢：在确定键不存在之前，必须先检查内存表，然后一直回溯访问到最旧的段文件。为优化这种访问，存储引擎通常使用额外的布隆过滤器（一种内存高效的数据结构，用于近似计算集合的内容。如果数据库中不存在某个键，它能够很快告诉你结果）。</p>
+<p>还有不同的策略会影响甚至决定SSTables压缩和合并时的具体顺序和时机。最常见的方式是大小分级和分层压缩。在大小分级的压缩中，较新的和较小的SSTables被连续合并到较旧和较大的SSTables 。在分层压缩中，键的范围分裂成多个更小的SSTables ，旧数据被移动到单独的“层级”，这样压缩可以逐步进行并节省磁盘空间。</p>
+<p>LSM-tree 的基本思想足够简单有效。即使数据集远大于可用内存，它仍然能够正常工作。由于数据按排序存储，因此可以有效地执行区间查询，并且由于磁盘是顺序写入的，所以LSM-tree可以支持非常高的写入吞吐量。</p>
+<h4 id="B-trees"><a href="#B-trees" class="headerlink" title="B-trees"></a>B-trees</h4><p>目前讨论的日志结构索引还不是最常见的索引类型。最广泛使用的索引结构是B-tree 。它几乎是所有关系数据库中的标准索引实现，许多非关系型数据库也经常使用。</p>
+<p>像SSTable一样，<font color=red>B-tree保留按键排序的kv对，这样可以实现高效的kv查找和区间查询，</font>但相似仅此而已，B-tree本质上具有非常不同的设计理念。</p>
+<p>B-tree将数据库分解成固定大小的块或页（一般为4KB），页是内部读写的最小单元。这种设计更接近底层硬件，因为磁盘也是以固定大小的块排列。</p>
+<p><font color=red>每个页面都可以使用地址或位置进行标识，这样可以让一个页面引用另一个页面，类似指针，不过是指向磁盘地址，而不是内存。</font>可以使用这些页面引用来构造一个树状页面，如图3-6所示。</p>
+<img src="/img/03数据存储与检索/image-20230612185141125.png" alt="image-20230612185141125" style="zoom:67%;" />
+
+<p>某一页被指定为B-tree的根，每当查找索引中的一个键时，总是从这里开始。该页面包含若干个键和对子页的引用。每个孩子都负责一个连续范围内的键，相邻引用之间的键可以指示这些范围之间的边界。</p>
+<p>在图3-6的例子中，假定查找键251，因此沿着200<del>300间的页引用，到达类似的页，它进一步将200</del>300范围分解成子范围。最终，到达一个包含单个键的页（叶子页），该页包含每个内联键的值或包含可以找到值的页的引用。</p>
+<p>B-tree中一个页所包含的子页引用数称为<font color=red>分支因子</font>。例如，在图3-6中，分支因子为6 。实际中，分支因子<font color=red>通常为几百个。</font></p>
+<p>如果要更新B-tree中现有键的值，首先搜索包含该键的叶子页，更改该页的值，并将页写回到磁盘（对该页的任何引用仍然有效）。如果要添加新键，则需要找到其范围包含新键的页，并将其添加到该页。<font color=red>如果页中没有足够的可用空间来容纳新键，则将其分裂为两个半满的页，并且父页也需要更新以包含分裂之后的新的键范围</font>，如图3-7所示。</p>
+<img src="/img/03数据存储与检索/image-20230612185907691.png" alt="image-20230612185907691" style="zoom:67%;" />
+
+<p>该算法确保树保持平衡：具有n个键的B-tree总是具有O(log n)的深度。<font color=red>大多数数据库适合3~4层的B-tree，因此无需遍历非常深的页面层次即可找到所需的页</font>（分支因子为500的4KB页的四级树可以存储高达256TB）。</p>
+<h5 id="使B-tree可靠"><a href="#使B-tree可靠" class="headerlink" title="使B-tree可靠"></a>使B-tree可靠</h5><p>B-tree底层的基本写操作是使用新数据覆盖旧页。它<font color=red>假设覆盖不会改变页的磁盘存储位置，即当页被覆盖时，对该页的所有引用保持不变。</font>这与日志结构索引（如LSM-tree）形成鲜明对比，LSM-tree仅追加更新文件（并最终删除过时的文件），但不会修改文件。</p>
+<p>某些操作需覆盖多个不同的页。例如，如果插入导致需分裂页，那么需要写两个分裂的页，并且覆盖其父页以更新对两个子页的引用。为使数据库能从崩溃中恢复，常见B-tree的实现需要支持磁盘上的额外的数据结构：预写日志（WAL），也称为重做日志。这是一个<font color=red>仅支持追加修改的文件</font>，每个B-tree的修改必须先更新WAL然后再修改树本身的页。当数据库在崩溃后需要恢复时，该日志用于将B-tree恢复到最近一致的状态。</p>
+<p>原地更新页的另一个复杂因素是，如果多个线程同时访问B-tree，则需要注意并发控制。通常使用轻量级的锁保护树的数据结构来完成。在这方面，日志结构化的方法更简单，因为它们在后台执行所有合并，而不会干扰前端的查询，并且会不时地用新段原子地替换旧段。</p>
+<h5 id="优化B-tree"><a href="#优化B-tree" class="headerlink" title="优化B-tree"></a>优化B-tree</h5><p>B-tree已经存在了很长时间，多年来开发了许多优化措施。这里只列举一部分：</p>
+<ul>
+<li>一些数据库（如LMDB）不使用覆盖页和维护WAL来进行崩溃恢复，而使用<font color=red>写时复制方案</font>。修改的页被写入不同的位置，树中父页的新版本被创建，并指向新的位置。这种方法对于并发控制也很有帮助。</li>
+<li>保存键的缩略信息，而不是完整的键，这样可以节省页空间。特别是在树中间的页中，只需要提供足够的信息来描述键的起止范围。这样可以将更多的键压入到页中，让树具有更高的分支因子，从而减少层数。</li>
+<li>如果查询需要按照顺序扫描大段的键范围，因此许多B-tree的实现尝试对树进行布局，以便相邻叶子页可以按顺序保存在磁盘上。然而，随着树的增长，维持这个顺序会变得越来越困难。相比之下，由于LSM-tree在合并过程中一次重写大量存储段，因此它们更容易让连续的键在磁盘上相互靠近。</li>
+<li>添加额外的指针到树中。例如，每个叶子页面可能会向左和向右引用其同级的兄弟页，这样可以顺序扫描键，而不用跳回到父页。</li>
+<li>B-tree的变体如分形树，借鉴了一些日志结构的想法来减少磁盘寻道（与分形无关）。</li>
+</ul>
+<h4 id="对比B-tree和LSM-tree"><a href="#对比B-tree和LSM-tree" class="headerlink" title="对比B-tree和LSM-tree"></a>对比B-tree和LSM-tree</h4><p>根据经验，<font color=red>LSM-tree通常对于写入更快，而B-tree被认为对于读取更快。</font>读取通常在LSM-tree上较慢，因为它们必须在不同的压缩阶段检查多个不同的数据结构和SSTable 。</p>
+<h5 id="LSM-tree-的优点"><a href="#LSM-tree-的优点" class="headerlink" title="LSM-tree 的优点"></a>LSM-tree 的优点</h5><p>B-tree索引必须至少写两次数据：一次写预写日志，一次写树的页本身（还可能发生页分裂）。即使更改几个字节，也必须承受写整页的开销。一些存储引擎甚至覆盖相同的页两次，以避免在电源故障的情况下最终出现部分更新的页。这种影响（ 在数据库内，由于一次数据库写入请求导致的多次磁盘写）称为<font color=red>写放大</font>。</p>
+<p>LSM-tree通常能承受比B-tree更高的写入吞吐量，部分是因为它们有时具有较低的写放大（尽管这取决于存储引擎的配置和工作负载），部分原因是它们以顺序方式写入紧凑的SSTable文件，而不必重写树中的多个页，这种差异对于磁盘驱动器尤为重要，原因是磁盘的顺序写比随机写要快得多。</p>
+<p>LSM-tree可以支持更好地压缩，因此通常磁盘上的文件比B-tree小很多。由于碎片，B-tree存储引擎使某些磁盘空间无法使用。而LSM-tree不是面向页的，并且定期重写SSTables消除碎片，所以它们具有较低的存储开销。</p>
+<h5 id="LSM-tree的缺点"><a href="#LSM-tree的缺点" class="headerlink" title="LSM-tree的缺点"></a>LSM-tree的缺点</h5><p>日志结构存储的缺点是压缩过程有时会干扰正在进行的读写操作。当磁盘执行昂贵的压缩操作肘，很容易发生读写请求等待的情况。而B-tree的响应延迟则更具确定性。</p>
+<p>高写入吞吐量时，压缩的另一个问题是：磁盘的有限写入带宽需要在初始写入（记录并刷新内存表到磁盘）和后台运行的压缩线程之间共享。如果写入吞吐量很高且压缩没有仔细配置，就会发生压缩无法匹配新数据写入速率的情况，造成磁盘上未合并段的数量不断增加，直到磁盘空间不足，由于读取需要检查更多的段文件，因此读速度也会降低。</p>
+<p>B-tree的优点则是每个键都恰好唯一对应于索引中的某个位置，而日志结构的存储引擎可能在不同的段中具有相同键的多个副本。如果数据库希望提供强大的事务语义，这方面B-tree显得更具有吸引力：在许多关系数据库中，事务隔离是通过键范围上的锁来实现的，并且在B-tree索引中，这些锁可以直接定义到树中。</p>
+<h4 id="其他索引结构"><a href="#其他索引结构" class="headerlink" title="其他索引结构"></a>其他索引结构</h4><p>二级索引也很常见。二级索引可以容易地基于kv索引来构建。<font color=red>主要区别在于它的键不是唯一的</font>，即可能有许多行具有相同键。这可以通过两种方式解决：使索引中的每个值成为匹配行标识符的列表，或追加一些行标识符来使每个键变得唯一。无论哪种方式，B-tree和日志结构索引都可以用作二级索引。</p>
+<h5 id="在索引中存储值"><a href="#在索引中存储值" class="headerlink" title="在索引中存储值"></a>在索引中存储值</h5><p>索引中的键是查询搜索的对象，而值则可以是以下两类之一：<font color=red>它可能是实际的行内容，也可以是对存储的行内容的引用。</font>后一种情况中，存储行的具体位置被称为<font color=red>堆文件</font>，并且它不以特定的顺序存储数据（可以是追加的）。堆文件方法比较常见，这样当存在多个二级索引时，避免复制数据，每个索引只引用堆文件中的位置信息。</p>
+<p>当更新值而不更改键时，只要新值的字节数不大于旧值，记录就可以直接覆盖。但如果新值较大，它可能需要移动数据以得到一个足够大空间的新位置。所有索引都需要更新以指向记录的新的堆位置，或者在旧堆位置保留一个间接指针。</p>
+<p>某些情况下，从索引到堆文件的额外跳转对于读取来说意味着太多的性能损失，因此可能希望将索引行直接存储在索引中。这称为<font color=red>聚集索引</font>。例如，在MySQL InnoDB存储引擎中，表的主键始终是聚集索引，二级索引引用主键（ 而不是堆文件位置）。</p>
+<p>与任何类型的数据冗余一样，聚集索引可以加快读取速度，但它们需要额外的存储，会增加写入的开销。此外，数据库还需要更多的工作来保证事务性。</p>
+<h5 id="多列索引"><a href="#多列索引" class="headerlink" title="多列索引"></a>多列索引</h5><p>迄今为止讨论的索引只将一个键映射到一个值。如需要同时查询表的多个列，那么这是不够的。例如，餐馆搜索网站可能有一个包含每个餐厅的纬度和经度的数据库。在地图上查看餐馆时，需要搜索用户查看的矩形地图区域内的所有餐馆：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> restaurants <span class="keyword">WHERE</span> latitude <span class="operator">&gt;</span> <span class="number">51.4946</span> <span class="keyword">AND</span> latitude <span class="operator">&lt;</span> <span class="number">51.5079</span></span><br><span class="line">						 <span class="keyword">AND</span> longitude <span class="operator">&gt;</span> <span class="number">-0.1162</span> <span class="keyword">AND</span> longitude <span class="operator">&lt;</span> <span class="number">-0.1004</span>;</span><br></pre></td></tr></table></figure>
+
+<p>标准B-tree或LSM-tree索引无法高效地应对这种查询，它只能提供纬度范围内（但在任何经度）的所有餐馆，或经度范围内（但在任何纬度）的所有餐馆，但不能同时满足。</p>
+<p>一种选择是使用空格填充曲线将二维位置转换为单个数字，然后使用常规的B-tree索引。更常见的是使用专门的空间索引，如R树。</p>
+<h5 id="全文搜索和模糊索引"><a href="#全文搜索和模糊索引" class="headerlink" title="全文搜索和模糊索引"></a>全文搜索和模糊索引</h5><p>到目前为止讨论的所有索引都假定具有确切的数据，并允许查询键的确切值或排序的键的取值范围。它们不支持搜索类似的键，如拼写错误的单词。这种<font color=red>模糊查询需要不同的技术</font>。</p>
+<p>例如，全文搜索引擎通常支持对一个单词的所有同义词进行查询，并忽略单词语法上的变体。为了处理文档或查询中的拼写错误，Lucene能够在某个编辑距离内搜索文本（编辑距离为1表示已经添加、删除或替换了一个字母）。Lucene对其词典使用类似SSTable的结构。在Lucene 中，<font color=red>内存中的索引是键中的字符序列的有限状态自动机，类似字典树。</font>这个自动机可以转换成Levenshtein自动机，它支持在给定编辑距离内高效地搜索单词。</p>
+<h5 id="在内存中保存所有内容"><a href="#在内存中保存所有内容" class="headerlink" title="在内存中保存所有内容"></a>在内存中保存所有内容</h5><p>迄今为止讨论的数据结构都是为了适应磁盘限制。与内存相比，如果要获得良好的读写性能，需要精心地安排磁盘上的数据布局。这些工作是值得的，因为磁盘有两个显著的优点：数据保存持久化，并且每GB容量的成本比内存低很多。</p>
+<p>随着内存变得便宜，每GB成本被摊薄，并且许多数据集不是那么大，可以将它们完全保留在内存中，或者分布在多台机器上。这推动了内存数据库的发展。</p>
+<p>与直觉相反，<font color=red>内存数据库的性能优势并不是因为它们不需要从磁盘读取。如果有足够的内存，即使是基于磁盘的存储引擎，也可能永远不需要从磁盘读取，因为操作系统将最近使用的磁盘块缓存在内存中。相反，内存数据库可以更快，是因为它们避免使用写磁盘的格式对内存数据结构编码的开销。</font></p>
+<p>除性能外，内存数据库另一个有意思的地方是，由于所有数据都保存在内存中，所以实现可以比较简单。</p>
+<p>最近的研究表明，内存数据库架构可以扩展到支持远大于可用内存的数据集，而不会导致以磁盘为中心架构的开销。所谓的<font color=red>反缓存方法</font>，当没有足够的内存时，通过将最近最少使用的数据从内存写到磁盘，并在将来再次被访问时将其加载到内存。这与操作系统对虚拟内存和交换文件的操作类似，但数据库可以在记录级别而不是整个内存页的粒度工作，因而比操作系统更有效地管理内存。不过，这种方法仍然需要索引完全放入内存。</p>
+<p>如果将来非易失性存储（non-volatile memory, NVM）技术得到更广泛普及，可能还需要进一步改变存储引擎设计。</p>
+<hr>
+<h3 id="事务处理与分析处理"><a href="#事务处理与分析处理" class="headerlink" title="事务处理与分析处理"></a>事务处理与分析处理</h3><p>数据库通常应用于商业交易场景，例如销售、订单等。其基本访问模式是：应用程序使用索引中的某些键查找少量记录。根据用户的输入插入或更新记录。<font color=red>这些应用是交互式的，这种访问模式被称为在线事务处理（online transaction processing, OLTP）。</font></p>
+<p>数据库也开始越来越多地用于数据分析，数据分析有不同的访问模式：<font color=red>分析查询需要扫描大量记录，每个记录只读取少数几列，并计算汇总统计信息</font>（如计数、求和或平均值）。这种模式称为在线分析处理（online analytic processing , OLAP)。OLTP和OLAP之间的区别有时并不那么明确，它们的一些典型的特性总结见下表：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>事务处理系统（ OLTP）</th>
+<th>分析系统（ OLAP）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>主要读特征</td>
+<td>基于键，每次查询返回少量的记录</td>
+<td>对大量记录进行汇总</td>
+</tr>
+<tr>
+<td>主要写特征</td>
+<td>随机访问，低延迟写入用户的输入</td>
+<td>批量导入（ ETL ）或事件流</td>
+</tr>
+<tr>
+<td>典型使用场景</td>
+<td>终端用户，通过网络应用程序</td>
+<td>内部分析师，为决策提供支持</td>
+</tr>
+<tr>
+<td>数据表征</td>
+<td>最新的数据状态（当前时间点）</td>
+<td>随着时间而变化的所有事件历史</td>
+</tr>
+<tr>
+<td>数据规模</td>
+<td>GB 到 TB</td>
+<td>TB 到 PB</td>
+</tr>
+</tbody></table>
+<p>最初，相同的数据库可以同时用于事务处理和分析查询。这方面，SQL可以同时胜任OLTP类型和OLAP类型查询。然而，趋势是，公司放弃使用OLTP系统用于分析目的，而是在单独的数据库上运行分析。这个单独的数据库被称为数据仓库。</p>
+<h4 id="数据仓库"><a href="#数据仓库" class="headerlink" title="数据仓库"></a>数据仓库</h4><p>企业可能有几十种不同的交易处理系统，这些OLTP系统对业务的运行至关重要，所以需要它们高可用，处理事务时延迟足够低。数据库管理员通常不愿意让业务分析人员在OLTP数据库上直接运行分析查询，这些查询通常要扫描大量数据集，可能会损害并发执行事务的性能。</p>
+<p><font color=red>数据仓库是单独的数据库，其中包含公司所有OLTP系统的只读副本。</font>从OLTP数据库（使用周期性数据转储或连续更新流）中提取数据，转换为分析友好的模式，执行必要的清理，然后加载到数据仓库中。将数据导入数据仓库的过程称为提取-转换-加载（Extract-Transform-Load, ETL），如图3 8所示。</p>
+<img src="/img/03数据存储与检索/image-20230617111132960.png" alt="image-20230617111132960" style="zoom: 67%;" />
+
+<p>使用单独的数据仓库进行分析，很大的优势在于数据仓库<font color=red>可以针对分析访问模式进行优化</font>。本章前半部分讨论的索引算法适合OLTP ，但不擅长应对分析查询。在本章的其余部分，将重点讨论针对分析型而优化的存储引擎。</p>
+<h4 id="星型与雪花型分析模式"><a href="#星型与雪花型分析模式" class="headerlink" title="星型与雪花型分析模式"></a>星型与雪花型分析模式</h4><p>图3-9所示的零售数据仓库。中心是一个所谓的<font color=red>事实表</font>（fact_sales表）。事实表的每一行表示在特定时间发生的<font color=red>事件</font>（fact_sales表中，每一行代表客户购买的一个产品）。</p>
+<p><img src="/img/03%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E%E6%A3%80%E7%B4%A2/image-20230617111504900.png" alt="image-20230617111504900"></p>
+<p>事实表中的列是属性，其他列可能会引用其他表的外键，称为<font color=red>维度表</font>。由于事实表中的每一行都代表一个事件，维度通常代表事件的who、what、where、when、how、why等。例如图3-9中，其中一个维度是销售的产品。dim_product表中的每一行代表一种出售的产品，包括库存单位（SKU）、说明、品牌名称、类别、脂肪含量、包装尺寸等。fact_sales中的每一行都使用外键来表示在该特定事务中出售的产品。<font color=red>“星型模式”</font>名称来源于当表关系可视化时，事实表位于中间，被一系列维度表包围；这些表的连接就像星星的光芒。该模板的一个变体称为雪花模式，其中维度进一步细分为子空间。</p>
+<p>在典型的数据仓库中，表通常非常宽，有时候有几百列。维度表也可能非常宽，可能包括与分析相关的所有元数据。</p>
+<h3 id="列式存储"><a href="#列式存储" class="headerlink" title="列式存储"></a>列式存储</h3><p>如果事实表中有数以万亿行、PB大小的数据，则高效地存储和查询这些数据将成为一个具有挑战性的问题。维度表通常小得多（数百万行），因此在本节中，将主要关注事实表的存储。</p>
+<p><font color=red>虽然事实表通常超过百列，但典型的数据仓库查询往往一次只访问其中的4，5个。</font>大多数OLTP数据库中，存储面向行的方式布局，一行的所有值彼此相邻存储。面向行的存储引擎仍需将所有行（每个由超过100个属性组成）从磁盘加载到内存中，并过滤出不符合条件的行。这可能需要很长时间。</p>
+<p>列存储的想法很简单：将每列中的所有值存储在一起。如果每个列存储在一个单独的文件中，查询只需要读取和解析在该查询中使用的那些列，这可以节省大量的工作。该原理如图3-10所示。</p>
+<img src="/img/03数据存储与检索/image-20230617122329374.png" alt="image-20230617122329374" style="zoom:67%;" />
+
+<p>面向列的存储布局依赖一组列文件，每个文件以相同顺序保存着数据行。因此，如果需要重新组装整行，可以从每个单独的列文件中获取第23个条目，并将它们放在一起构成表的第23行。</p>
+<h4 id="列压缩"><a href="#列压缩" class="headerlink" title="列压缩"></a>列压缩</h4><p>还可以通过压缩数据进一步降低磁盘吞吐量。面向列的存储非常适合压缩。每列的值有很多重复，这是压缩的好兆头。根据列中具体数据模式，可以采用不同的压缩技术。在数据仓库中特别有效的一种技术是位图编码，如图3-11所示。</p>
+<img src="/img/03数据存储与检索/image-20230617135245464.png" alt="image-20230617135245464" style="zoom:67%;" />
+
+<p>上图中，列中有n个不同的值，可以将列转换为n个单独的位图，每个位图对应每个不同的值，位图中的一个位对应一行。如果行具有该值，则位为1，否则为0。如果n很大，在大多数位图中将会有很多零。此时位图可以进行游程编码， 如上图底部所示。这样列的编码非常紧凑。</p>
+<p>这些位图索引非常适合在数据仓库中常见的查询。例如：<code>WHERE product_sk IN (30, 68, 69)</code>，加载product_sk为30、68和69的三个位图，并计算三个位图的按位或，这可以非常高效地完成。</p>
+<p>对于不同类型的数据，还有各种其他压缩方法。</p>
+<p>对于需要扫描数百万行的数据仓库查询，将数据从磁盘加载到内存的带宽是一大瓶颈。这还不是唯一的瓶颈。分析数据库的开发人员还要关心如何高效地将内存的带宽用于CPU缓存，避免分支错误预测和CPU指令处理流水线中的气泡，并利用现代CPU中的单指令多数据（SIMD）指令。</p>
+<p>除了减少需要从磁盘加载的数据量之外，面向列的存储布局也有利于高效利用CPU周期。例如，查询引擎可以将一大块压缩列数据放入CPU的L1缓存中，并以紧凑循环（即没有函数调用）进行迭代。列压缩使得列中更多的行可以加载到L1缓存。诸如先前描述的按位或的运算符，可被设计成直接对这样的列压缩数据块进行操作。这种技术被称为矢量化处理。</p>
+<h4 id="列存储中的排序"><a href="#列存储中的排序" class="headerlink" title="列存储中的排序"></a>列存储中的排序</h4><p>列存储中，行的存储顺序并不太重要。最简单的是按插入顺序保存，这样插入一个新行只是追加到每个列文件。也可以选择强制某个顺序，就像之前SSTable一样，并将其用作索引机制。</p>
+<p>注意，单独排序每列是没有意义的，因为某列中的第k项和另一列的第k项一定属于同一行，基于这种约定才能重建一行。即使数据是按列存储的，它也需要一次排序整行。数据库管理员可以基于查询经验选择要排序表的列。例如，如果查询经常以日期范围为目标，那明智的做法是将date_key设置为第一个排序键，以此为基准排序所有列文件。</p>
+<p>第一列排序后有相同值时，可以指定第二列继续排序。例如，以date_key为第一个排序键，以product_sk为第二个排序键，同一天同一产品的所有销售数据在存储中被组织在一起。有助于某个日期范围内按产品进行分组或过滤的查询。</p>
+<p>排序的另一个优点是它可以帮助进一步压缩列。相同的值在一行中重复多次。一个简单的游程编码，如图3-11中的位图那样，即使该表可能拥有数十亿行，也可以将其压缩到几千字节。</p>
+<p>基于第一个排序键的压缩效果通常最好。而后面的排序键则通常不会有太多相邻的重复值。排序优先级进一步下降的列基本上会呈现接近随机的顺序，通常无法压缩。但总体来讲，对前几列排序仍然可以获得不错的收益。</p>
+<h4 id="列存储的写操作"><a href="#列存储的写操作" class="headerlink" title="列存储的写操作"></a>列存储的写操作</h4><p>面向列的存储、压缩和排序都非常有助于加速读取查询。但它们让写入更加困难。如果在排序表的中间插入一行，那么很可能不得不重写所有的列文件。</p>
+<p>幸运的是，在前面已经看到了一个很好的解决方案LSM-tree。所有的写入首先进入内存存储区，将其添加到已排序的结构中，接着再准备写入磁盘。<font color=red>内存中的存储是面向行还是面向列无关紧要。</font>累积了足够的写入时，它们将与磁盘上的列文件合并，并批量写入新文件。</p>
+<p>执行查询时，需要检查磁盘上的列数据和内存中最近的写入，并结合这两者。而查询优化器可以对用户隐藏这些内部细节。从数据分析师的角度来看， 插入、更新或删除数据可以立即反映在随后的查询中。</p>
+<h4 id="聚合：数据立方体与物化视图"><a href="#聚合：数据立方体与物化视图" class="headerlink" title="聚合：数据立方体与物化视图"></a>聚合：数据立方体与物化视图</h4><p>数据仓库另一个值得一提的是物化聚合。如前所述，数据仓库查询通常涉及聚合函数，例如SQL中的COUNT、SUM、AVG、MIN或MAX。如果许多不同查询使用相同的聚合，为什么不缓存查询最常使用的一些计数或总和呢？</p>
+<p>创建这种缓存的一种方式是物化视图。在关系数据模型中，它通常被定义为标准（虚拟）视图：一个类似表的对象，其内容是一些查询的结果。与虚拟视图不同的是，物化视图是查询结果的实际副本，并被写到磁盘。</p>
+<p>当底层数据发生变化时，物化视图也需要随之更新，数据库可以自动执行，但这种更新方式会影响数据写入性能，这就是为什么在OLTP数据库中不经常使用物化视图的原因。而对于大量读密集的数据仓库，物化视图则更有意义。</p>
+<p>物化视图常见的一种特殊情况称为数据立方体或OLAP立方体。它是由不同维度分组的聚合网格，如图3-12所示的例子。</p>
+<img src="/img/03数据存储与检索/image-20230617145119598.png" alt="image-20230617145119598" style="zoom:67%;" />
+
+<p>在图3-12 中，按照日期（date_key）和产品（product_sk）绘制一个二维表，日期沿着一个轴，产品沿着另一个轴。每个单元格即是date-produc</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/" rel="tag"># 数据库</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/11/10/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/02%E6%95%B0%E6%8D%AE%E6%A8%A1%E5%9E%8B%E4%B8%8E%E6%9F%A5%E8%AF%A2%E8%AF%AD%E8%A8%80/" rel="prev" title="DDIA笔记-02数据模型与查询语言">
+      <i class="fa fa-chevron-left"></i> DDIA笔记-02数据模型与查询语言
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%BA%93%E6%A0%B8%E5%BF%83%EF%BC%9A%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">数据库核心：数据结构</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%93%88%E5%B8%8C%E7%B4%A2%E5%BC%95"><span class="nav-number">1.1.</span> <span class="nav-text">哈希索引</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#SSTables%E5%92%8CLSM-Tree"><span class="nav-number">1.2.</span> <span class="nav-text">SSTables和LSM-Tree</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%9E%84%E5%BB%BA%E5%92%8C%E7%BB%B4%E6%8A%A4SSTables"><span class="nav-number">1.2.1.</span> <span class="nav-text">构建和维护SSTables</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BB%8ESSTables%E5%88%B0LSM-Tree"><span class="nav-number">1.2.2.</span> <span class="nav-text">从SSTables到LSM-Tree</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96"><span class="nav-number">1.2.3.</span> <span class="nav-text">性能优化</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#B-trees"><span class="nav-number">1.3.</span> <span class="nav-text">B-trees</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BD%BFB-tree%E5%8F%AF%E9%9D%A0"><span class="nav-number">1.3.1.</span> <span class="nav-text">使B-tree可靠</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BC%98%E5%8C%96B-tree"><span class="nav-number">1.3.2.</span> <span class="nav-text">优化B-tree</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%AF%B9%E6%AF%94B-tree%E5%92%8CLSM-tree"><span class="nav-number">1.4.</span> <span class="nav-text">对比B-tree和LSM-tree</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#LSM-tree-%E7%9A%84%E4%BC%98%E7%82%B9"><span class="nav-number">1.4.1.</span> <span class="nav-text">LSM-tree 的优点</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#LSM-tree%E7%9A%84%E7%BC%BA%E7%82%B9"><span class="nav-number">1.4.2.</span> <span class="nav-text">LSM-tree的缺点</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%85%B6%E4%BB%96%E7%B4%A2%E5%BC%95%E7%BB%93%E6%9E%84"><span class="nav-number">1.5.</span> <span class="nav-text">其他索引结构</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9C%A8%E7%B4%A2%E5%BC%95%E4%B8%AD%E5%AD%98%E5%82%A8%E5%80%BC"><span class="nav-number">1.5.1.</span> <span class="nav-text">在索引中存储值</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%A4%9A%E5%88%97%E7%B4%A2%E5%BC%95"><span class="nav-number">1.5.2.</span> <span class="nav-text">多列索引</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%85%A8%E6%96%87%E6%90%9C%E7%B4%A2%E5%92%8C%E6%A8%A1%E7%B3%8A%E7%B4%A2%E5%BC%95"><span class="nav-number">1.5.3.</span> <span class="nav-text">全文搜索和模糊索引</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9C%A8%E5%86%85%E5%AD%98%E4%B8%AD%E4%BF%9D%E5%AD%98%E6%89%80%E6%9C%89%E5%86%85%E5%AE%B9"><span class="nav-number">1.5.4.</span> <span class="nav-text">在内存中保存所有内容</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BA%8B%E5%8A%A1%E5%A4%84%E7%90%86%E4%B8%8E%E5%88%86%E6%9E%90%E5%A4%84%E7%90%86"><span class="nav-number">2.</span> <span class="nav-text">事务处理与分析处理</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E4%BB%93%E5%BA%93"><span class="nav-number">2.1.</span> <span class="nav-text">数据仓库</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%98%9F%E5%9E%8B%E4%B8%8E%E9%9B%AA%E8%8A%B1%E5%9E%8B%E5%88%86%E6%9E%90%E6%A8%A1%E5%BC%8F"><span class="nav-number">2.2.</span> <span class="nav-text">星型与雪花型分析模式</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%97%E5%BC%8F%E5%AD%98%E5%82%A8"><span class="nav-number">3.</span> <span class="nav-text">列式存储</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%97%E5%8E%8B%E7%BC%A9"><span class="nav-number">3.1.</span> <span class="nav-text">列压缩</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%97%E5%AD%98%E5%82%A8%E4%B8%AD%E7%9A%84%E6%8E%92%E5%BA%8F"><span class="nav-number">3.2.</span> <span class="nav-text">列存储中的排序</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%97%E5%AD%98%E5%82%A8%E7%9A%84%E5%86%99%E6%93%8D%E4%BD%9C"><span class="nav-number">3.3.</span> <span class="nav-text">列存储的写操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%81%9A%E5%90%88%EF%BC%9A%E6%95%B0%E6%8D%AE%E7%AB%8B%E6%96%B9%E4%BD%93%E4%B8%8E%E7%89%A9%E5%8C%96%E8%A7%86%E5%9B%BE"><span class="nav-number">3.4.</span> <span class="nav-text">聚合：数据立方体与物化视图</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">49</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
