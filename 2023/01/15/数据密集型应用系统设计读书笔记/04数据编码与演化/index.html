@@ -20,7 +20,7 @@
   <meta name="description" content="字本文首先介绍了几种二进制编码，然后介绍了几种数据交互的方式。  数据模式就是描述一份数据的含义的。对于JSON, XML这种文本格式，模式就包含在其中，即字段名，字段类型等等。而像ProtoBuf这种二进制编码而言，数据和模式是分开的，解码时必须使用模式来解析数据。而且像ProtoBuf，支持将模式定义转成各种语言的类（或结构体）。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="DDIA笔记-04数据编码与演化">
-<meta property="og:url" content="http://example.com/2024/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/index.html">
+<meta property="og:url" content="http://example.com/2023/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/index.html">
 <meta property="og:site_name" content="gqtc&#39;s blog">
 <meta property="og:description" content="字本文首先介绍了几种二进制编码，然后介绍了几种数据交互的方式。  数据模式就是描述一份数据的含义的。对于JSON, XML这种文本格式，模式就包含在其中，即字段名，字段类型等等。而像ProtoBuf这种二进制编码而言，数据和模式是分开的，解码时必须使用模式来解析数据。而且像ProtoBuf，支持将模式定义转成各种语言的类（或结构体）。">
 <meta property="og:locale" content="zh_CN">
@@ -29,8 +29,8 @@
 <meta property="og:image" content="http://example.com/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/image-20230703185345422.png">
 <meta property="og:image" content="http://example.com/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/ch04-fig05-1688391338681.png">
 <meta property="og:image" content="http://example.com/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/ch04-fig06.png">
-<meta property="article:published_time" content="2024-01-14T16:00:00.000Z">
-<meta property="article:modified_time" content="2024-02-14T01:23:16.066Z">
+<meta property="article:published_time" content="2023-01-14T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-14T01:26:03.704Z">
 <meta property="article:author" content="gqtc">
 <meta property="article:tag" content="分布式">
 <meta property="article:tag" content="一致性">
@@ -38,7 +38,7 @@
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="http://example.com/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/image-20230703084223600.png">
 
-<link rel="canonical" href="http://example.com/2024/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/">
+<link rel="canonical" href="http://example.com/2023/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/">
 
 
 <script id="page-configurations">
@@ -194,7 +194,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2024/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/panda.gif">
@@ -217,14 +217,14 @@
               </span>
               <span class="post-meta-item-text">发表于</span>
 
-              <time title="创建时间：2024-01-15 00:00:00" itemprop="dateCreated datePublished" datetime="2024-01-15T00:00:00+08:00">2024-01-15</time>
+              <time title="创建时间：2023-01-15 00:00:00" itemprop="dateCreated datePublished" datetime="2023-01-15T00:00:00+08:00">2023-01-15</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2024-02-14 09:23:16" itemprop="dateModified" datetime="2024-02-14T09:23:16+08:00">2024-02-14</time>
+                <time title="修改时间：2024-02-14 09:26:03" itemprop="dateModified" datetime="2024-02-14T09:26:03+08:00">2024-02-14</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -245,8 +245,8 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2024/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2024/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/" itemprop="commentCount"></span>
+    <a title="valine" href="/2023/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2023/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -263,9 +263,13 @@
       
         <p>字本文首先介绍了几种二进制编码，然后介绍了几种数据交互的方式。</p>
 <ul>
-<li>数据模式就是描述一份数据的含义的。对于JSON, XML这种文本格式，模式就包含在其中，即字段名，字段类型等等。而像ProtoBuf这种二进制编码而言，数据和模式是分开的，解码时必须使用模式来解析数据。而且像ProtoBuf，支持将模式定义转成各种语言的类（或结构体）。<span id="more"></span></li>
-<li>数据模式有个必须要考虑的点，即模式变更如何保证向前和向后的兼容。即新代码需要能读取旧代码写的数据，而旧代码也必须能解析新代码写的数据。</li>
-<li>数据交互的方式有：通过数据库；使用RPC；使用消息代理。</li>
+<li><p>数据模式就是描述一份数据的含义的。对于JSON, XML这种文本格式，模式就包含在其中，即字段名，字段类型等等。而像ProtoBuf这种二进制编码而言，数据和模式是分开的，解码时必须使用模式来解析数据。而且像ProtoBuf，支持将模式定义转成各种语言的类（或结构体）。</p>
+<span id="more"></span>
+</li>
+<li><p>数据模式有个必须要考虑的点，即模式变更如何保证向前和向后的兼容。即新代码需要能读取旧代码写的数据，而旧代码也必须能解析新代码写的数据。</p>
+</li>
+<li><p>数据交互的方式有：通过数据库；使用RPC；使用消息代理。</p>
+</li>
 </ul>
 <hr>
 <p>应用程序会随时间而演化，数据模式也会随之改变：可能需要增加新的字段，或需以新的方式呈现已有数据。应用演化升级时，可能需要滚动升级（也称为分阶段发布），因此新旧版本的代码，以及新旧数据格式，在系统内共存。为使系统继续顺利运行，需要保持双向的兼容性：</p>
@@ -434,7 +438,15 @@
 <li>最多一次（at-most-once）：同一条数据最多会送达一次给消费者，有可能丢失。</li>
 <li>严格一次（exactly-once）：同一条数据保证会送达一次，且最多一次给消费者。</li>
 </ol>
-<p>消息队列通常是面向字节数组的，因此可以将消息按任意格式进行编码。如果编码是前后向兼容的，同一个主题的</p>
+<p>消息队列通常是面向字节数组的，因此可以将消息按任意格式进行编码。如果编码是前后向兼容的，同一个主题的消息格式，便可以进行灵活演进。</p>
+<h5 id="分布式的-Actor-框架"><a href="#分布式的-Actor-框架" class="headerlink" title="分布式的 Actor 框架"></a>分布式的 Actor 框架</h5><p>Actor 模型是一种基于消息传递的并发编程模型。Actor 通常是由状态（State）、行为（Behavior）和信箱（MailBox，可以认为是一个消息队列）三部分组成：</p>
+<ol>
+<li>状态：Actor 中包含的状态信息。</li>
+<li>行为：Actor 中对状态的计算逻辑。</li>
+<li>信箱：Actor 接受到的消息缓存地。</li>
+</ol>
+<p>由于 Actor 和外界交互都是通过消息，因此本身可以并行的，且不需要加锁。</p>
+<p>分布式的 Actor 框架，本质上是将消息队列和 actor 编程模型集成到一块。自然，在 Actor 滚动升级是，也需要考虑前后向兼容问题。</p>
 
     </div>
 
@@ -518,7 +530,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E6%A0%BC%E5%BC%8F"><span class="nav-number">1.</span> <span class="nav-text">数据编码格式</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%AF%AD%E8%A8%80%E7%89%B9%E5%AE%9A%E7%9A%84%E6%A0%BC%E5%BC%8F"><span class="nav-number">1.1.</span> <span class="nav-text">语言特定的格式</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#JSON%E3%80%81XML%E4%B8%8E%E4%BA%8C%E8%BF%9B%E5%88%B6%E5%8F%98%E4%BD%93"><span class="nav-number">1.2.</span> <span class="nav-text">JSON、XML与二进制变体</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BA%8C%E8%BF%9B%E5%88%B6%E7%BC%96%E7%A0%81"><span class="nav-number">1.2.1.</span> <span class="nav-text">二进制编码</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Thrift%E4%B8%8EProtocol-Buffers"><span class="nav-number">1.2.2.</span> <span class="nav-text">Thrift与Protocol Buffers</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%AD%97%E6%AE%B5%E6%A0%87%E7%AD%BE%E5%92%8C%E6%A8%A1%E5%BC%8F%E6%BC%94%E5%8C%96"><span class="nav-number">1.2.3.</span> <span class="nav-text">字段标签和模式演化</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%92%8C%E6%A8%A1%E5%BC%8F%E6%BC%94%E5%8C%96"><span class="nav-number">1.2.4.</span> <span class="nav-text">数据类型和模式演化</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Avro"><span class="nav-number">1.3.</span> <span class="nav-text">Avro</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%86%99%E6%A8%A1%E5%BC%8F%E4%B8%8E%E8%AF%BB%E6%A8%A1%E5%BC%8F"><span class="nav-number">1.3.1.</span> <span class="nav-text">写模式与读模式</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%A8%A1%E5%BC%8F%E6%BC%94%E5%8C%96%E8%A7%84%E5%88%99"><span class="nav-number">1.3.2.</span> <span class="nav-text">模式演化规则</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%A6%82%E4%BD%95%E4%BB%8E%E7%BC%96%E7%A0%81%E4%B8%AD%E8%8E%B7%E5%8F%96%E5%86%99%E6%A8%A1%E5%BC%8F"><span class="nav-number">1.3.3.</span> <span class="nav-text">如何从编码中获取写模式</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8A%A8%E6%80%81%E7%94%9F%E6%88%90%E7%9A%84%E6%A8%A1%E5%BC%8F"><span class="nav-number">1.3.4.</span> <span class="nav-text">动态生成的模式</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BB%A3%E7%A0%81%E7%94%9F%E6%88%90%E5%92%8C%E5%8A%A8%E6%80%81%E7%B1%BB%E5%9E%8B%E8%AF%AD%E8%A8%80"><span class="nav-number">1.3.5.</span> <span class="nav-text">代码生成和动态类型语言</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%A8%A1%E5%BC%8F%E7%9A%84%E4%BC%98%E7%82%B9"><span class="nav-number">1.3.6.</span> <span class="nav-text">模式的优点</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E6%B5%81%E6%A8%A1%E5%BC%8F"><span class="nav-number">2.</span> <span class="nav-text">数据流模式</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E6%95%B0%E6%8D%AE%E5%BA%93%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-number">2.1.</span> <span class="nav-text">基于数据库的数据流</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%8D%E5%90%8C%E7%9A%84%E6%97%B6%E9%97%B4%E5%86%99%E5%85%A5%E4%B8%8D%E5%90%8C%E7%9A%84%E5%80%BC"><span class="nav-number">2.1.1.</span> <span class="nav-text">不同的时间写入不同的值</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%BD%92%E6%A1%A3%E5%AD%98%E5%82%A8"><span class="nav-number">2.1.2.</span> <span class="nav-text">归档存储</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E6%9C%8D%E5%8A%A1%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81%EF%BC%9A-REST%E5%92%8CRPC"><span class="nav-number">2.2.</span> <span class="nav-text">基于服务的数据流： REST和RPC</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%BD%91%E7%BB%9C%E6%9C%8D%E5%8A%A1"><span class="nav-number">2.2.1.</span> <span class="nav-text">网络服务</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%BF%9C%E7%A8%8B%E8%BF%87%E7%A8%8B%E8%B0%83%E7%94%A8%EF%BC%88RPC%EF%BC%89%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">2.2.2.</span> <span class="nav-text">远程过程调用（RPC）的问题</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#RPC%E7%9A%84%E5%8F%91%E5%B1%95%E6%96%B9%E5%90%91"><span class="nav-number">2.2.3.</span> <span class="nav-text">RPC的发展方向</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#RPC%E7%9A%84%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E5%92%8C%E6%BC%94%E5%8C%96"><span class="nav-number">2.2.4.</span> <span class="nav-text">RPC的数据编码和演化</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E6%B6%88%E6%81%AF%E4%BC%A0%E9%80%92%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-number">2.3.</span> <span class="nav-text">基于消息传递的数据流</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%B6%88%E6%81%AF%E4%BB%A3%E7%90%86%EF%BC%88Message-Broker%EF%BC%89"><span class="nav-number">2.3.1.</span> <span class="nav-text">消息代理（Message Broker）</span></a></li></ol></li></ol></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E6%A0%BC%E5%BC%8F"><span class="nav-number">1.</span> <span class="nav-text">数据编码格式</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%AF%AD%E8%A8%80%E7%89%B9%E5%AE%9A%E7%9A%84%E6%A0%BC%E5%BC%8F"><span class="nav-number">1.1.</span> <span class="nav-text">语言特定的格式</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#JSON%E3%80%81XML%E4%B8%8E%E4%BA%8C%E8%BF%9B%E5%88%B6%E5%8F%98%E4%BD%93"><span class="nav-number">1.2.</span> <span class="nav-text">JSON、XML与二进制变体</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BA%8C%E8%BF%9B%E5%88%B6%E7%BC%96%E7%A0%81"><span class="nav-number">1.2.1.</span> <span class="nav-text">二进制编码</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Thrift%E4%B8%8EProtocol-Buffers"><span class="nav-number">1.2.2.</span> <span class="nav-text">Thrift与Protocol Buffers</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%AD%97%E6%AE%B5%E6%A0%87%E7%AD%BE%E5%92%8C%E6%A8%A1%E5%BC%8F%E6%BC%94%E5%8C%96"><span class="nav-number">1.2.3.</span> <span class="nav-text">字段标签和模式演化</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%92%8C%E6%A8%A1%E5%BC%8F%E6%BC%94%E5%8C%96"><span class="nav-number">1.2.4.</span> <span class="nav-text">数据类型和模式演化</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Avro"><span class="nav-number">1.3.</span> <span class="nav-text">Avro</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%86%99%E6%A8%A1%E5%BC%8F%E4%B8%8E%E8%AF%BB%E6%A8%A1%E5%BC%8F"><span class="nav-number">1.3.1.</span> <span class="nav-text">写模式与读模式</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%A8%A1%E5%BC%8F%E6%BC%94%E5%8C%96%E8%A7%84%E5%88%99"><span class="nav-number">1.3.2.</span> <span class="nav-text">模式演化规则</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%A6%82%E4%BD%95%E4%BB%8E%E7%BC%96%E7%A0%81%E4%B8%AD%E8%8E%B7%E5%8F%96%E5%86%99%E6%A8%A1%E5%BC%8F"><span class="nav-number">1.3.3.</span> <span class="nav-text">如何从编码中获取写模式</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8A%A8%E6%80%81%E7%94%9F%E6%88%90%E7%9A%84%E6%A8%A1%E5%BC%8F"><span class="nav-number">1.3.4.</span> <span class="nav-text">动态生成的模式</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BB%A3%E7%A0%81%E7%94%9F%E6%88%90%E5%92%8C%E5%8A%A8%E6%80%81%E7%B1%BB%E5%9E%8B%E8%AF%AD%E8%A8%80"><span class="nav-number">1.3.5.</span> <span class="nav-text">代码生成和动态类型语言</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%A8%A1%E5%BC%8F%E7%9A%84%E4%BC%98%E7%82%B9"><span class="nav-number">1.3.6.</span> <span class="nav-text">模式的优点</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E6%B5%81%E6%A8%A1%E5%BC%8F"><span class="nav-number">2.</span> <span class="nav-text">数据流模式</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E6%95%B0%E6%8D%AE%E5%BA%93%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-number">2.1.</span> <span class="nav-text">基于数据库的数据流</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%8D%E5%90%8C%E7%9A%84%E6%97%B6%E9%97%B4%E5%86%99%E5%85%A5%E4%B8%8D%E5%90%8C%E7%9A%84%E5%80%BC"><span class="nav-number">2.1.1.</span> <span class="nav-text">不同的时间写入不同的值</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%BD%92%E6%A1%A3%E5%AD%98%E5%82%A8"><span class="nav-number">2.1.2.</span> <span class="nav-text">归档存储</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E6%9C%8D%E5%8A%A1%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81%EF%BC%9A-REST%E5%92%8CRPC"><span class="nav-number">2.2.</span> <span class="nav-text">基于服务的数据流： REST和RPC</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%BD%91%E7%BB%9C%E6%9C%8D%E5%8A%A1"><span class="nav-number">2.2.1.</span> <span class="nav-text">网络服务</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%BF%9C%E7%A8%8B%E8%BF%87%E7%A8%8B%E8%B0%83%E7%94%A8%EF%BC%88RPC%EF%BC%89%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">2.2.2.</span> <span class="nav-text">远程过程调用（RPC）的问题</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#RPC%E7%9A%84%E5%8F%91%E5%B1%95%E6%96%B9%E5%90%91"><span class="nav-number">2.2.3.</span> <span class="nav-text">RPC的发展方向</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#RPC%E7%9A%84%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E5%92%8C%E6%BC%94%E5%8C%96"><span class="nav-number">2.2.4.</span> <span class="nav-text">RPC的数据编码和演化</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E6%B6%88%E6%81%AF%E4%BC%A0%E9%80%92%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-number">2.3.</span> <span class="nav-text">基于消息传递的数据流</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%B6%88%E6%81%AF%E4%BB%A3%E7%90%86%EF%BC%88Message-Broker%EF%BC%89"><span class="nav-number">2.3.1.</span> <span class="nav-text">消息代理（Message Broker）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E7%9A%84-Actor-%E6%A1%86%E6%9E%B6"><span class="nav-number">2.3.2.</span> <span class="nav-text">分布式的 Actor 框架</span></a></li></ol></li></ol></li></ol></div>
       </div>
       <!--/noindex-->
 
