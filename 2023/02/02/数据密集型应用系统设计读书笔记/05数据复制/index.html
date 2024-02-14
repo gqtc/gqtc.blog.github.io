@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="分布式数据系统在多台机器上分布数据的原因主要是：  扩展性：数据量或读写负载巨大，超出了单台机器的处理上限，需将负载分散到多台机器上。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DDIA笔记-05数据复制">
+<meta property="og:url" content="http://example.com/2023/02/02/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="分布式数据系统在多台机器上分布数据的原因主要是：  扩展性：数据量或读写负载巨大，超出了单台机器的处理上限，需将负载分散到多台机器上。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230710120953673.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230723195741417.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230717092835994.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230717200822184.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230718081326582.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230718081705832.png">
+<meta property="og:image" content="http://example.com/img/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/image-20230719081944196.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230724184022695.png">
+<meta property="og:image" content="http://example.com/img/05数据复制/image-20230722213140448.png">
+<meta property="og:image" content="http://example.com/img/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/image-20230722213305125.png">
+<meta property="article:published_time" content="2023-02-01T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-14T07:44:55.670Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta property="article:tag" content="数据库">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/05数据复制/image-20230710120953673.png">
+
+<link rel="canonical" href="http://example.com/2023/02/02/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>DDIA笔记-05数据复制 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/02/02/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          DDIA笔记-05数据复制
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-02-02 00:00:00" itemprop="dateCreated datePublished" datetime="2023-02-02T00:00:00+08:00">2023-02-02</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-02-14 15:44:55" itemprop="dateModified" datetime="2024-02-14T15:44:55+08:00">2024-02-14</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/" itemprop="url" rel="index"><span itemprop="name">数据密集型应用系统设计读书笔记</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2023/02/02/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2023/02/02/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="分布式数据系统"><a href="#分布式数据系统" class="headerlink" title="分布式数据系统"></a>分布式数据系统</h2><p>在多台机器上分布数据的原因主要是：</p>
+<ul>
+<li><font color=red>扩展性</font>：数据量或读写负载巨大，超出了单台机器的处理上限，需将<font color=red>负载分散</font>到多台机器上。<span id="more"></span></li>
+<li><font color=red>容错与高可用性</font>：单台（或多台）机器故障，还希望应用系统继续工作，采用多台机器<font color=red>提供冗余</font>，接管失效机器。</li>
+<li><font color=red>延迟考虑</font>：如果客户遍布世界各地，通常需考虑全球范围内部署服务，方便用户<font color=red>就近访问</font>服务。</li>
+</ul>
+<h3 id="系统扩展能力"><a href="#系统扩展能力" class="headerlink" title="系统扩展能力"></a>系统扩展能力</h3><p>当负载增加需要更强的处理能力时，最简单的办法就是垂直扩展，即购买更强大的机器。由一个操作系统管理更多的CPU ，内存和磁盘，通过高速内部总线使每个CPU都可以访问所有的存储器或磁盘。这种<font color=red>共享内存架构</font>的问题是：</p>
+<ul>
+<li>成本增长超过线性，即增加一倍的CPU，内存和磁盘，成本却增加了一倍不止；</li>
+<li>由于性能瓶颈因素，扩展后的能力也未必能处理两倍的负载。</li>
+<li>容错能力有限，局限于某个特定的地理位置，无法提供异地容错能力。</li>
+</ul>
+<h3 id="无共享结构（水平扩展）"><a href="#无共享结构（水平扩展）" class="headerlink" title="无共享结构（水平扩展）"></a>无共享结构（水平扩展）</h3><p>现在更流行另一种方法是<font color=red>水平扩展，即无共享架构</font>。这种架构中，每个节点独立使用本地CPU、内存和磁盘。节点间的协调通信运行在传统网络（以太网）之上且核心逻辑主要依靠软件来实现。</p>
+<p>无共享系统无需专门硬件，性价比较高。可以跨多个地理区域分发数据，减少用户的访问延迟，甚至当整个数据中心发生灾难时仍能继续工作。</p>
+<p>分布式无共享体系架构有很多优点，但也会给应用带来更多<font color=red>复杂性</font>。本部分内容将重点放在无共享体系架构上，不是因为它一定是所有应用的最佳选择，而是因为它需要应用开发者更多的关注和深入理解。</p>
+<h3 id="复制与分区"><a href="#复制与分区" class="headerlink" title="复制与分区"></a>复制与分区</h3><p>将数据分布在多节点时有两种常见的方式：</p>
+<ul>
+<li><font color=red>复制</font>：多个节点上保存相同数据的副本。复制方法可以提供冗余：某些节点不可用时，其他节点可继续提供数据访问服务。复制也可以帮助提高系统性能。</li>
+<li><font color=red>分区</font>：将一个大块头的数据库拆分成多个较小的子集即分区，不同的分区分配给不同的节点。</li>
+</ul>
+<p>复制和分区是不同的数据分布机制，然而它们经常被放在一起组合使用。参见下图的示例。</p>
+<img src="/img/05数据复制/image-20230710120953673.png" alt="image-20230710120953673" style="zoom:50%;" />
+
+<hr>
+<h2 id="数据复制"><a href="#数据复制" class="headerlink" title="数据复制"></a>数据复制</h2><p>本章主要介绍了数据复制的三种复制策略，以及它们可能遇到的问题。数据复制的基本概念，就是通过互联网络在多台机器上保存相同数据的副本。</p>
+<p>三种复制策略及其相关问题分别是：</p>
+<ul>
+<li>主从复制，多个节点中选择一个作为主节点，其他为从节点。只有主节点接收写请求，所有节点可以接收读请求。主从复制涉及的问题有：<ul>
+<li>同步复制和异步复制的设计选择；</li>
+<li>新上线的从节点如何追赶主节点；</li>
+<li>从节点失效如何恢复；主节点失效需要选择新的主节点；</li>
+<li>复制日志的实现；</li>
+<li>复制滞后的问题如何解决；</li>
+</ul>
+</li>
+<li>多主节点复制：系统中有多个主节点，分担写请求的压力。适用于多数据中心，或者多人协作编辑的场景。面临的问题有：<ul>
+<li>如何处理写冲突；</li>
+<li>如何选择合适的拓扑结构；</li>
+</ul>
+</li>
+<li>无主节点复制：不指定特定的主节点，放弃主节点，允许任何副本直接接受客户端的写请求。写请求发送到多个节点，读请求也发送到多个节点，只要节点集合有交集，就保证一定能读到新数据。面临的问题有：<ul>
+<li>落后的节点如何恢复到最新状态；</li>
+<li>如何处理写冲突；</li>
+</ul>
+</li>
+</ul>
+<hr>
+<p><font color=red>复制主要指通过互联网络在多台机器上保存相同数据的副本</font>。通过数据复制，希望达到增强扩展性，容错以提高可用性，降低延迟的目的。本章假设数据规模较小，<font color=red>每台机器都可以保存数据集的完整副本</font>。下一章讨论单台机器无法容纳整个数据集，即必须<font color=red>分区</font>的情况。</p>
+<p>本章讨论三种流行的复制数据方法：<font color=red>主从复制、多主节点复制和无主节点复制</font>。三种方法各有优缺点。</p>
+<h3 id="主节点与从节点（主从复制）"><a href="#主节点与从节点（主从复制）" class="headerlink" title="主节点与从节点（主从复制）"></a>主节点与从节点（主从复制）</h3><p>对于每一笔数据写入，所有副本都要随之更新，否则某些副本将出现不一致。最常见的解决方案是基于主节点的复制（主从复制）。许多关系型数据库都内置支持主从复制。主从复制的工作原理如下：</p>
+<ol>
+<li>指定某个副本为主副本（主节点）。客户写数据库时，将写请求先发给主副本，主副本首先将新数据写入本地存储。</li>
+<li>其他副本称为从副本（从节点）。主副本把新数据写入本地存储后，再将数据更改作为复制的日志发送给所有从副本。每个从副本获得更改日志之后将其应用到本地，且严格保持与主副本相同的写入顺序。</li>
+<li>可以在主副本或者从副本上执行读操作。只有主副本才可以接受写请求，从客户端的角度来看，从副本都是只读的。</li>
+</ol>
+<h4 id="同步复制与异步复制"><a href="#同步复制与异步复制" class="headerlink" title="同步复制与异步复制"></a>同步复制与异步复制</h4><p>复制非常重要的一个设计选项是<font color=red>同步复制还是异步复制</font>。</p>
+<img src="/img/05数据复制/image-20230723195741417.png" alt="image-20230723195741417" style="zoom:50%;" />
+
+<p>图5-2中，从节点1是同步复制，即主节点等待从节点1确认完成写入后才向用户报告完成。从节点2是异步复制，主节点发送完消息后立即返回，不等待从节点2的完成确认。</p>
+<p>同步复制的优点是，一旦向用户确认，从节点可以保证其数据是最新的。万一主节点故障，总是可以在从节点继续访问最新数据。缺点是，如果从节点无法完成确认（从节点崩溃，或网络故障，或其他），主节点会阻塞其后所有的写操作。因此，<font color=red>把所有从节点配置为同步复制有些不切实际。</font>这样任一同步节点的中断都会导致整个系统更新停滞不前。</p>
+<p>实践中若数据库启用了同步复制，通常表示其中某一个从节点是同步的，其他节点则是异步。万一同步的从节点变得不可用或性能下降，则将另一个异步的从节点提升为同步模式。这保证至少有两个节点有最新的数据。这种配置称为<font color=red>半同步</font>。</p>
+<p>主从复制还经常配置为全异步模式。此时如果主节点失败，则所有尚未复制到从节点的写请求都会丢失。意味着尽管向客户端确认了写操作，却无法保证数据的持久化。但全异步配置的优点是，不管从节点上数据多么滞后，主节点总是可以继续响应写请求，系统的吞吐性能更好。</p>
+<h4 id="配置新的从节点"><a href="#配置新的从节点" class="headerlink" title="配置新的从节点"></a>配置新的从节点</h4><p>配置新的从节点时，如何确保新的从节点和主节点保持数据一致呢？可以在不停机、数据服务不中断的前提下完成从节点的设置。逻辑上的主要操作步骤如下：</p>
+<ol>
+<li>在某个时间点对主节点的数据副本产生一个<font color=red>一致性快照</font>，这样避免长时间锁定整个数据库。</li>
+<li>将此快照拷贝到新的从节点。</li>
+<li>从节点连接到主节点并请求快照点之后所发生的数据更改日志。</li>
+<li>从节点应用这些快照点之后所有数据变更，这个过程称之为追赶。接下来，它可以继续处理主节点上新的数据变化。并重复步骤1～步骤4 。</li>
+</ol>
+<h4 id="处理节点失效"><a href="#处理节点失效" class="headerlink" title="处理节点失效"></a>处理节点失效</h4><h5 id="从节点失效：-追赶式恢复"><a href="#从节点失效：-追赶式恢复" class="headerlink" title="从节点失效： 追赶式恢复"></a>从节点失效： 追赶式恢复</h5><p>从节点的本地磁盘上都保存了副本收到的数据变更日志。从节点崩溃后重启，或主从节点间的网络暂时中断，则恢复比较容易。根据副本的复制日志，从节点知道发生故障前处理的最后一笔事务，然后连接主节点，并请求自那笔事务之后中断期间内所有的数据变更。收到这些数据变更日志后，将其应用到本地来追赶主节点。</p>
+<h5 id="主节点失效：节点切换"><a href="#主节点失效：节点切换" class="headerlink" title="主节点失效：节点切换"></a>主节点失效：节点切换</h5><p>主节点故障时，需选择某个从节点提升为主节点；客户端也要更新，这样之后的写请求会发送给新主节点，其他从节点要接受来自新主节点上的变更数据，该过程称为切换。故障切换可以手动进行，也可以自动进行。自动切换步骤通常如下：</p>
+<ol>
+<li>确认主节点失效。没有万无一失的方法能确认到底是系统崩溃，还是停电或网络问题，所以大多数系统都采用<font color=red>基于超时的机制</font>：节点间频繁地互相发送心跳消息，若某节点在一段时间内没有响应，即认为该节点失效。</li>
+<li>选举新主节点。可通过选举的方式（超过多数的节点达成共识）来选举新主节点，或由之前选定的某控制节点指定新主节点。候选节点最好与原主节点的数据差异最小。让所有节点同意新的主节点是典型的共识问题，在第9章讨论。</li>
+<li>重新配置系统使新主节点生效。客户端现需要将写请求发送给新主节点。如果原主节点之后重新上线，可能仍然自认为是主节点。这时系统要确保原主节点降级为从节点，并认可新的主节点。</li>
+</ol>
+<p>然而，上述切换过程依然充满了<font color=red>很多变数</font>：</p>
+<ul>
+<li>如果使用异步复制，失效之前，新主节点未收到原主节点的所有数据，选举之后，原主节点很快又重新上线并加入到集群，接下来的写操作会发生什么？新主节点很可能会收到冲突的写请求，因为原主节点未意识到角色变化，还尝试同步其他从节点，但其中的一个现在成为现任主节点。常见的解决方案是，原主节点上未完成复制的写请求就此丢弃，但这可能会违背数据更新持久化的承诺。若在数据库之外有其他系统依赖于数据库的内容并在一起协同使用，丢弃数据的方案就特别危险。</li>
+<li>某些故障情况下，可能会发生两个节点同时自认为是主节点。这种情况称为<font color=red>脑裂</font>，它非常危险：两个主节点都可能接受写请求，并且没有很好解决冲突的办法，最后数据可能会丢失或破坏。有些系统会采取措施来强制关闭其中一个节点也。然而若考虑不周，可能会出现两个节点都被关闭的情况。</li>
+<li>如何设置合适的超时来检测主节点失效？ 主节点失效后，超时时间设置得越长也意味着总体恢复时间就越长。但如果超时设置太短，可能会导致很多不必要的切换。</li>
+</ul>
+<p>上述这些问题，包括节点失效、网络不可靠、副本一致性、持久性、可用性与延迟之间各种细微的权衡，实际上正是分布式系统<font color=red>核心的基本问题</font>。在第8章和第9章中会进一步讨论。</p>
+<h4 id="复制日志的实现"><a href="#复制日志的实现" class="headerlink" title="复制日志的实现"></a>复制日志的实现</h4><h5 id="基于语句的复制"><a href="#基于语句的复制" class="headerlink" title="基于语句的复制"></a>基于语句的复制</h5><p>最简单的情况，主节点记录执行的每个写请求的操作语句，并将语句作为日志发给从节点。对于关系数据库，即每个INSERT、UPDATE等语句都转发给从节点，从节点分析并执行这些语句，如同它们是来自客户端。</p>
+<p>这种复制方式有一些不适用的场景：</p>
+<ul>
+<li>调用非确定性函数的语句，如NOW获取当前时间，RAND获取随机数等，会在不同节点上产生不同的值。</li>
+<li>如果语句中使用了自增列，或依赖于数据库的现有数据（如UPDATE WHERE＜条件＞），则所有副本必须按照完全相同的顺序执行，否则可能会带来不同的结果。然而如果有多个同时并发执行的事务，会有很大的限制。</li>
+<li>有副作用的语句（如触发器、存储过程、用户定义的函数等），可能会在每个副本上产生不同的副作用。</li>
+</ul>
+<p>可以采取一些特殊措施解决这些问题，如主节点可以在记录操作语句时将非确定性函数替换为执行后的确定结果，这样所有节点直接使用相同的结果。但这里<font color=red>有太多边界条件需要考虑，因此目前通常首选的是其他复制实现方案。</font></p>
+<h5 id="基于预写日志（WAL）"><a href="#基于预写日志（WAL）" class="headerlink" title="基于预写日志（WAL）"></a>基于预写日志（WAL）</h5><p>第3章中讨论了存储引擎的磁盘数据结构，通常写操作都会以追加写的方式写入到日志中：</p>
+<ul>
+<li>日志结构存储引擎（如SSTables和LSM-trees），日志是主要的存储方式。日志段在后台压缩并支持垃圾回收。</li>
+<li>采用覆盖写磁盘的Btree结构，每次修改会预写日志，系统发生崩溃时通过索引更新的方式迅速恢复到此前一致状态。</li>
+</ul>
+<p>不管哪种情况，所有<font color=red>对数据库写入的字节序列都被记入日志</font>。因此除了将日志写入磁盘外，主节点还可以通过网络将其发送给从节点。从节点收到日志进行处理，建立和主节点内容完全相同的数据副本。</p>
+<p>这种方式的主要缺点是<font color=red>日志描述的数据结果非常底层</font>：一个WAL包含了哪些磁盘块的哪些字节发生改变，诸如此类的细节。这使得复制方案和存储引擎紧密耦合。这可能使得主从节点上无法运行不同版本的软件，导致升级困难。</p>
+<h5 id="基于行的逻辑日志复制"><a href="#基于行的逻辑日志复制" class="headerlink" title="基于行的逻辑日志复制"></a>基于行的逻辑日志复制</h5><p>另一种方法是复制和存储引擎采用不同的日志格式，即<font color=red>复制与存储逻辑解耦</font>。这种复制日志称逻辑日志，以区分物理存储引擎的数据表示。关系数据库的逻辑日志通常是指一系列记录来描述数据表行级别的写请求：</p>
+<ul>
+<li>行插入，日志包含所有相关列的新值。</li>
+<li>行删除，日志里有足够的信息来唯一标识已删除的行，通常靠主键，若表上没定义主键，就需记录所有列的旧值。</li>
+<li>行更新，日志包含足够的信息来唯一标识更新的行，以及所有列的新值（或至少包含所有已更新列的新值）。</li>
+</ul>
+<p>若一条事务涉及多行的修改，则会产生多个日志记录，并在后面跟着一条记录，指出该事务已经提交。MySQL的二进制日志binlog（当配置为基于行的复制时）使用该方式。</p>
+<p>逻辑日志与存储引擎逻辑解耦，使主从节点能够运行不同版本的软件甚至是不同的存储引擎。对于外部应用程序来说，逻辑日志格式也更容易解析。</p>
+<h5 id="基于触发器的复制"><a href="#基于触发器的复制" class="headerlink" title="基于触发器的复制"></a>基于触发器的复制</h5><p>上面的复制方法都是由数据库系统实现的，不涉及任何应用程序代码。某些情况下可能需要更高的灵活性。例如，只想复制数据的一部分，或者需订制、管理冲突解决逻辑（ 参阅后面的“处理写冲突”），则需要将复制控制交给应用程序层。</p>
+<p>一种方法是借助许多关系数据库都支持触发器和存储过程。触发器支持注册应用层代码，数据库系统发生数据更改时自动执行自定义代码。通过触发器技术，可以将数据更改记录到一个单独的表中，然后外部处理逻辑访问该表，实施必要的自定义应用层逻辑，例如将数据更改复制到另一个系统。</p>
+<p>基于触发器的复制通常比其他复制方式<font color=red>开销更高</font>，比数据库内置复制更<font color=red>易出错</font>。然而其<font color=red>高度灵活性</font>仍有用武之地。</p>
+<h3 id="复制滞后问题"><a href="#复制滞后问题" class="headerlink" title="复制滞后问题"></a>复制滞后问题</h3><p>主从复制要求所有写请求都经由主节点，从副本只能接受只读查询。对于读操作密集的负载，这是一个不错的选择，创建多个从副本，可以减轻主节点负载并允许读请求就近满足。但该方法实际上只能用于异步复制，<font color=red>若使用同步复制，则单个节点故障或网络中断将使整个系统无法写入。且节点越多，故障概率越高，所以完全同步的配置现实中反而非常不可靠。</font></p>
+<p>如果应用从一个异步的从节点读数据，而该副本落后于主节点，则可能会读到过期的信息。这会导致数据库中出现明显的不一致：同时对主从节点发起相同的查询，可能得到不同的结果。这种不一致是一个暂时的状态，停止写数据库一段时间后，从节点最终会赶上并与主节点保持一致。这种效应也称为<font color=red>最终一致性</font>。</p>
+<p>“最终”一词含糊不清，副本落后的程度理论上没有上限。本节重点介绍三个复制滞后的问题，并给出相应的解决思路。</p>
+<h4 id="读自己的写"><a href="#读自己的写" class="headerlink" title="读自己的写"></a>读自己的写</h4><p>用户提交一些数据，然后查看自己提交的内容。提交新数据须发送到主节点，但读时数据可能来自从节点。异步复制存在这样的问题，如图5-3，用户写入不久后查看数据，新数据尚未到达从节点。对用户来讲，似乎刚刚提交的数据丢失了。</p>
+<img src="/img/05数据复制/image-20230717092835994.png" alt="image-20230717092835994" style="zoom:67%;" />
+
+<p>这种情况需要<font color=red>“写后读一致性”，也称为读写一致性</font>。该机制保证用户总能看到自己最近提交的更新。但对其他用户则没有任何保证。基于主从复制的系统如何实现写后读一致性呢？有多种可行的方案，以下例举一二：</p>
+<ul>
+<li><p>如果用户访问可能会被自己修改的内容，则从主节点读取；否则在从节点读取。这背后要求有方法能在查询之前，就知道内容是否可能会被修改。例如，社交网络上用户首页信息通常只能由所有者编辑。因此就形成一个简单的规则：总是从主节点读取用户自己的首页配置文件，而在从节点读取其他用户的配置文件。</p>
+<p><em>从系统的角度看，当用户查询自己的首页时，则将查询请求重定位到主节点。</em></p>
+</li>
+<li><p>如果应用大部分内容都能被所有用户修改，上述方法导致大部分内容都必须经由主节点，丧失了读操作的扩展性。需要其他方案来判断是否从主节点读取。例如跟踪最近更新时间，如果更新后一分钟之内，则在主节点读取；其他的向从副本读。时间阈值（如一分钟）如何选取呢？可以根据从副本一段时间内的最大延迟这个经验值设置。</p>
+<p><em>从系统的角度看，记录写操作的时间，当收到读操作时，查看更新时间是否在阈值内，若是，则重定位到主节点。</em></p>
+</li>
+<li><p>客户端还可以记住最近更新时的时间戳，并附带在读请求中，据此信息，系统可以确保对该用户提供读服务时都应该至少包含了该时间戳的更新。如果不够新，要么交由另一个副本来处理，要么等待直到副本接收到了最近的更新。时间戳可以是<font color=red>逻辑时间戳</font>（例如指示写入顺序的日志序列号）或<font color=red>实际系统时钟</font>（这种情况下，时钟同步又是另一个关键点，参考第8章“不可靠的时钟”）。</p>
+</li>
+</ul>
+<p>会有一些实际的复杂 case：</p>
+<ul>
+<li>若副本分布在多数据中心（例如考虑与用户的地理接近，以及高可用性），情况更复杂。必须先把请求路由到主节点所在的数据中心（该数据中心可能离用户很远）。</li>
+<li><font color=red>同一用户从多个设备访问数据</font>，例如同时支持桌面Web浏览器和移动端的应用。此时要提供<font color=red>跨设备的写后读一致性</font>。</li>
+</ul>
+<p>这种情况下，还有一些需要考虑的问题：</p>
+<ul>
+<li>记住用户上次更新时间戳的方法实现起来会比较困难，因为一台设备上运行的代码完全无法知道在其他设备上发生了什么。此时，元数据必须做到全局共享。</li>
+<li>如果副本分布在多数据中心，无法保证来自不同设备的连接经过路由之后都到达同一个数据中心。如果方案要求必须从主节点读取，则首先需要想办法确保将来自不同设备的请求路由到同一个数据中心。</li>
+</ul>
+<h4 id="单调读"><a href="#单调读" class="headerlink" title="单调读"></a>单调读</h4><img src="/img/05数据复制/image-20230717200822184.png" alt="image-20230717200822184" style="zoom:67%;" />
+
+<p>如图5-4所示，用户先后在两个从节点上执行了两次完全相同的查询，有可能出现以下情况。第一个查询返回了用户1234最近添加的评论，第二个查询因为滞后的原因，还没有收到更新，返回结果为空。用户2345看到了用户1234的评论后，评论又消失了，他会感觉很困惑。</p>
+<p>单调读一致性可以确保不会发生这种异常。这是一个比强一致性弱，但比最终一致性强的保证。当读取数据时，单调读保证，如果某个用户依次进行多次读取，则他绝<font color=red>不会在读取较新值之后又发生读旧值的情况</font>。</p>
+<p>实现单调读的一种方式是，<font color=red>确保每个用户总是从固定的同一副本执行读取</font>（不同的用户可以从不同的副本读取）。例如，基于用户ID的哈希的方法随机选择副本。但如果该副本发生失效，则用户的查询必须重新路由到另一个副本。</p>
+<h4 id="前缀一致读"><a href="#前缀一致读" class="headerlink" title="前缀一致读"></a>前缀一致读</h4><p>两句话之间存在因果关系的例子如下，A和B之间的对话：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">A：B，您能看到多远的未来？</span><br><span class="line">B：通常约10s</span><br></pre></td></tr></table></figure>
+
+<p>假设第三人C正在通过从节点收听上述对话。B所说的话经历了短暂的滞后到达该从节点，但A所说的经历了更长的滞后才到达。C听到的对话变成这样：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">B：通常约10s</span><br><span class="line">A：B，您能看到多远的未来？</span><br></pre></td></tr></table></figure>
+
+<p>防止这种异常需要引入另一种保证：<font color=red>前缀一致读</font>。该保证是说，对于一系列按照某个顺序发生的写请求，那么读取这些内容时也会按照当时写入的顺序。</p>
+<p>这是分区（分片）数据库中出现的一个特殊问题，细节将在第6章中讨论。如果数据库总是以相同的顺序写入，则读取总是看到一致的序列，不会发生这种反常。然而，许多分布式数据库中，<font color=red>不同的分区独立运行，因此不存在全局写入顺序</font>。这就导致当用户从数据库中读数据时，可能会看到数据库的某部分旧值和另一部分新值。</p>
+<p>一个解决方案是<font color=red>确保任何具有因果顺序关系的写入都交给一个分区来完成</font>，但该方案的实现效率会大打折扣。现在有一些新的算法来显式地追踪事件因果关系，在本章稍后的“Happened-before关系与并发”会继续该问题的探讨。</p>
+<h4 id="复制滞后的解决方案"><a href="#复制滞后的解决方案" class="headerlink" title="复制滞后的解决方案"></a>复制滞后的解决方案</h4><p>如果应用程序开发人员不必担心这么多底层的复制问题，而是假定数据库在“做正确的事情”，情况就变得很简单。这也是<font color=red>事务</font>存在的原因，事务是数据库提供更强保证的一种方式。</p>
+<p>单节点上支持事务已非常成熟，然而转向分布式数据库（即支持复制和分区）的过程中，有许多系统却选择放弃支持事务，并声称事务在<font color=red>性能与可用性方面代价过高</font>，断言在可扩展的分布式系统中最终一致性是无法避免的终极选择。这样的表述，首先它有一定道理，但情况远不是所说的那么简单。</p>
+<h3 id="多主节点复制"><a href="#多主节点复制" class="headerlink" title="多主节点复制"></a>多主节点复制</h3><p>主从复制存在一个明显的缺点：系统所有写入都须经由单一主节点。主节点失效，或与主节点间的网络中断，会影响所有写入操作。对主从复制进行扩展，<font color=red>配置多个主节点，每个主节点都能接受写操作，后面的复制流程类似</font>：处理写的每个主节点都须将数据更改转发到所有其他节点。这就是多主节点复制。此时每个主节点同时还是其他主节点的从节点。</p>
+<h4 id="适用场景"><a href="#适用场景" class="headerlink" title="适用场景"></a>适用场景</h4><p>在一个数据中心内使用多主节点基本没太大意义，其复杂性已超过能带来的好处。在以下场景这种配置则是合理的。</p>
+<h5 id="多数据中心"><a href="#多数据中心" class="headerlink" title="多数据中心"></a>多数据中心</h5><p>为容忍整个数据中心级别故障或更接近用户，可以把数据库副本横跨多个数据中心。若使用常规的主从复制，主节点只能放在某个数据中心。有了多主节点复制模型，可以在每个数据中心都配置主节点，如图5-6所示。数据中心内采用常规的主从复制方案；<font color=red>数据中心间，由各个数据中心的主节点来负责同其他数据中心的主节点进行数据的交换、更新。</font></p>
+<img src="/img/05数据复制/image-20230718081326582.png" alt="image-20230718081326582" style="zoom:67%;" />
+
+<p>多数据中心环境下，单主节点的主从复制方案与多主复制方案之间的差异如下：</p>
+<ul>
+<li>性能：主从复制方案，每个写请求都须经由广域网传送至主节点所在数据中心，这大大增加写入延迟，并基本偏离了采用多数据中心的初衷（就近访问）。而多主节点模型中，每个写操作都能在本地数据中心快速响应，然后采用异步复制方式将变化同步到其他数据中心。这对上层应用有效屏蔽了数据中心之间的网络延迟，终端用户体验更好。</li>
+<li>容忍数据中心失效：主从复制，若主节点所在数据中心发生故障，必须将另一数据中心中的某个从节点提升为主节点。多主节点模型中，每个数据中心可以独立运行，发生故障的数据中心在恢复之后更新到最新状态。</li>
+<li>容忍网络问题：数据中心间的通信通常经由广域网，它往往不如数据中心内的本地网络可靠。主从复制模型对数据中心间的网络性能和稳定性更加依赖。多主节点模型则通常采用异步复制，可以更好地容忍此类问题。</li>
+</ul>
+<h5 id="离线客户端操作"><a href="#离线客户端操作" class="headerlink" title="离线客户端操作"></a>离线客户端操作</h5><p>另一种多主复制比较适合的场景是，应用在与网络断开后还需要继续工作。比如手机，笔记本电脑上的日历应用程序。无论设备当前是否联网，总是要能随时查看当前会议安排（读请求）或添加新会议（写请求）。离线状态下的任何更改，会在下次上线时，与服务器及其他设备同步。这种情况下，<font color=red>每个设备都有一个充当主节点的本地数据库（用来接受写请求），然后在所有设备间采用异步方式同步。从架构层面来看，基本上等同于数据中心之间的多主复制。</font></p>
+<h5 id="协作编辑"><a href="#协作编辑" class="headerlink" title="协作编辑"></a>协作编辑</h5><p>实时协作编辑应用程序允许多个用户同时编辑文档。当一个用户编辑文档时，所做的更改会立即应用到本地副本，然后异步复制到服务器以及编辑同一文档的其他用户。为加快协作编辑的效率，可编辑的粒度需要非常小。例如，单个按键甚至是全程无锁。然而另一方面，也会面临所有多主复制都存在的挑战， 即如何解决冲突。</p>
+<h4 id="处理写冲突"><a href="#处理写冲突" class="headerlink" title="处理写冲突"></a>处理写冲突</h4><p>多主复制的最大问题是可能发生写冲突。例如，两个用户同时编辑Wiki页面，用户1将页面的标题从A更改为B，同时用户2将标题从A改为C。每个用户的更改都顺利地提交到本地主节点。但当更改被异步复制到对方时，却发现存在冲突。</p>
+<img src="/img/05数据复制/image-20230718081705832.png" alt="image-20230718081705832" style="zoom:67%;" />
+
+<h5 id="同步与异步冲突检测"><a href="#同步与异步冲突检测" class="headerlink" title="同步与异步冲突检测"></a>同步与异步冲突检测</h5><p>多主节点的复制模型下，两个写请求都是成功的，且只能在稍后的时间点上才能异步检测到冲突，那时再要求用户层来解决冲突为时已晚。理论上，也可以做到同步冲突检测，即等待写请求完成对所有副本的同步，然后再通知用户写入成功。但是这样将会失去多主节点的主要优势：允许每个主节点独立接受写请求。如果确实想要同步方式冲突检测，或许应考虑采用单主节点的主从复制模型。</p>
+<h5 id="避免冲突"><a href="#避免冲突" class="headerlink" title="避免冲突"></a>避免冲突</h5><p>处理冲突最理想的策略是避免冲突。如果应用层可以<font color=red>保证对特定记录的写请求总是通过同一个主节点，这就不会发生写冲突。</font>现实中，不少多主节点复制模型的冲突解决方案存在瑕疵，因此，<font color=red>避免冲突反而成为普遍推荐的首选方案。</font></p>
+<p>例如，系统中用户需要更新自己的数据，那么确保特定用户的更新请求总是路由到特定的数据中心，并在该数据中心的主节点上进行读写。不同的用户则可能对应不同的主数据中心。从用户的角度来看，这基本等价于主从复制模型。</p>
+<p>但是，有时可能需要改变事先指定的主节点，例如数据中心发生故障，或因为用户已经漫游到另一个位置，因而更靠近新数据中心。此时，冲突避免方式不再有效，必须有措施来处理同时写入冲突的可能性。</p>
+<h5 id="收敛于一致状态"><a href="#收敛于一致状态" class="headerlink" title="收敛于一致状态"></a>收敛于一致状态</h5><p>若每个副本都只是按照它所看到写入的顺序执行，那数据库最终将处于不一致状态。例如主节点1看到最终值C，而主节点2看到的是B，这绝对是不可接受的，<font color=red>所有的复制模型至少应该确保数据在所有副本中最终状态一定是一致的。</font>因此，数据库必须以一种收敛趋同的方式来解决冲突，这也意味着当所有更改最终被复制、同步之后，所有副本的最终值是相同的。</p>
+<p>实现收敛的冲突解决有以下可能的方式：</p>
+<ul>
+<li>每个写入分配唯一的ID ，例如， 一个时间戳， 一个足够长的随机数， 一个UUID，或一个基于键值的哈希值，挑选最高ID的写入作为胜利者，并将其他写入丢弃。如果基于时间戳，这种技术被称为最后写入者获胜。虽然这种方法很流行，但很<font color=red>容易造成数据丢失</font>。将在本章最后部分来详细解释。</li>
+<li>为每个副本分配一个唯一的ID ，并制定规则，例如序号高的副本写入始终优先于序号低的副本。这种方法也可能会导致数据丢失。</li>
+<li>以某种方式将这些值合并在一起。例如，按字母顺序排序，然后拼接在一起（例如合并的标题可能类似于“B&#x2F;C”）。</li>
+<li>利用预定义好的格式来记录和保留冲突相关的所有信息，然后依靠应用层逻辑，事后解决冲突（可能会提示用户） 。</li>
+</ul>
+<h5 id="自定义冲突解决逻辑"><a href="#自定义冲突解决逻辑" class="headerlink" title="自定义冲突解决逻辑"></a>自定义冲突解决逻辑</h5><p>解决冲突最合适的方式可能还是依靠应用层，所以大多数多主节点复制模型都有工具来让用户编写应用代码来解决冲突。可以在写入时或在读取时执行这些代码逻辑：</p>
+<ul>
+<li>写入时执行：只要数据库系统在复制变更日志时检测到冲突，就会调用应用层的冲突处理程序。</li>
+<li>读取时执行：检测到冲突时，所有冲突写入值都会暂时保存下来。下一次读取数据时，会将数据的多个版本读返回给应用层。应用层可能会提示用户或自动解决冲突，并后的结果返回到数据库。</li>
+</ul>
+<p>注意，冲突解决通常用于单个行或文档，而不是整个事务。因此，如果有一个原子事务包含多个不同写请求，每个写请求仍然是分开考虑来解决冲突。</p>
+<p>有一些有意思的研究尝试自动解决并发修改所引起的冲突。下面这些方法值得一看：</p>
+<ul>
+<li>无冲突的复制数据类型（Conflict free Replicated Datatypes, CRDT）：CRDT是可以由多个用户同时编辑的数据结构，包括map 、ordered list、计数器等，并且以内置的合理方式自动地解决冲突。</li>
+<li>可合并的持久数据结构（ Mergeable persistent data) 。它跟踪变史历史，类似于Git版本控制系统，并提出三向合并功能。</li>
+<li>操作转换。它是Google Docs等协作编辑应用背后的冲突解决算法。专为可同时编辑的有序列表而设计，如文本丈档的字符列表。</li>
+</ul>
+<h4 id="拓扑结构"><a href="#拓扑结构" class="headerlink" title="拓扑结构"></a>拓扑结构</h4><p>复制的拓扑结构描述了写请求从一个节点传播到其他节点的通信路径。如果存在两个以上的主节点，会有多个可能的同步拓扑结构，如图5-8所示。</p>
+<p><img src="/img/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/image-20230719081944196.png" alt="image-20230719081944196"></p>
+<p>最常见的拓扑结构是图5-8(c)的全链接拓扑，还有其他拓扑如图中的环形和星形结构。环形和星形拓扑中，写请求需通过多个节点才能到达所有副本，中间节点需转发从其他节点收到的数据变更。为防止无限循环，每个节点都有唯一标识符，复制日志中的每个写请求标记了已通过节点的标识符。若节点收到了包含自身标识符的数据更改，直接忽略此变更请求。</p>
+<p>环形和星形拓扑的问题是，如果某节点发生了故障，在修复之前，会影响其他节点之间复制日志的转发。可以采用重新配置拓扑结构的方法暂时排除掉故障节点。而全链接拓扑，消息可沿不同的路径传播，避免了单点故障，有更好的容错性。</p>
+<p>但全链接拓扑也有缺点。主要是存在某些网络链路比其他链路更快的情况，导致复制日志之间的覆盖，如图5-9所示。客户端A向主节点1的表中先插入一行，然后客户端B在主节点3上对该行记录进行更新。而主节点2上，由于网络原因，它先接收到了主节点3的更新日志（从主节点2的角度，是对数据库中不存在行的更新），之后才接收到主节点1的插入日志。</p>
+<img src="/img/05数据复制/image-20230724184022695.png" alt="image-20230724184022695" style="zoom:67%;" />
+
+<p>这里涉及到因果关系问题，类似于在本章前面“前缀一致读”所看到的：更新操作一定是依赖于先前完成的插入，因此要确保所有节点上一定先接收插入日志，然后再处理更新。在每笔写日志里简单地添加时间戳还不够，因为无法确保时钟完全同步。为使得日志消息正确有序，可以使用一种称为版本向量的技术，稍后讨论这种技术（参考“检测并发写入”）。</p>
+<p>需要指出，冲突检测技术在许多多主节点复制系统中的实现还不够完善。使用支持多主节点复制的系统，需仔细查阅相关文档，详细测试这些数据库，以确保它确实提供所期望的功能。</p>
+<h3 id="无主节点复制"><a href="#无主节点复制" class="headerlink" title="无主节点复制"></a>无主节点复制</h3><p>一些数据存储系统采用不同于单主节点和多主节点复制的设计思路：放弃主节点，允许任何副本直接接受客户端的写请求。亚马逊内部采用Dynamo系统（基于KV存储模型的分布式数据库）后，启发了一批开源无主复制数据库，这类数据库称为<font color=red>Dynamo风格数据库</font>。</p>
+<h4 id="节点失效时写入数据库"><a href="#节点失效时写入数据库" class="headerlink" title="节点失效时写入数据库"></a>节点失效时写入数据库</h4><p>对于无主节点配置，节点失效时无需切换主节点。比如用户A将写请求并行发送到三个副本，其中有一个副本因失效无法处理写请求，有两个副本成功确认写操作，用户A收到两个确认回复后即可认为写入成功。如果之后失效的节点重新上线，客户端又开始从中读取内容，此时可能读取到过期的数据。为解决该问题，客户端读数据时，将读请求并行地发送到多个副本，客户端会得到不同节点的不同响应，其中包括新值和旧值。可以采用版本号确定哪个值更新。</p>
+<h5 id="读修复与反熵"><a href="#读修复与反熵" class="headerlink" title="读修复与反熵"></a>读修复与反熵</h5><p><font color=red>复制模型应确保所有数据最终复制到所有的副本</font>。失效的节点重新上线后，它如何赶上错过的那些写请求呢？Dynamo风格的数据存储系统经常使用以下两种机制：</p>
+<ul>
+<li>读修复：客户端并行读取多个副本时，可以检测到过期的返回值。例如，用户A从副本3获得的是版本6，从副本1和2得到的是版本7，因此可以判断副本3是一个过期值，然后客户端将新值写到该副本。该方法适合频繁读取的场景。</li>
+<li>反熵过程：一些数据存储有后台进程不断查找副本之间数据的差异，将任何缺少的数据从一个副本复制到另一个副本。与基于主节点复制的复制日志不同，<font color=red>反熵过程并不保证以特定的顺序复制写入，并且会引入明显的同步滞后。</font></li>
+</ul>
+<p>并不是所有的系统都实现了上述两种方案。注意，当缺少反熵过程时，由于读时修复只在读取时才执行修复，那些很少访问的数据有可能在某些副本中已经丢失而无法检测到，降低了写的持久性。</p>
+<h5 id="读写quorum"><a href="#读写quorum" class="headerlink" title="读写quorum"></a>读写quorum</h5><p>上面三副本的例子推广到一般情况，如果有<code>n</code>个副本，写入需要<code>w</code>个节点确认，读取必须至少查询<code>r</code>个节点，则只要<code>w + r &gt; n</code>，读取的节点中一定会包含最新值。</p>
+<p>在Dynamo风格的数据库中，参数<code>n、w</code>和<code>r</code>通常是<font color=red>可配置的</font>。一个常见的选择是设置<code>n</code>为奇数，设置<code>w = r = (n + 1) / 2</code>（向上舍入）。也可以根据自己的需求灵活调整这些配置。例如，<font color=red>对于读多写少的负载，设置<code>w = n</code>和 <code>r = 1</code> 比较合适，这样读取速度更快，但是一个失效的节点就会使得数据库所有写入因无法完成quorum而失败。</font></p>
+<p>通常，读取和写入操作总是并行发送到所有的<code>n</code>个副本。参数<code>w</code>和参数<code>r</code>只是决定要等待的节点数。即有多少个节点需要返回结果，我们才能判断出结果的正确性。如果可用节点数小于所需的<code>w</code>或<code>r</code> ，则写入或读取就会返回错误。</p>
+<h4 id="Quorum一致性的局限性"><a href="#Quorum一致性的局限性" class="headerlink" title="Quorum一致性的局限性"></a>Quorum一致性的局限性</h4><p><code>n</code>个副本，配置<code>w</code>和<code>r</code>，使<code>w + r &gt; n</code>，预期可以读取到一个最新值。因为写入节点集合和读取节点集合必有重合。通常，设定<code>r</code>和<code>w</code>为简单多数（多于 <code>n/2</code> ）节点，即可确保<code>w + r &gt; n</code> ，且同时容忍多达 <code>n/2</code> 个节点故障。</p>
+<p>但是，quorum不一定非得是多数，<font color=red>读写的节点集中有重叠节点才是关键。</font>设定其他的quorum分配数也是可行的。可以将<code>w</code>和<code>r</code>设为较小的数字 <code>w + r &lt;= n</code>（即不满足仲裁条件）。此时读取和写入仍发送到<code>n</code>个节点，但只需等待更少的节点回应即可返回。由于<code>w</code>和<code>r</code>较小，读请求可能得到旧值。好的方面是，这种配置可以获得更低的延迟和更高的可用性。</p>
+<p>即使<code>w + r &gt; n</code>，也可能存在返回旧值的<font color=red>边界条件</font>。这主要取决于具体实现，可能的情况包括：</p>
+<ul>
+<li>若采用sloppy quorum（参阅后面的“宽松的quorum与数据回传”），写的<code>w</code>节点和读的<code>r</code>节点可能完全不同，无法保证读写请求一定存在重叠节点。</li>
+<li>若两个写操作同时发生，则无法明确先后顺序。这种情况，唯一安全的解决方案是合并并发写入（参见前面的“处理写冲突”）。若根据时间戳（最后写入获胜）挑选胜者，由于时钟偏差问题，某些写入可能会被错误地抛弃。</li>
+<li>若读写同时发生，写操作可能仅在一部分副本上完成。此时，读取时返回旧值还是新值存在不确定性。</li>
+<li>若某些副本已写入成功，其他一些副本写入失败（如磁盘已满），且总的成功副本数少于<code>w</code>，已成功的副本上不会做回滚。表示尽管该写操作被视为失败，但后续的读操作仍可能返回新值。</li>
+<li>若有新值的节点后来发生失效，但恢复数据来自某个旧值，则总的新值副本数低于<code>w</code>，这打破了之前的判定条件。</li>
+<li>即使一切工作正常，也会出现一些边界情况，如第9章所介绍的“可线性化与quorum”。</li>
+</ul>
+<p>因此，<font color=red>虽然quorum设计上似乎能保证读到最新值，但现实情况却很复杂。建议不要把参数<code>w</code>和<code>r</code>视为绝对保证，而是一种灵活可调的读取新值的概率。</font>这里通常无法得到“复制滞后问题”中所罗列的一致性保证，包括写后读、单调读、前缀一致读等，因此前面种种异常同样会发生在这里。若要更强的保证，需考虑事务与共识问题，第7章和第9章对进行讨论。</p>
+<h5 id="监控旧值"><a href="#监控旧值" class="headerlink" title="监控旧值"></a>监控旧值</h5><p>从运维角度看，监视数据库是否返回最新结果非常重要。<font color=red>即使应用可以容忍读取旧值，也需要仔细了解复制的运行状态</font>。若已出现明显的滞后，它就是个重要的信号，提醒我们需采取必要措施来排查原因（例如网络问题或节点超负荷）。</p>
+<p>主从复制的系统，数据库通常会导出复制滞后的相关指标，可将其集成到统一监控系统。主从节点写入都遵从相同的顺序，每个节点都维护了复制日志执行的偏移量。对比主从节点当前偏移量的差值，即可衡量从节点落后于主节点的程度。</p>
+<p>对于无主节点复制的系统，没有固定的写入顺序，因而监控就更加困难。而且若数据库只支持读时修复，那旧值的落后就没有上限。目前针对无主节点复制系统已有一些研究，根据参数<code>n, w</code>和<code>r</code>预测读到旧值的期望百分比。不过总体讲还不是很普及。即使如此，将旧值监控纳入到数据库标准指标集中还是很有必要。要知道，<font color=red>最终一致性其实是个非常模糊的保证，从可操作性上讲， 量化究竟何为“最终”很有实际价值。</font></p>
+<h5 id="宽松的quorum与数据回传"><a href="#宽松的quorum与数据回传" class="headerlink" title="宽松的quorum与数据回传"></a>宽松的quorum与数据回传</h5><p>配置适当quorum的数据库系统可容忍某些节点故障，也不需要执行故障切换。还能容忍某些节点变慢，因为请求无需等待所有n个节点的响应，只需<code>w</code>或<code>r</code>节点响应即可。对需要高可用和低延迟的场景来说，还可以容忍偶尔读取旧值。</p>
+<p>这些特性使之具有很高的吸引力，但quorum并不总如预期的那样提供高容错。网络中断可能导致某客户端到多数节点的链接断开。对于该客户端来讲，情况等价于集群整体失效。</p>
+<p>一个大规模集群中（<font color=red>节点数远大于<code>n</code></font>），客户可能在网络中断期间还能连接到其他节点，这些节点又不是能满足数据仲裁的那些节点。此时，数据库设计者面临着一个选择：</p>
+<ul>
+<li>如果无法达到<code>w</code>或<code>r</code>所要求quorum，将错误明确地返回给客户端？</li>
+<li>或者，接受写请求，只是将它们暂时写入一些可访问的节点中。注意这些节点并不在<code>n</code>个节点集合中。</li>
+</ul>
+<p>后一种方案称之为<font color=red>宽松的仲裁（sloppy quorum）</font>：写入和读取仍然需要<code>w</code>和<code>r</code>个成功的响应，但包含了那些并不在先前指定的<code>n</code>个节点。一旦网络恢复，临时节点需要把接收到的写入全部发送到原始主节点上。这就是所谓的数据回传。</p>
+<p>sloppy quorum对提高写入可用性很有用：只要有任何<code>w</code>个节点可用，数据库就可以接受新的写入。然而对于读请求，即使满足<code>w + r &gt; n</code>，也不能保证一定读到最新值，因为新值可能被临时写入<code>n</code>之外的某些节点且尚未回传过来。</p>
+<h4 id="检测并发写"><a href="#检测并发写" class="headerlink" title="检测并发写"></a>检测并发写</h4><p>Dynamo风格的数据库<font color=red>允许多个客户端对相同主键同时发起写操作，与多主节复制类似，可能会有写冲突</font>。由于网络不稳定等因素，请求在不同的节点上可能呈现不同的顺序。比如三节点的数据系统，客户端A和B同时向主键X发起写请求：</p>
+<ul>
+<li>节点1收到来自客户端A的写请求，但由于节点失效，没有收到客户端B的写请求。</li>
+<li>节点2首先收到A的写请求，然后是B的写请求。</li>
+<li>节点3首先收到B的写请求，然后是A的写请求。</li>
+</ul>
+<p>如果节点收到新的写请求后就覆盖原有的主键，那这些节点将永久无法达成一致。节点2认为X的最终值是B，节点3认为值是A 。副本应该收敛于相同的内容，这样才能达成最终一致。现在更详细地探讨冲突处理的问题。</p>
+<h5 id="最后写入者获胜（丢弃并发写入）"><a href="#最后写入者获胜（丢弃并发写入）" class="headerlink" title="最后写入者获胜（丢弃并发写入）"></a>最后写入者获胜（丢弃并发写入）</h5><p>一种实现最终收敛的方法是，每个副本总保存最新值，允许覆盖丢弃旧值。假定每个写请求都最终同步到所有副本，只要有一个明确的方法来确定哪一个写入是最新的，则副本可以最终收敛到相同的值。</p>
+<p><font color=red>多个并发操作，争辩哪个先发生没太大意义，当我们说支持写入并发，意味着它们的顺序是不确定的。可以附加一个时间戳，然后选择最大的时间戳，丢弃较早时间戳的写入。这个冲突解决算法称为最后写入者获胜（last write wins, LWW）。</font></p>
+<p>LWW可以实现最终收敛的目标，但以牺牲数据持久性为代价。如果同一主键有多个并发写，即使这些并发写都向客户端报告成功，但最后只有一个写入值会存活下来，其他的被系统默默丢弃。此外，LWW甚至可能会删除那些非并发写。如果覆盖、丢失数据不可接受，则LWW不是解决冲突很好的选择。</p>
+<h5 id="Happens-before关系和并发"><a href="#Happens-before关系和并发" class="headerlink" title="Happens-before关系和并发"></a>Happens-before关系和并发</h5><p>如何判断两个操作是否是并发呢？<font color=red>如果操作B知道操作A，或依赖于A，或以某种方式在A基础上构建，则称操作A在操作B之前发生。这是定义何为并发的关键。如果两个操作都不在另一个之前发生，那么操作是并发的。</font></p>
+<p>我们需要的是一个<font color=red>算法来判定两个操作是否并发</font>。如果一个操作发生在另一个操作之前，则后面的操作可以覆盖较早的操作。如果属于并发，就需要解决潜在的冲突问题。</p>
+<h5 id="确定前后关系"><a href="#确定前后关系" class="headerlink" title="确定前后关系"></a>确定前后关系</h5><img src="/img/05数据复制/image-20230722213140448.png" alt="image-20230722213140448" style="zoom:67%;" />
+
+<p>来看一个确定操作并发性的算法，即两个操作究竟属于并发还是有依赖关系。先从只有一个副本的数据库示例开始，阐明原理后将其推广到有多个副本的无主节点数据库：两个客户同时向购物车加商品。初始时购物车为空。然后两个客户端向数据库共发出五次写入操作。下面5个步骤，每个偶数步骤和相邻的奇数步骤都是并发的，因为它们都不知道对方的存在。而偶数和奇数步骤之间是有依赖的：</p>
+<ol>
+<li>客户端1将<font color=yellow>牛奶</font>加入购物车。这是第一次写入，服务器保存成功并分配版本1，将值与版本号一起返回给客户端1。</li>
+<li>客户端2将<font color=orange>鸡蛋</font>加入购物车，它不知道客户端1已添加了牛奶。服务器为此写入分配版本2，然后将<font color=orange>鸡蛋和牛奶</font>存储为两个单独的值，将这两个值与版本号2返回给客户端2。</li>
+<li>客户端1也不知道步骤2，想要将<font color=yellow>面粉</font>加入购物车，且以为购物车的内容应该是<font color=yellow>[牛奶，面粉]</font>，将此值与版本号1一起发送到服务器。服务器从版本号1中知道<font color=yellow>[牛奶，面粉]</font>的新值要取代先前值<font color=yellow>[牛奶]</font>，但值<font color=orange>[鸡蛋]</font>则是新的并发操作。因此，服务器将版本3分配给<font color=yellow>[牛奶，面粉]</font>并覆盖版本1的<font color=yellow>[牛奶]</font>，同时保留版本2的<font color=orange>[鸡蛋]</font>，将二者同时返回给客户端1。</li>
+<li>同时，客户端2要加入火腿，不知道客户端1刚刚加了面粉。其在最后一个响应从服务器收到的两个值是<font color=orange>[牛奶]和[蛋]</font>，现在合并这些值，并添加火腿形成新的值<font color=orange>[鸡蛋，牛奶，火腿]</font>。它将该值与前一个版本号2一起发送到服务器。服务器检测到版本2会覆盖<font color=orange>[鸡蛋]</font>，但与<font color=yellow>[牛奶，面粉]</font>同时发生，所以设置为版本4并将所有这些值发送给客户端2。</li>
+<li>最后，客户端1要加培根。它以前在版本3中从服务器接收<font color=yellow>[牛奶，面粉]</font>和<font color=orange>[鸡蛋]</font>，所以合并这些值，添加培根， 并将最终值<font color=yellow>[牛奶，面粉，鸡蛋，培根]</font>连同版本号3来覆盖<font color=yellow>[牛奶，面粉]</font>，但与<font color=orange>[鸡蛋，牛奶，火腿]</font>并发，所以服务器会保留<br>这些并发值。</li>
+</ol>
+<p><img src="/img/05%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6/image-20230722213305125.png" alt="image-20230722213305125"></p>
+<p>图5-13操作之间的数据流可以通过图5-14形象展示。箭头表示操作间有依赖关系，即后面的操作“依赖”于前面的操作。该例子中，总有另一个操作同时进行，但是，新版本值最终会覆盖旧值，且不会发生已写入值的丢失。</p>
+<p>注意，<font color=red>服务器判断操作是否并发的依据主要依靠对比版本号</font>，而不需要解释新旧值本身。算法的工作流程如下：</p>
+<ul>
+<li>服务器为每个主键维护一个版本号，每当主键写入新值时递增版本号，并�</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/" rel="tag"># 数据库</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/" rel="prev" title="DDIA笔记-04数据编码与演化">
+      <i class="fa fa-chevron-left"></i> DDIA笔记-04数据编码与演化
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E6%95%B0%E6%8D%AE%E7%B3%BB%E7%BB%9F"><span class="nav-number">1.</span> <span class="nav-text">分布式数据系统</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%B3%BB%E7%BB%9F%E6%89%A9%E5%B1%95%E8%83%BD%E5%8A%9B"><span class="nav-number">1.1.</span> <span class="nav-text">系统扩展能力</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%97%A0%E5%85%B1%E4%BA%AB%E7%BB%93%E6%9E%84%EF%BC%88%E6%B0%B4%E5%B9%B3%E6%89%A9%E5%B1%95%EF%BC%89"><span class="nav-number">1.2.</span> <span class="nav-text">无共享结构（水平扩展）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%8D%E5%88%B6%E4%B8%8E%E5%88%86%E5%8C%BA"><span class="nav-number">1.3.</span> <span class="nav-text">复制与分区</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6"><span class="nav-number">2.</span> <span class="nav-text">数据复制</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BB%E8%8A%82%E7%82%B9%E4%B8%8E%E4%BB%8E%E8%8A%82%E7%82%B9%EF%BC%88%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6%EF%BC%89"><span class="nav-number">2.1.</span> <span class="nav-text">主节点与从节点（主从复制）</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%90%8C%E6%AD%A5%E5%A4%8D%E5%88%B6%E4%B8%8E%E5%BC%82%E6%AD%A5%E5%A4%8D%E5%88%B6"><span class="nav-number">2.1.1.</span> <span class="nav-text">同步复制与异步复制</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E6%96%B0%E7%9A%84%E4%BB%8E%E8%8A%82%E7%82%B9"><span class="nav-number">2.1.2.</span> <span class="nav-text">配置新的从节点</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%84%E7%90%86%E8%8A%82%E7%82%B9%E5%A4%B1%E6%95%88"><span class="nav-number">2.1.3.</span> <span class="nav-text">处理节点失效</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BB%8E%E8%8A%82%E7%82%B9%E5%A4%B1%E6%95%88%EF%BC%9A-%E8%BF%BD%E8%B5%B6%E5%BC%8F%E6%81%A2%E5%A4%8D"><span class="nav-number">2.1.3.1.</span> <span class="nav-text">从节点失效： 追赶式恢复</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%BB%E8%8A%82%E7%82%B9%E5%A4%B1%E6%95%88%EF%BC%9A%E8%8A%82%E7%82%B9%E5%88%87%E6%8D%A2"><span class="nav-number">2.1.3.2.</span> <span class="nav-text">主节点失效：节点切换</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%8D%E5%88%B6%E6%97%A5%E5%BF%97%E7%9A%84%E5%AE%9E%E7%8E%B0"><span class="nav-number">2.1.4.</span> <span class="nav-text">复制日志的实现</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E8%AF%AD%E5%8F%A5%E7%9A%84%E5%A4%8D%E5%88%B6"><span class="nav-number">2.1.4.1.</span> <span class="nav-text">基于语句的复制</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E9%A2%84%E5%86%99%E6%97%A5%E5%BF%97%EF%BC%88WAL%EF%BC%89"><span class="nav-number">2.1.4.2.</span> <span class="nav-text">基于预写日志（WAL）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E8%A1%8C%E7%9A%84%E9%80%BB%E8%BE%91%E6%97%A5%E5%BF%97%E5%A4%8D%E5%88%B6"><span class="nav-number">2.1.4.3.</span> <span class="nav-text">基于行的逻辑日志复制</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9F%BA%E4%BA%8E%E8%A7%A6%E5%8F%91%E5%99%A8%E7%9A%84%E5%A4%8D%E5%88%B6"><span class="nav-number">2.1.4.4.</span> <span class="nav-text">基于触发器的复制</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%8D%E5%88%B6%E6%BB%9E%E5%90%8E%E9%97%AE%E9%A2%98"><span class="nav-number">2.2.</span> <span class="nav-text">复制滞后问题</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%AF%BB%E8%87%AA%E5%B7%B1%E7%9A%84%E5%86%99"><span class="nav-number">2.2.1.</span> <span class="nav-text">读自己的写</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8D%95%E8%B0%83%E8%AF%BB"><span class="nav-number">2.2.2.</span> <span class="nav-text">单调读</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%89%8D%E7%BC%80%E4%B8%80%E8%87%B4%E8%AF%BB"><span class="nav-number">2.2.3.</span> <span class="nav-text">前缀一致读</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%8D%E5%88%B6%E6%BB%9E%E5%90%8E%E7%9A%84%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="nav-number">2.2.4.</span> <span class="nav-text">复制滞后的解决方案</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%9A%E4%B8%BB%E8%8A%82%E7%82%B9%E5%A4%8D%E5%88%B6"><span class="nav-number">2.3.</span> <span class="nav-text">多主节点复制</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="nav-number">2.3.1.</span> <span class="nav-text">适用场景</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%A4%9A%E6%95%B0%E6%8D%AE%E4%B8%AD%E5%BF%83"><span class="nav-number">2.3.1.1.</span> <span class="nav-text">多数据中心</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%A6%BB%E7%BA%BF%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%93%8D%E4%BD%9C"><span class="nav-number">2.3.1.2.</span> <span class="nav-text">离线客户端操作</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8D%8F%E4%BD%9C%E7%BC%96%E8%BE%91"><span class="nav-number">2.3.1.3.</span> <span class="nav-text">协作编辑</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%84%E7%90%86%E5%86%99%E5%86%B2%E7%AA%81"><span class="nav-number">2.3.2.</span> <span class="nav-text">处理写冲突</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%90%8C%E6%AD%A5%E4%B8%8E%E5%BC%82%E6%AD%A5%E5%86%B2%E7%AA%81%E6%A3%80%E6%B5%8B"><span class="nav-number">2.3.2.1.</span> <span class="nav-text">同步与异步冲突检测</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E9%81%BF%E5%85%8D%E5%86%B2%E7%AA%81"><span class="nav-number">2.3.2.2.</span> <span class="nav-text">避免冲突</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%94%B6%E6%95%9B%E4%BA%8E%E4%B8%80%E8%87%B4%E7%8A%B6%E6%80%81"><span class="nav-number">2.3.2.3.</span> <span class="nav-text">收敛于一致状态</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%87%AA%E5%AE%9A%E4%B9%89%E5%86%B2%E7%AA%81%E8%A7%A3%E5%86%B3%E9%80%BB%E8%BE%91"><span class="nav-number">2.3.2.4.</span> <span class="nav-text">自定义冲突解决逻辑</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%8B%93%E6%89%91%E7%BB%93%E6%9E%84"><span class="nav-number">2.3.3.</span> <span class="nav-text">拓扑结构</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%97%A0%E4%B8%BB%E8%8A%82%E7%82%B9%E5%A4%8D%E5%88%B6"><span class="nav-number">2.4.</span> <span class="nav-text">无主节点复制</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%8A%82%E7%82%B9%E5%A4%B1%E6%95%88%E6%97%B6%E5%86%99%E5%85%A5%E6%95%B0%E6%8D%AE%E5%BA%93"><span class="nav-number">2.4.1.</span> <span class="nav-text">节点失效时写入数据库</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%AF%BB%E4%BF%AE%E5%A4%8D%E4%B8%8E%E5%8F%8D%E7%86%B5"><span class="nav-number">2.4.1.1.</span> <span class="nav-text">读修复与反熵</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%AF%BB%E5%86%99quorum"><span class="nav-number">2.4.1.2.</span> <span class="nav-text">读写quorum</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Quorum%E4%B8%80%E8%87%B4%E6%80%A7%E7%9A%84%E5%B1%80%E9%99%90%E6%80%A7"><span class="nav-number">2.4.2.</span> <span class="nav-text">Quorum一致性的局限性</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%9B%91%E6%8E%A7%E6%97%A7%E5%80%BC"><span class="nav-number">2.4.2.1.</span> <span class="nav-text">监控旧值</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%AE%BD%E6%9D%BE%E7%9A%84quorum%E4%B8%8E%E6%95%B0%E6%8D%AE%E5%9B%9E%E4%BC%A0"><span class="nav-number">2.4.2.2.</span> <span class="nav-text">宽松的quorum与数据回传</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%A3%80%E6%B5%8B%E5%B9%B6%E5%8F%91%E5%86%99"><span class="nav-number">2.4.3.</span> <span class="nav-text">检测并发写</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%9C%80%E5%90%8E%E5%86%99%E5%85%A5%E8%80%85%E8%8E%B7%E8%83%9C%EF%BC%88%E4%B8%A2%E5%BC%83%E5%B9%B6%E5%8F%91%E5%86%99%E5%85%A5%EF%BC%89"><span class="nav-number">2.4.3.1.</span> <span class="nav-text">最后写入者获胜（丢弃并发写入）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Happens-before%E5%85%B3%E7%B3%BB%E5%92%8C%E5%B9%B6%E5%8F%91"><span class="nav-number">2.4.3.2.</span> <span class="nav-text">Happens-before关系和并发</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%A1%AE%E5%AE%9A%E5%89%8D%E5%90%8E%E5%85%B3%E7%B3%BB"><span class="nav-number">2.4.3.3.</span> <span class="nav-text">确定前后关系</span></a></li></ol></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">51</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
