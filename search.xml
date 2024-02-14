@@ -5862,7 +5862,196 @@ Signed-off-by: Jay Lee &lt;BusyJayLee@gmail.com&gt;
 <p>物化视图常见的一种特殊情况称为数据立方体或OLAP立方体。它是由不同维度分组的聚合网格，如图3-12所示的例子。</p>
 <img src="/img/03数据存储与检索/image-20230617145119598.png" alt="image-20230617145119598" style="zoom:67%;" />
 
-<p>在图3-12 中，按照日期（date_key）和产品（product_sk）绘制一个二维表，日期沿着一个轴，产品沿着另一个轴。每个单元格即是date-produc</p>
+<p>在图3-12 中，按照日期（date_key）和产品（product_sk）绘制一个二维表，日期沿着一个轴，产品沿着另一个轴。每个单元格即是date-product组合的所有事实的属性的聚合（例如，net_price的SUM）。然后，可以沿着每一行或列应用聚合操作，得到一个减少一个维度的总和。</p>
+<p>一般来说，事实表的维度不止两个，想象五维超立方体是什么样子有些困难，但是原理是类似的： 每个单元格包含特定日期-产品-商店-促销-客户组合的销售值。然后可以沿着每个维度汇总这些值。</p>
+<p>物化数据立方体的优点是某些查询会非常快，因为它们已被预先计算出来。缺点是，数据立方体缺乏像查询原始数据那样的灵活性。例如，因为价格不是其中的一个维度，所以没办法直接计算成本超过100美元的物品所占销售的比重。因此，多数数据仓库都保留尽可能多的原始数据，仅当数据立方体可以对特定查询显著提升性能时，才采用多维数据聚合。</p>
+]]></content>
+      <categories>
+        <category>数据密集型应用系统设计读书笔记</category>
+      </categories>
+      <tags>
+        <tag>分布式</tag>
+        <tag>一致性</tag>
+        <tag>数据库</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>DDIA笔记-04数据编码与演化</title>
+    <url>/2024/01/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/</url>
+    <content><![CDATA[<p>字本文首先介绍了几种二进制编码，然后介绍了几种数据交互的方式。</p>
+<ul>
+<li>数据模式就是描述一份数据的含义的。对于JSON, XML这种文本格式，模式就包含在其中，即字段名，字段类型等等。而像ProtoBuf这种二进制编码而言，数据和模式是分开的，解码时必须使用模式来解析数据。而且像ProtoBuf，支持将模式定义转成各种语言的类（或结构体）。<span id="more"></span></li>
+<li>数据模式有个必须要考虑的点，即模式变更如何保证向前和向后的兼容。即新代码需要能读取旧代码写的数据，而旧代码也必须能解析新代码写的数据。</li>
+<li>数据交互的方式有：通过数据库；使用RPC；使用消息代理。</li>
+</ul>
+<hr>
+<p>应用程序会随时间而演化，数据模式也会随之改变：可能需要增加新的字段，或需以新的方式呈现已有数据。应用演化升级时，可能需要滚动升级（也称为分阶段发布），因此新旧版本的代码，以及新旧数据格式，在系统内共存。为使系统继续顺利运行，需要保持双向的兼容性：</p>
+<ul>
+<li><font color=red>向后兼容</font>：新代码可以读取由旧代码编写的数据。</li>
+<li><font color=red>向前兼容</font>：旧代码可以读取由新代码编写的数据。</li>
+</ul>
+<p>向后兼容通常不难实现，新代码的作者理应清楚旧代码的数据格式。向前兼容比较棘手，旧代码需忽略新代码的添加。</p>
+<p>本章介绍多种编码数据的格式，包括JSON、XML、Protocol Buffers、Thrift和Avro。讨论它们如何处理模式变化，如何支持新旧数据和新旧代码共存的系统；讨论这些格式如何用于数据存储和通信场景，包括REST、RPC以及消息传递系统。</p>
+<h3 id="数据编码格式"><a href="#数据编码格式" class="headerlink" title="数据编码格式"></a>数据编码格式</h3><p>程序通常使用（ 至少）<font color=red>两种不同的数据表示形式</font>：</p>
+<ol>
+<li>数据保存在内存中的对象、结构体、数组、树等数据结构中。</li>
+<li>数据写入文件或通过网络发送时，必须被编码为某种自包含的字节序列（如JSON）。由于指针对其他进程没有意义，所以字节序列看起来与内存中使用的数据结构大不一样。</li>
+</ol>
+<p>两种表示间需进行转化。从内存中的表示到字节序列的转化称为<font color=red>编码</font>（或序列化），相反过程称为<font color=red>解码</font>（或反序列化）。</p>
+<h4 id="语言特定的格式"><a href="#语言特定的格式" class="headerlink" title="语言特定的格式"></a>语言特定的格式</h4><p>许多编程语言都内置支持将内存中的对象编码为字节序列。这些编码库用起来非常方便，但也有一些深层次的问题：</p>
+<ul>
+<li>编码通常与特定的编程语言绑定在一起，用另一种语言访问数据就非常困难。</li>
+<li>为了在相同的对象类型中恢复数据，解码过程需要能够实例化任意的类。这经常导致一些安全问题。</li>
+<li>这些库的主要目标是快速且简单地编码数据，它们经常忽略向前和向后兼容性等问题。</li>
+<li>效率（编码或解码花费的CPU时间，以及编码结构的大小）通常也是次要的。</li>
+</ul>
+<h4 id="JSON、XML与二进制变体"><a href="#JSON、XML与二进制变体" class="headerlink" title="JSON、XML与二进制变体"></a>JSON、XML与二进制变体</h4><p>可由不同编程语言编写和读取的标准化编码，如JSON，XML，CSV。它们都是文本格式，因此有不错的可读性。但也有一些微妙的问题：</p>
+<ul>
+<li>数字编码有很多模糊之处。XML和CSV中无法区分数字和由数字组成的字符串。JSON能区分字符串和数字，但不区分整数和浮点数，并且不指定精度。</li>
+<li>JSON和XML对Unicode字符串（即可读文本）支持的很好，但不支持二进制字符串（没有字符编码的字节序列）。</li>
+<li>JSON和XML都有可选的模式支持。这些模式语言相当强大，因此学习和实现起来也比较复杂。</li>
+<li>CSV没有任何模式，因此应用程序需定义每行和每列的含义。如果应用更改添加新的行或列，必须手动处理出更改。CSV也是一个相当模糊的格式（若一个值包含逗号或换行符，会发生什么）。</li>
+</ul>
+<p>尽管存在缺陷，但JSON、XML和CSV已用于很多应用。<font color=red>特别是作为数据交换格式（ 即数据从一个组织发送到另一个组织），它们非常受欢迎。这些情况下，让不同的组织达成格式一致的难度通常超过了所有其他问题。格式美观或者高效往往不太重要。</font></p>
+<h5 id="二进制编码"><a href="#二进制编码" class="headerlink" title="二进制编码"></a>二进制编码</h5><p>选择更紧凑或更快的解析格式，对于大数据量而言，带来的收益是很可观的。</p>
+<p>JSON不像XML那么冗长，但与二进制格式相比，两者仍占用大量空间。因此开发了大量的二进制编码，用以支持JSON和XML。<font color=red>这些二进制格式大多没有规定模式，所以需在编码数据时包含所有的对象字段名称</font>。即在下面示例4-1中的JSON的二进制编码中，需要包含字符串userName、favoriteNumber和interests：</p>
+<figure class="highlight json"><table><tr><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">	<span class="attr">&quot;userName&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Martin&quot;</span><span class="punctuation">,</span></span><br><span class="line">	<span class="attr">&quot;favoriteNumber&quot;</span><span class="punctuation">:</span> <span class="number">1337</span><span class="punctuation">,</span></span><br><span class="line">	<span class="attr">&quot;interests&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;daydreaming&quot;</span><span class="punctuation">,</span> <span class="string">&quot;hacking&quot;</span><span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/image-20230703084223600.png" alt="image-20230703084223600"></p>
+<p>上图是使用MessagePack（一种JSON的二进制编码）对示例4-1进行编码的例子。该例子中二进制编码的长度为66字节，仅略小于文本JSON编码（去掉空格）占用的81字节。前几个字节如下：</p>
+<ul>
+<li>第一个字节0x83，表示接下来包含三个字段（最低四位0x03）的对象（最高四位0x80）；</li>
+<li>第二个字节0xd，表示接下来是八字节的字符串（最高四位0xa0，最低四位0x8）；</li>
+<li>后面的八字节是ASCII的字段名称userName。接下来七字节用前缀0xa6对长度为6的字符串Martin编码，依此类推。</li>
+</ul>
+<h5 id="Thrift与Protocol-Buffers"><a href="#Thrift与Protocol-Buffers" class="headerlink" title="Thrift与Protocol Buffers"></a>Thrift与Protocol Buffers</h5><p>Protocol Buffers最初是在Google开发的，Thrift最初是在Facebook开发的。<font color=red>Thrift和Protocol Buffers都需要模式来编码任意的数据</font>。对示例4-1进行编码，使用Thrift接口定义语言来描述模式如下：</p>
+<figure class="highlight thrift"><table><tr><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Person</span> </span>&#123;</span><br><span class="line">	<span class="number">1</span>: <span class="keyword">required</span> <span class="type">string</span> userName,</span><br><span class="line">	<span class="number">2</span>: <span class="keyword">optional</span> <span class="type">i64</span> favoriteNumber,</span><br><span class="line">	<span class="number">3</span>: <span class="keyword">optional</span> <span class="type">list</span>&lt;<span class="type">string</span>&gt; interests</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Protocol Buffers的等价模式定义看起来非常相似：</p>
+<figure class="highlight protobuf"><table><tr><td class="code"><pre><span class="line"><span class="keyword">message </span><span class="title class_">Person</span> &#123;</span><br><span class="line">    <span class="keyword">required</span> <span class="type">string</span> user_name = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">optional</span> <span class="type">int64</span> favorite_number = <span class="number">2</span>;</span><br><span class="line">    <span class="keyword">repeated</span> <span class="type">string</span> interests = <span class="number">3</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Thrift和Protocol Buffers各有对应的代码生成工具，采用和上面类似的模式定义，并生成支持多种编程语言的类。应用程序可以直接调用生成的代码来编码或解码该模式的记录。</p>
+<p>Thrift有两种不同的二进制编码格式，分别称为BinaryProtocol和CompactProtocol。来看看BinaryProtocol，这种格式编码示例4-1需要59字节，如图4- 2所示。</p>
+<p><img src="/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/image-20230703133529080.png" alt="image-20230703133529080"></p>
+<p>与图4-1相比，最大的区别是没有字段名（userName、favoriteNumber和interests）。<font color=red>而是在编码数据中包含字段标签</font>（1、2和3）。这些是模式定义中出现的数字。字段标签就像字段的别名，更为紧凑。</p>
+<p>Thrift CompactProtocol编码语义上等同于BinaryProtocol Protocol，只是更加紧凑，比如它会把字段类型和标签号都打包到单字节中。</p>
+<p>Protocol Buffers对相同的数据进行编码如图4-4所示。Protocol Buffers只用33字节可以表示相同的记录：</p>
+<p><img src="/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/image-20230703185345422.png" alt="image-20230703185345422"></p>
+<p>注意，之前Protocol Buffers的模式中，字段被标记为required或optional，这种标记对字段如何编码没有任何影响。只是如果字段设置了required，但字段未填充，则运行时检查将出错。</p>
+<h5 id="字段标签和模式演化"><a href="#字段标签和模式演化" class="headerlink" title="字段标签和模式演化"></a>字段标签和模式演化</h5><p>模式不可避免地要随时间不断演化。从示例可见，Thrift和Protocol Buffers中，<font color=red>每个字段由其标签号（示例模式中的1、2、3）标识，并使用数据类型进行注释</font>。字段标签对编码数据的含义至关重要。可以轻松更改模式中字段的名称，但不能随便更改字段标签，会导致所有现有编码数据无效。</p>
+<p>模式中添加新的字段，只要给一个新的标记号码即可。如果旧代码（不知道新标记号码）读取新代码写入的数据，可以简单地忽略该字段，从而实现向前兼容性，即旧代码可读取新代码写入的数据。</p>
+<p>只要每个字段都有一个唯一的标记号码，新代码总是可以读取旧数据，<font color=red>因为标记号仍具有相同的含义。</font>唯一的细节是，如果添加一个新字段，则不能使其为required字段。新代码读旧代码写入的数据时，新增的required字段会导致检查失败。因此，<font color=red>为保持向后兼容，在模式的初始部署后添加的每个字段都必须是可选的或具有默认值。</font></p>
+<p>删除字段就像添加字段一样；只能删除可选字段，必填字段不能删除。<font color=red>而且不能再次使用相同的标签号码。</font></p>
+<h5 id="数据类型和模式演化"><a href="#数据类型和模式演化" class="headerlink" title="数据类型和模式演化"></a>数据类型和模式演化</h5><p>修改数据类型比较麻烦：只能在相容类型中修改。比如不能将字符串修改为整型，但可以将32bit整型改为64bit整型。</p>
+<p>ProtoBuf没有列表类型，而有repeated类型。其好处在于兼容数组类型的同时，支持将可选（optional）单值字段，修改为多值字段。修改后，旧代码看到新的多值字段时，只会使用最后一个元素。Thrift列表类型虽没这个灵活性，但可以嵌套。</p>
+<h4 id="Avro"><a href="#Avro" class="headerlink" title="Avro"></a>Avro</h4><p>Apache Avro是Apache Hadoop的一个子项目，专门为数据密集型场景设计。它与ProtoBuf和Thrift有一些有趣的差异。</p>
+<p>Avro也使用模式来指定编码的数据结构。它有两种模式语言： 一种（ Avro IDL）用于人工编辑，另一种（基于JSON ）更易于机器读取。用Avro IDL编写的示例模式如下所示：</p>
+<figure class="highlight plaintext"><table><tr><td class="code"><pre><span class="line">record Person &#123;</span><br><span class="line">    string userName;</span><br><span class="line">    union &#123; null, long &#125; favoriteNumber = null;</span><br><span class="line">    array&lt;string&gt; interests;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>等价的JSON表示如下：</p>
+<figure class="highlight json"><table><tr><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">	<span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;record&quot;</span><span class="punctuation">,</span></span><br><span class="line">	<span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Person&quot;</span><span class="punctuation">,</span></span><br><span class="line">	<span class="attr">&quot;fields&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">		<span class="punctuation">&#123;</span><span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;userName&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;string&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">		<span class="punctuation">&#123;</span><span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;favoriteNumber&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;null&quot;</span><span class="punctuation">,</span> <span class="string">&quot;long&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span> <span class="attr">&quot;default&quot;</span><span class="punctuation">:</span> <span class="keyword">null</span><span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">		<span class="punctuation">&#123;</span><span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;interests&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;array&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;items&quot;</span><span class="punctuation">:</span> <span class="string">&quot;string&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">&#125;</span></span><br><span class="line">	<span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>注意，模式中没有标签编号。使用这个模式编码示例4-1，Avro二进制编码只有32字节长，是之前所有编码中最紧凑的。编码字节序列的分解如图4-5所示：</p>
+<p><img src="/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/ch04-fig05-1688391338681.png" alt="ddia4-avro-enc.png"></p>
+<p><font color=red>可以看到没有什么标识字段或数据类型。</font>编码只是由连在一起的一些列值组成。一个字符串只是一个长度前缀，后跟UTF-8字节流，但编码数据中没有任何内容告诉你它是一个字符串。因此，<font color=red>Avro必须配合模式定义来解析，为解析二进制数据，必须知道他们是使用什么模式进行编码的。</font></p>
+<h5 id="写模式与读模式"><a href="#写模式与读模式" class="headerlink" title="写模式与读模式"></a>写模式与读模式</h5><p>对数据进行编码（写入文件或者进行传输）时，使用的模式称为写模式（writer schema）；对数据进行解码时，使用的模式称为读模式（reader schema）。两者不必相同，只需兼容。<font color=red>Avro库通过对比查看写模式和读模式并将数据从写模式转换为读模式来解决差异</font>。由写模式到读取模式建立映射时有一些规则：</p>
+<ol>
+<li>使用字段名来进行匹配。因此写入模式和读取模式字段名顺序不一样无所谓。</li>
+<li>忽略多出的字段。</li>
+<li>对缺少字段填默认值。</li>
+</ol>
+<p><img src="/img/04%E6%95%B0%E6%8D%AE%E7%BC%96%E7%A0%81%E4%B8%8E%E6%BC%94%E5%8C%96/ch04-fig06.png" alt="ddia-4avro-map.png"></p>
+<h5 id="模式演化规则"><a href="#模式演化规则" class="headerlink" title="模式演化规则"></a>模式演化规则</h5><p>那么如何保证写入模式的兼容呢？</p>
+<ol>
+<li>在增删字段时，只能添加或删除具有默认值的字段。添加没有默认值的字段，新的reader将无法读取旧的writer写的数据，将破坏向后兼容性。删除没有默认值的字段，旧reader将无法读取新writer写入的数据，将破坏向前兼容性。</li>
+<li>在更改字段类型时，需要 Avro 支持相应的类型转换。</li>
+</ol>
+<h5 id="如何从编码中获取写模式"><a href="#如何从编码中获取写模式" class="headerlink" title="如何从编码中获取写模式"></a>如何从编码中获取写模式</h5><p>对于一段给定的 Avro 编码数据，<font color=red>Reader如何从其中获得其对应的写模式？</font>这取决于不同的应用场景。</p>
+<ul>
+<li>所有数据条目同构的大文件：典型的就是Hadoop生态中。如果大文件所有记录使用相同模式编码，则在文件头包含一次写入模式即可。</li>
+<li>支持模式变更的数据库表：由于数据库表允许模式修改，其中的行可能写入于不同模式阶段。对于这种情况，可以在编码时额外记录一个模式版本号（比如自增），然后在某个地方存储所有的模式版本。解码时通过版本去查询对应的写入模式即可。</li>
+<li>网络中发送数据：两个进程通信的握手阶段，交换写入模式。</li>
+</ul>
+<h5 id="动态生成的模式"><a href="#动态生成的模式" class="headerlink" title="动态生成的模式"></a>动态生成的模式</h5><p>与Protocol Buffers和Thrift相比， Avro方法的一个优点是不包含任何标签号。在模式中保留一些数字有什么问题？</p>
+<p>关键之处在于Avro对动态生成的模式更友好。例如一个关系数据库，要把它的内容转储到一个文件中，希望使用二进制编码。在数据库表模式改变后，Avro 只需在导出时依据当时的模式，做相应的转换，生成相应的模式数据即可。但如果使用 PB，则需要自己处理多个备份文件中，字段标号到字段名称的映射关系。其本质在于，<font color=red>Avro 的数据模式可以和数据存在一块，但是 ProtoBuf 的数据模式只能体现在生成的代码中，需要手动维护新旧版本备份数据与 PB 生成的代码间的映射。</font></p>
+<h5 id="代码生成和动态类型语言"><a href="#代码生成和动态类型语言" class="headerlink" title="代码生成和动态类型语言"></a>代码生成和动态类型语言</h5><p>Thrift 和 Protobuf 会依据语言无关的 IDL 定义的模式，生成给定语言的编解码的代码。这对静态语言很有用，因为它允许利用 IDE 和编译器进行类型检查，并且能够提高编解码效率。</p>
+<p>上述思路本质上在于，<font color=red>将模式内化到了生成的代码中。</font></p>
+<p>但对于动态语言，或者说解释型语言，如 JavaScript、Ruby 或 Python，由于没有了编译期检查，生成代码的意义没那么大，反而会有一定的冗余。这时 Avro 这种支持不生成代码的框架就节省一些，它可以将模式写入数据文件，读取时利用 Avro 进行动态解析即可。</p>
+<h5 id="模式的优点"><a href="#模式的优点" class="headerlink" title="模式的优点"></a>模式的优点</h5><p>如上述所介绍的， Protocol Buffers，Thrift和Avro都使用了模式来描述二进制编码格式。它们的模式语言比XML模式或JSON模式简单得多，它支持更详细的验证规则。</p>
+<p>模式的本质是显式类型约束，即<font color=red>先有模式，才能有数据。</font>相比于没有任何类型约束的文本编码 JSON，XML 和 CSV，Protocol Buffers，Thrift 和 Avro 这些基于显式定义二进制编码优点有：</p>
+<ol>
+<li>省去字段名，从而更加紧凑。</li>
+<li><font color=red>模式是数据的注释或者文档</font>，并且总是最新的。</li>
+<li>数据模式允许不读取数据，仅比对模式来做低成本的兼容性检查。</li>
+<li>对于静态类型来说，可以利用代码生成做编译时的类型检查。</li>
+</ol>
+<p><em>个人理解：PB和Thrift这种编码的二进制数据，解码时是不需要知道写模式的，因为数据本身已经包含了标签和类型，因此解析时只需要跟读模式比对标签号就行了。而Avro这样编码的数据，如果不知道写模式，面对一串二进制数据是无法解析数据的，因此必须通过对比写模式和读模式，才能解析二进制数据。</em></p>
+<h3 id="数据流模式"><a href="#数据流模式" class="headerlink" title="数据流模式"></a>数据流模式</h3><p>本小节主要探讨几种进程间典型的数据流方式：通过数据库；通过服务调用；通过异步消息传递。</p>
+<h4 id="基于数据库的数据流"><a href="#基于数据库的数据流" class="headerlink" title="基于数据库的数据流"></a>基于数据库的数据流</h4><p>数据库中， 写入数据库的进程对数据进行编码，读取数据库的进程对数据进行解码。访问数据库的程序：</p>
+<ol>
+<li>由同一个进程访问。数据库可以理解为该进程向将来发送数据的中介。</li>
+<li>由多个进程访问。多个进程可能有的是旧版本，有的是新版本，此时数据库需要考虑向前和向后兼容的问题。</li>
+</ol>
+<p>还有一种比较棘手的情况：在记录模式中添加了新字段，并且较新的代码将新字段的值写入数据库。随后，旧版本代码（不知道新字段）读取、更新记录并将其写回。这种情况下，理想的行为通常是旧代码保持新字段不变，即使它无法解释。解决这个问题并不困难，重要的是要<font color=red>有这方面的意识。</font></p>
+<h5 id="不同的时间写入不同的值"><a href="#不同的时间写入不同的值" class="headerlink" title="不同的时间写入不同的值"></a>不同的时间写入不同的值</h5><p>数据库中，旧版本代码五年前写入的数据可能仍采用原始编码。变更模式之后，由于这些旧模式的数据量很大，全部更新对齐到新版本的代价很高。这种情况称之为：<font color=red>数据的生命周期超过了其对应代码的生命周期。</font></p>
+<p>在读取时，数据库一般会对缺少对应列的旧数据，填充新版本字段的默认值，或如果没有默认值则填充空值后返回给用户。一般来说，<font color=red>在更改模式时（比如 alter table），数据库不允许增加既没有默认值、也不允许为空的列。</font></p>
+<h5 id="归档存储"><a href="#归档存储" class="headerlink" title="归档存储"></a>归档存储</h5><p>数据库需要不时地创建快照，这种情况下，数据转储通常使用最新的模式进行编码，即使数据库中的原始编码包含了不同时代的各种模式版本。</p>
+<p>由于数据转储是一次写入的，而且以后不可改变，因此像Avro对象容器文件这样的格式非常适合。这也是很好的机会，可以用分析友好的列存储（如Parquet ）对数据进行编码。</p>
+<h4 id="基于服务的数据流：-REST和RPC"><a href="#基于服务的数据流：-REST和RPC" class="headerlink" title="基于服务的数据流： REST和RPC"></a>基于服务的数据流： REST和RPC</h4><p>将大型应用程序按功能分解为较小的服务，当服务A需要服务B的某些功能或数据时，向该服务发出请求。这种构建应用程序的方式传统上被称为<font color=red>面向服务的体系结构（ service-oriented architecture, SOA ），最近则更名为微服务体系结构。</font></p>
+<p>面向服务／微服务体系结构的一个关键设计目标是，使服务可独立部署和演化，让应用程序更易于更改和维护。因此新旧版本的服务器和客户端会同时运行，他们使用的数据编码必须在不同版本的服务API之间兼容。</p>
+<h5 id="网络服务"><a href="#网络服务" class="headerlink" title="网络服务"></a>网络服务</h5><p>当服务使用 HTTP 作为通信协议时，通常将其称为 web 服务。但其并不局限于web，还包括：</p>
+<ol>
+<li>用户终端（如移动终端）通过 HTTP 向服务器请求。</li>
+<li>同组织内的一个服务向另一个服务发送 HTTP 请求（微服务架构，其中的一些组件有时被称为中间件）。</li>
+<li>不同组织的服务进行数据交换。一般要通过某种手段进行验证，比如 OAuth。</li>
+</ol>
+<p>有两种流行的Web服务方式：REST和SOAP。它们在设计理念方面几乎是截然相反的：</p>
+<ol>
+<li>REST并不是一种协议，而是一种设计哲学。它强调简单的 API 格式，使用 URL 来标识资源，使用 HTTP 的动作（GET、POST、PUT、DELETE）来对资源进行增删改查。由于其简洁风格，越来越受欢迎。</li>
+<li>SOAP 是基于 XML 的协议。虽使用 HTTP，但目的在于独立于 HTTP。现在提的比较少了。</li>
+</ol>
+<h5 id="远程过程调用（RPC）的问题"><a href="#远程过程调用（RPC）的问题" class="headerlink" title="远程过程调用（RPC）的问题"></a>远程过程调用（RPC）的问题</h5><p>Web服务仅仅是通过网络发出API请求的一系列技术的体现，其中许多技术受到了大肆宣传，但也存在严重的问题。所有这些技术都是基于远程过程调用（ Remote Procedure Call , RPC ）的思想。RPC模型试图使向远程网络服务发出请求看起来与在同一进程中调用编程语言中的函数相同（这种抽象称为位置透明）。设想比较好，但也存在一些问题：</p>
+<ul>
+<li>本地函数调用是可预测的，成功或失败仅取决于参数。网络请求不可预测：请求或响应可能因网络问题而丢失，或远程计算机可能速度慢或不可用，这些问题完全不在控制范围之内。因此必须有所准备，例如重试失败的请求。</li>
+<li>本地函数调用要么返回一个结果，要么抛出一个异常，或者永远不返回（进入无限循环或进程崩溃）。网络请求有另一个可能的结果： 因超时而无法得到返回。这种情况下，根本不知道发生了什么，无法知道请求是否成功。</li>
+<li>重试失败的网络请求，可能会发生请求实际已完成，只是响应丢失的情况。因此重试可能导致操作执行多次，因此需要在协议中考虑建立<font color=red>幂等性机制</font>。本地函数调用则没有这样问题。</li>
+<li>调用本地函数时，通常需要大致相同的时间执行。网络请求比函数调用要慢得多，而且其延迟也有很大的变化.</li>
+<li>调用本地函数时，可以高效地将引用（指针）传递给本地内存中的对象。而发出网络请求时，所有这些参数都需要被编码成可以通过网络发送的字节序列。</li>
+<li>客户端和服务可以用不同的编程语言实现，所以RPC框架必须将数据类型从一种语言转换成另一种。可能会很丑。</li>
+</ul>
+<h5 id="RPC的发展方向"><a href="#RPC的发展方向" class="headerlink" title="RPC的发展方向"></a>RPC的发展方向</h5><p>虽然有这些问题，但RPC并没有消失。本章提到的所有编码的基础上构建了各种RPC框架：Thrift和Avro带有RPC支持， gRPC是使用Protocol Buffers的RPC实现。</p>
+<p>新一代RPC框架更加明确了远程请求与本地函数调用不同的事实。</p>
+<p>使用二进制编码格式的自定义RPC协议，可以实现比诸如REST上的JSON之类的通用协议更好的性能。但RESTful API还有一些显著的优点：</p>
+<ul>
+<li>有利于实验和调试（只需使用浏览器或命令行工具curl即可向它发出请求，无需任何代码或其他软件）；</li>
+<li>支持所有的主流编程语言和平台，并且有一个庞大的工具生态系统（服务器、缓存、负载平衡器、代理、监控、调试工具、测试工具等）。</li>
+</ul>
+<p><font color=red>基于此，REST是公共API的主流风格。而RPC框架则侧重于同一组织内服务间的通信，通常发生在同一数据中心内。</font></p>
+<h5 id="RPC的数据编码和演化"><a href="#RPC的数据编码和演化" class="headerlink" title="RPC的数据编码和演化"></a>RPC的数据编码和演化</h5><p>RPC方案的向后和向前兼容性属性取决于它所使用的具体编码技术：</p>
+<ol>
+<li>Thrift、gRPC（Protobuf）和 Avro RPC 可以根据编码格式的兼容性规则进行演变。</li>
+<li>RESTful API 通常使用 JSON 作为请求响应的格式，JSON 比较容易添加新的字段来进行演进和兼容。</li>
+<li>SOAP 按下不表。</li>
+</ol>
+<p>RPC用于跨组织边界的通信时，服务的兼容性会变得更加困难，服务的提供者无法控制客户，不能强制他们升级。因此需要长期保持兼容性。如果不得不进行一些破坏兼容性的更改，则服务提供者往往会同时维护多个版本的服务API。</p>
+<p>API版本管理应该如何工作（即客户端如何指示它想要使用l哪个版本的API）没有统一的方案。对于RESTful API，常用的方法是在URL或HTTP Accept头中使用版本号。</p>
+<h4 id="基于消息传递的数据流"><a href="#基于消息传递的数据流" class="headerlink" title="基于消息传递的数据流"></a>基于消息传递的数据流</h4><p>本节介绍异步消息传递系统。它们通过称为消息代理（ 也称为消息队列，或面向消息的中间件）的中介发送的。与直接RPC相比，使用消息代理有以下几个优点：</p>
+<ol>
+<li>如果消费者暂时不可用，可以暂时缓存消息。</li>
+<li>当消费者宕机重启后，自动地重新发送消息。</li>
+<li>生产者不必知道消费者 IP 和端口。</li>
+<li>能将一条消息发送给多个消费者。</li>
+<li>将生产者和消费者解耦。</li>
+</ol>
+<p>与RPC的差异在于，消息传递通信通常是单向的：发送方通常不期望收到对其消息的回复。进程可能发送响应，但通常是在一个独立的通道上完成。而且通信模式是异步的：发送者不会等待消息被传递，而只是发送然后忘记它。</p>
+<h5 id="消息代理（Message-Broker）"><a href="#消息代理（Message-Broker）" class="headerlink" title="消息代理（Message Broker）"></a>消息代理（Message Broker）</h5><p>消息代理，即消息队列。近年来开源的消息队列越来越多，可以适应不同场景，如RabbitMQ、ActiveMQ、HornetQ、NATS和Apache Kafka 等。</p>
+<p>消息队列的送达保证因实现和配置而异，包括：</p>
+<ol>
+<li>最少一次（at-least-once）：同一条数据可能会送达多次给消费者。</li>
+<li>最多一次（at-most-once）：同一条数据最多会送达一次给消费者，有可能丢失。</li>
+<li>严格一次（exactly-once）：同一条数据保证会送达一次，且最多一次给消费者。</li>
+</ol>
+<p>消息队列通常是面向字节数组的，因此可以将消息按任意格式进行编码。如果编码是前后向兼容的，同一个主题的</p>
 ]]></content>
       <categories>
         <category>数据密集型应用系统设计读书笔记</category>
