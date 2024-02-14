@@ -180,6 +180,110 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" class="post-title-link" itemprop="url">raft大论文翻译-05日志压缩</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-01-08 00:00:00" itemprop="dateCreated datePublished" datetime="2022-01-08T00:00:00+08:00">2022-01-08</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 12:32:32" itemprop="dateModified" datetime="2022-06-28T12:32:32+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="Chapter-5-Log-compaction"><a href="#Chapter-5-Log-compaction" class="headerlink" title="Chapter 5 Log compaction"></a>Chapter 5 Log compaction</h2><p>在正常运行期间，随着接收的客户端请求的增多，Raft的日志大小也会增长。随着日志增多，它会占用更多的空间，需要更多的时间来replay。如果没有压缩日志的方法，最终将导致可用性问题：<font color=red>服务器要么空间不足，要么启动时间过长。</font>因此，任何实际系统都需要某种形式的日志压缩方法。</p>
+<p>Raft’s log grows during normal operation as it incorporates more client requests. As it grows larger, it occupies more space and takes more time to replay. Without some way to compact the log, this will eventually cause availability problems: servers will either run out of space, or they will take too long to start. Thus, some form of log compaction is necessary for any practical system.</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/01/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/15%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/09%E6%97%A5%E5%BF%97%E8%BF%BD%E5%8A%A0/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1112,110 +1216,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/" class="post-title-link" itemprop="url">raft大论文翻译-03基本Raft算法</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2021-11-08 00:00:00" itemprop="dateCreated datePublished" datetime="2021-11-08T00:00:00+08:00">2021-11-08</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-28 13:36:17" itemprop="dateModified" datetime="2022-06-28T13:36:17+08:00">2022-06-28</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/" itemprop="url" rel="index"><span itemprop="name">raft论文</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="Chapter-3-Basic-Raft-algorithm-基本Raft算法"><a href="#Chapter-3-Basic-Raft-algorithm-基本Raft算法" class="headerlink" title="Chapter 3 Basic Raft algorithm     基本Raft算法"></a>Chapter 3 Basic Raft algorithm     基本Raft算法</h2><p>本章介绍基本的Raft算法。我们<font color=red>设计Raft的目标是尽可能的容易理解</font>；第一部分描述了为了容易理解而采取的方法；剩下的部分介绍了算法本身，包括为了便于理解而做出的方案选择。</p>
-<p>This chapter presents the Raft algorithm. We designed Raft to be as understandable as possible; the first section describes our approach to designing for understandability. The following sections describe the algorithm itself and include examples of design choices we made for understandability.</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2021/11/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/13%E5%9F%BA%E6%9C%ACRaft%E7%AE%97%E6%B3%95/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1287,7 +1287,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">51</span>
+          <span class="site-state-item-count">52</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
