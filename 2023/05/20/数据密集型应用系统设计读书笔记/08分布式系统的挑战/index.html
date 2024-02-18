@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本章对分布式系统可能出现的故障做了一个全面、近乎悲观的总结。故障可能来自网络问题，以及时钟与时序问题等，并讨论这些问题的可控程度。我们将探讨如何认清分布式系统的状态本质，并据此来评估所发生的各种故障。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DDIA-08分布式系统的挑战">
+<meta property="og:url" content="http://example.com/2023/05/20/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/08%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%8C%91%E6%88%98/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="本章对分布式系统可能出现的故障做了一个全面、近乎悲观的总结。故障可能来自网络问题，以及时钟与时序问题等，并讨论这些问题的可控程度。我们将探讨如何认清分布式系统的状态本质，并据此来评估所发生的各种故障。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/08分布式系统的挑战/ch08-fig05.png">
+<meta property="article:published_time" content="2023-05-19T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-18T08:45:36.327Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta property="article:tag" content="数据库">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/08分布式系统的挑战/ch08-fig05.png">
+
+<link rel="canonical" href="http://example.com/2023/05/20/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/08%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%8C%91%E6%88%98/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>DDIA-08分布式系统的挑战 | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/05/20/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/08%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%8C%91%E6%88%98/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          DDIA-08分布式系统的挑战
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-05-20 00:00:00" itemprop="dateCreated datePublished" datetime="2023-05-20T00:00:00+08:00">2023-05-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-02-18 16:45:36" itemprop="dateModified" datetime="2024-02-18T16:45:36+08:00">2024-02-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/" itemprop="url" rel="index"><span itemprop="name">数据密集型应用系统设计读书笔记</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2023/05/20/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/08%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%8C%91%E6%88%98/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2023/05/20/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/08%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%8C%91%E6%88%98/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本章对分布式系统可能出现的故障做了一个全面、近乎悲观的总结。故障可能来自网络问题，以及时钟与时序问题等，并讨论这些问题的可控程度。我们将探讨如何认清分布式系统的状态本质，并据此来评估所发生的各种故障。</p>
+<span id="more"></span>
+
+<p>单节点上运行的系统，他面对的系统模型是确定性的，系统要么功能正常，要么完全失效。而分布式系统上的系统，需要应对部分失效的情况，部分失效是不确定的，这种不确定加大了分布式系统的复杂性。应对这种部分失效，需要软件来提供容错机制。故障处理是分布式系统中软件设计的重要组成部分。</p>
+<p>分布式无共享系统中，网络是跨节点通信的唯一途径。网络是异步网络。这种网络中，网络不保证消息什么时候到达，甚至不保证是否一定到达。发送者只能等待对方的响应消息，但响应也可能会丢失或延迟。发送者拥有的唯一信息是，尚未收到响应。处理该问题通常采用超时机制。但是应该设置的超时时长到底是多少，却没有标准答案。应该通过多次观察的结果，动态设置超时值。</p>
+<p>固定电话网络是同步网络，整个线路上为呼叫分配一个固定的、带宽有保证通信链路。但是分布式系统采用的是异步网络，无法这样做。</p>
+<p>分布式系统中，时间也无法精确测量。一是消息经由不可靠的网络传输后，无法确定消息间的先后顺序，另一是每个节点都有本地的计时系统，无法做到节点时间的完全一致。</p>
+<p>时间又可以分为墙上时间和单调时钟。墙上时钟可以进行同步，但是同步会有奇怪的问题，不适合测量时间间隔。而单调时钟保证是单调递增的，可以用于测量时间间隔，但是单调时钟的绝对值没有任何意义，比较不同节点上的单调时钟值也毫无意义。</p>
+<p>对于墙上时钟而言，不管是计算机内部的硬件时钟，还是通过NTP进行同步，都会有各种奇怪的问题。同网络问题一样，即使时钟大多数情况能正常工作，软件也要预防可能出现的问题。</p>
+<ul>
+<li>依赖于墙上时钟的LWW算法有其本身的局限性。如果需要对写入操作来讲，基于逻辑时钟，即递增计数器是更可靠的方式。与之对应的，墙上时钟和单调时钟都属于物理时钟。</li>
+<li>不应该将时钟读数视为一个精确的时间点，而更应该视为带有置信区间的时间范围。</li>
+<li>Spanner在实现快照隔离时，为了能在跨节点的系统中实现全局递增的事务ID，通过其TrueTime API返回的时间区间，在提交读写事务之前故意等待置信区间的长度。目的是确保所有读事务要足够晚才发生，避免与先前的事务的置信区间产生重叠；</li>
+</ul>
+<p>对于有租约机制的系统而言，租约通常依赖于时钟，这还有额外的问题：</p>
+<ul>
+<li>如果租约依赖于墙上时钟，则可能租约到期时间由其他节点设置，并且要跟本地时钟进行比较以确定是否租约超期；</li>
+<li>如果租约使用本地单调时钟，则还有进程暂停的问题。原因有多种，比如GC开始进行垃圾回收；操作系统进行线程调度切换；进程本身进行长时间的磁盘IO操作等等。</li>
+</ul>
+<p>在分布式系统中必须能意识到进程暂停问题，执行过程中的任何时刻都可能被暂停相当长一段时间。暂停期间整个集群的其他部分都在照常运行，可能会一致将暂停的节点宣告为故障节点。最终，暂停的节点可能会回来继续运行，它对刚刚过去的暂停毫无意识。</p>
+<p>应对这种进程暂停问题，具体的场景需要有具体的策略，比如可以在软件栈的各个层面提供硬实时系统，也可以对垃圾回收做预测性的处理。</p>
+<p>在分布式系统中，我们可以做一些基本假设，并基于这些假设设计真实系统。分布式系统不能完全依赖于单个节点。大部分分布式算法会基于一个法定人数：任何决策都需要达到法定人数才能生效，以避免对单节点的依赖。</p>
+<p>设计分布式系统算法时，我们可以对现实的系统进行抽象，总结出几种系统模型，这些系统模型都假设了一定的前提条件，在系统模型之上，设计算法，证明其正确性。</p>
+<hr>
+<h3 id="故障与部分失效"><a href="#故障与部分失效" class="headerlink" title="故障与部分失效"></a>故障与部分失效</h3><p>单台节点上的软件通常以一种<font color=red>确定性的方式运行</font>：要么工作，要么出错。硬件正常工作时，相同的操作总会产生相同的结果（即确定性）；如果硬件存在问题（例如，内存损坏或接口松动），结果往往是系统性故障，如内核崩溃，蓝屏死机，启动失败等。因此<font color=red>单节点上一个质量合格的软件状态要么功能正常，要么完全失效，而不会介于两者之间。</font></p>
+<p>这背后涉及计算机设计一个非常审慎的选择：如果发生了某种内部错误，我们宁愿使计算机全部崩溃，而不是返回一个错误的结果，错误的结果往往更难处理。因此，<font color=red>计算机隐藏了一切模糊的物理世界，呈现一个理想化的系统模型。</font></p>
+<p>然而对于分布式系统，理想化的标准正确模型不再适用，我们必须面对一个可能非常说乱的现实。在这样一个现实世界中，各种各样的事情都可能会出错。</p>
+<p>在分布式系统中，可能会出现系统的一部分工作正常，但其他某些部分出现难以预测的故障，我们称之为<font color=red>“部分失效”</font>。问题的难点就在于这种<font color=red>部分失效是不确定的</font>，正是由于这种不确定性和部分失效大大提高了分布式系统的复杂性。</p>
+<h4 id="云计算和超算"><a href="#云计算和超算" class="headerlink" title="云计算和超算"></a>云计算和超算</h4><p>构建大规模计算系统有以下几种不同的思路：</p>
+<ul>
+<li>一个极端是高性能计算。有成千上万个CPU的超级计算机构成一个庞大集群，通常用于<font color=red>计算密集型的科学计算任务</font>。</li>
+<li>一个极端是云计算。一般有以下特征：多租户数据中心，通用计算机，以太网链接，弹性&#x2F;按需资源分配，按需计费。</li>
+<li>传统企业数据中心位于以上两个极端之间。</li>
+</ul>
+<p>不同的集群构建方式，其错误处理方法不尽相同。对于高性能计算，通常会定期对任务状态进行快照，快照保存在持久存储上，当某节点出现故障，解决方案是简单地停止整个集群的任务；故障节点修复后，从最近的快照检查点继续执行。从这点上看，高性能计算更像是一个单节点系统，它将局部失效升级为整体失效，这和单机上内核崩横类似。</p>
+<p>本书的重点是基于互联网的服务系统，这些系统与上述高性能计算有很多不同之处：</p>
+<ul>
+<li>许多互联网服务都需要随时（如7×24h）提供低延迟服务。任何服务不可用的情况都是不可取的。相比而言，高性能计算作业则可以暂停然后重启，影响相对较小。</li>
+<li>高性能计算通常采用专用硬件，每个节点的可靠性很高，节点间主要通过共享内存或者远程内存直接访问（RDMA）等技术进行通信。而云计算中的节点多是由通用机器构建，成本低廉，但有较高的故障率。</li>
+<li>大型数据中心网络通常基于IP和以太网，采用Clos拓扑结构提供等分带宽。高性能计算则通常特定的网络拓扑结构，可以为其特定工作负载提供了更好的性能。</li>
+<li>系统越大，其中局部组件失效的概率就越大。在一个长时间运行的包含成千上万个节点的系统中，几乎总是可以假定某些东西发生了失效。若采用简单的停止-修复-错误处理策略，将花费大量时间在错误恢复上而非正常的任务执行。</li>
+<li>如果系统可以容忍某些失败的节点，而使整体继续工作，则对系统运维帮助极大。在云环境中，如果发现某台虚拟机有问题，可以将其关闭然后重新启动另一个。</li>
+<li>对于全球分散部署的多数据中心（使用户访问地理靠近的数据中心，从而降低延迟），通信很可能经由广域网，与本地网络相比，速度更慢且更加不可靠。而高性能计算通常假设所有节点位置靠近、紧密连接。</li>
+</ul>
+<p><font color=red>要使分布式系统可靠工作，就必然面对部分失效，这就需要依靠软件系统来提供容错机制。</font>换句话说，需要在不可靠的组件之上构建可靠的系统。<font color=red>故障处理是软件设计的重要组成部分</font>。作为系统运维者，需要知道发生故障时，系统的预期行为是什么。可以说，在分布式系统中，怀疑，悲观和偏执狂才能生存。</p>
+<h3 id="不可靠的网络"><a href="#不可靠的网络" class="headerlink" title="不可靠的网络"></a>不可靠的网络</h3><p>分布式无共享系统中，网络是跨节点通信的唯一途径。一台机器不能直接访问另一台机器的内存或磁盘。要注意，无共享<font color=red>不是构建集群系统的唯一方式，但它却是构建互联网服务的主流方式。</font></p>
+<p>互联网以及大多数数据中心的内部网络（通常是以太网）都是<font color=red>异步网络</font>。这种网络中，一个节点发送消息到另一节点，网络不保证它什么时候到达，甚至不保证是否一定到达。发送者不清楚数据包是否完成了发送，只能选择让接收者回复响应消息，但回复也可能丢失或延迟。发送者拥有的唯一信息是，尚未收到响应。处理该问题通常采用超时机制。</p>
+<h4 id="检测故障"><a href="#检测故障" class="headerlink" title="检测故障"></a>检测故障</h4><p>许多系统都需要<font color=red>自动检测节点失效</font>这样的功能。例如：</p>
+<ul>
+<li>负载均衡器需避免向己失效的节点继续分发请求。</li>
+<li>主从复制分布式系统，主节点失效时需将从节点提升为主节点。但网络的不确定性很难准确判断节点是否确实失效。</li>
+</ul>
+<h4 id="超时与无限期的延迟"><a href="#超时与无限期的延迟" class="headerlink" title="超时与无限期的延迟"></a>超时与无限期的延迟</h4><p>如果超时是故障检测唯一可行的方法，但是应该设置的<font color=red>超时时长到底是多少，却没有标准答案。</font></p>
+<p>较长的超时值意味着更长时间的等待，才能宣告节点失效（此期间用户只能等待或拿到错误信息）。较短的超时设置可以帮助快速检测故障，但可能会出现误判。当一节点被宣告为失效，其承担的职责要交给到其他节点，这个过程会给其他节点以及网络带来额外负担。</p>
+<p>设想一个虚拟的系统，其网络可以保证数据包的最大延迟在时间<code>d</code>内完成交付，或者丢失。此外假定一个非故障节点总能在时间<code>r</code>内完成请求处理。此时可确定成功的请求总能在<code>2d+r</code>时间内收到响应，如果此时间内没有收到响应，则可以推断网络或者远程节点发生了失效，那么<code>2d+r</code>是一个理想的超时设置。</p>
+<p>然而事实上绝大多数系统都没有类似的保证：<font color=red>异步网络理论上的延迟无限大，多数服务端也无法保证在给定的某个时间内一定完成请求处理。</font></p>
+<p>在公有云和多租户数据中心中，许多客户共享网络资源包括交换机、机器的网卡以及CPU（如虚拟机）等。这种环境下，<font color=red>只能通过实验方式一步步设置超时</font>。先在多台机器上，多次测量网络往返时间，以确定延迟的大概范围；然后结合应用特点，在故障检测与过早超时风险之间选择一个合适的中间值。更好的做法是，<font color=red>超时设置并非不变的常量，而是持续测量响应时间及其变化（抖动），然后根据最新的响应时间分布来自动调整。</font></p>
+<h4 id="同步与异步网络"><a href="#同步与异步网络" class="headerlink" title="同步与异步网络"></a>同步与异步网络</h4><p>如果网络层可在规定的延迟内保证完成数据包的发送，且不会丢弃数据包，那么分布式系统就会简单很多。为什么我们不能考虑在硬件层解决这个问题呢？使网络足够可靠，然后软件就无需如此担心。</p>
+<p>为回答这个问题，可将数据中心网络与传统的固定电话网络进行对比分析，后者非常可靠：语音延迟和丢包现象极为罕见。这样的固定电话网络需要有持续端到端的低延迟和足够的带宽来传输音频数据。计算机网络能否实现类似的高可靠性和确定性呢？</p>
+<p>通过电话网络拨打电话时，系统会动态建立一条电路：在<font color=red>整个线路上为呼叫分配一个固定的、带宽有保证通信链路</font>，该电路一直维持到通话结束。<font color=red>这种网络本质是同步的</font>：即使数据中间经过了多个路由器，16bit空间在电路建立时已经在网络中得到预留，不会受到排队的影响。由于没有排队，网络最大的端到端延迟是固定的。我们称之为有界延迟。</p>
+<p>而TCP连接的数据包会尝试使用所有可用的网络带宽。TCP可以传送任意大小可变的数据块（例如文件或网页），它会尽力在最短时间内完成数据发送。而当TCP连接空闲时，通常不占用任何带宽出。</p>
+<p>假设数据中心网络和互联网基于电路交换网络，一旦电路建立完成则可以保证最大往返时间。然而，事实是以太网和IP都是基于分组交换协议，这种协议注定受到排队的影响，从而导致网络延迟不确定，在这些协议里完全没有电路的概念。</p>
+<h3 id="不可靠的时钟"><a href="#不可靠的时钟" class="headerlink" title="不可靠的时钟"></a>不可靠的时钟</h3><p>分布式系统中，时间总是件棘手的问题，跨节点通信，消息经由网络从一台机器到另一台机器总是需要花费时间。收到消息的时间应该晚于发送的时间，但是由于网络的不确定延迟，使得<font color=red>多节点通信时很难确定事情发生的先后顺序。</font></p>
+<p>而且，<font color=red>网络上的每台机器都有自己的时钟硬件设备</font>，通常是石英晶体振荡器。这些设备并非绝对准确，即每台机器都维护自己本地的时间版本，可能比其他机器稍快或更慢。可以在一定程度上同步机器之间的时钟，最常用的方法是网络时间协议（NTP），它可以根据一组专门的时间服务器来调整本地时间，时间服务器则从精确更高的时间源获取高精度时间。</p>
+<h4 id="单调时钟与墙上时钟"><a href="#单调时钟与墙上时钟" class="headerlink" title="单调时钟与墙上时钟"></a>单调时钟与墙上时钟</h4><h5 id="墙上时钟"><a href="#墙上时钟" class="headerlink" title="墙上时钟"></a>墙上时钟</h5><p>墙上时钟根据某个日历（也称为墙上时间）返回当前的日期与时间。例如，Linux的<code>clock_gettime(CLOCK_REALTIME)</code> 会返回自纪元1970年1月1日（ UTC ）以来的秒数和毫秒数，不含闰秒。</p>
+<p><font color=red>墙上时钟可以与NTP同步</font>。但可能存在一些奇怪问题。特别是，如果本地时钟远快于NTP服务器，强行重置之后会跳回到先前的某个时间点。这种跳跃以及经常忽略闰秒，导致其<font color=red>不太适合测量时间间隔。</font></p>
+<h5 id="单调时钟"><a href="#单调时钟" class="headerlink" title="单调时钟"></a>单调时钟</h5><p><font color=red>单调时钟更适合测量持续时间段（时间间隔）</font>，例如超时或服务的响应时间。Linux的<code>clock_gettime(CLOCK_MONOTONIC)</code>返回的即是单调时钟。单调时钟的名字来源于它们保证总是向前（不会出现墙上时钟的回拨现象）。</p>
+<p>可以在一个时间点读取单调时钟的值，完成某项工作，然后再次检查时钟。时钟值间的差值即两次检查间的时间间隔。注意，<font color=red>单调时钟的绝对值没有任何意义，比较不同节点上的单调时钟值也毫无意义，它们没有任何相同的基准。</font></p>
+<p>如果服务器有多路CPU，则每个CPU可能有单独的计时器，且不与其他CPU进行同步。由于应用程序的线程可能会调度到不同的CPU上，此时操作系统会补偿多个计时器间的偏差，从而为应用层提供统一的单调递增计时。不过最好还是对这种偏差补偿持谨慎态度。</p>
+<p>如果NTP检测到本地石英比时间服务器上更快或更慢，NTP会调整本地石英的震动频率。默认情况下，NTP允许速率加快或减慢的最大幅度为0.05%，但NTP不会直接调整单调时钟向前或回拨。单调时钟的精度通常很高，可测量几微秒或更短的时间间隔。</p>
+<h4 id="时钟同步与准确性"><a href="#时钟同步与准确性" class="headerlink" title="时钟同步与准确性"></a>时钟同步与准确性</h4><p>单调时钟不需要同步，但墙上时钟需要根据NTP服务器或其他外部时间做必要的调整。然而，<font color=red>硬件时钟和NTP可能会出现一些莫名其妙的现象</font>：</p>
+<ul>
+<li>计算机中的石英钟不够精确，存在漂移现象（<font color=red>运行速度加快或减慢</font>）。谷歌假设其服务器的时钟偏移为200ppm（百万分之一），相当于如果每30秒与服务器重新同步一次，则可能出现的最大偏差为6毫秒（200 * 30 &#x2F; 1000000）。即使其他一切工作正常，漂移问题也限制了可以达到的最佳精度。</li>
+<li>如果时钟与NTP服务器的时钟差别太大，可能会出现拒绝同步，或者本地时钟被强制重置。重置前后应用程序观察可能会看到时间突然倒退或突然跳跃的现象。</li>
+<li>由于某些原因，如果与NTP服务器链接失败，可能会很长一段时间没有留意到错误配置最终导致同步失败。</li>
+<li>NTP同步受限于网络环境。特别是延迟，如果数据包延迟变化不定，则NTP同步的准确性会受影响。实验表明，通过互联网进行同步时，可能会产生至少35毫秒的偏差，最坏时则可能超过1秒。</li>
+<li>一些NTP服务器本身出现故障、或者配置错误，其报告的时间可能存在数小时的偏差。NTP客户端可同时查询多个服务器并忽略异常值。尽管如此，相信互联网上一个陌生的服务器告诉你的时间，还是值得警惕。</li>
+<li>闰秒会产生一分钟为59秒或61秒的现象，这会在使一些对闰秒毫无防范的系统出现混乱。</li>
+<li>虚拟机中的硬件时钟也是虚拟化的，这对于需精确计时的应用程序提出了额外的挑战。多个虚拟机共享一个CPU核时，某个虚拟机运行可能导致其他虚拟机出现数十毫秒内的暂停。但从应用的角度来看，这种停顿会表现为时钟突然向前发生了跳跃。</li>
+<li>如果运行在未完全可控的设备上（如移动设备或嵌入式设备），需要留意不能完全相信设备上的硬件时钟。某些用户会故意将其硬件时钟设置为错误的日期和时间。</li>
+</ul>
+<p>如果投入大量资源，是可以达到非常高的时钟精度。例如，针对金融机构的欧洲法规草案就明确要求所有高频交易基金必须在UTC时间100微秒内同步时钟， 以便调试“崩盘”等市场异常并检测市场操纵等违规行为。</p>
+<h4 id="依赖同步的时钟"><a href="#依赖同步的时钟" class="headerlink" title="依赖同步的时钟"></a>依赖同步的时钟</h4><p>前面讨论了网络丢包和数据包延迟。因此即使网络在大多数情况下表现良好，软件也必须假设网络偶尔会出现故障，要有对应的措施来妥善处理这些故障。<font color=red>时钟也是如此：尽管大多数时间工作很好，但仍需以备不测。</font></p>
+<p>如果应用需要精确同步的时钟，最好仔细监控所有节点上的时钟偏差。如果某个节点的时钟漂移超出上限，应将其宣告为失效，并从集群中移除。这样的监控的目的是确保在造成重大影响之前尽早发现并处理问题。</p>
+<h5 id="时间戳与事件顺序"><a href="#时间戳与事件顺序" class="headerlink" title="时间戳与事件顺序"></a>时间戳与事件顺序</h5><p>跨节点的事件排序，如果高度依赖时钟计时，就存在一定的技术风险。例如，有的多主节点复制的分布式数据库高度依赖于墙上时钟。客户端A在节点1上写入x &#x3D; 1，写入复制到节点3。然后客户端B在节点3上增加x（现在x &#x3D; 2）。最后，这两个写入都被复制到节点2上。写入被复制到其他节点时，会根据源写入节点上的墙上时钟来标记时间戳。但这样的时间戳却不能正确排序事件：写入x &#x3D; 1的时间戳为42.004秒，写入x&#x3D;2虽然后续发生，但时间戳却是42.003s。节点2收到这两个事件时，根据时间戳错误地判断x&#x3D;1是最新值，决定丢弃x&#x3D;2，导致客户端B的增量操作丢失。</p>
+<p>这种冲突解决策略称为最后写入获胜（LWW），在多主节点以及无主节点复制数据库中广泛使用。依赖墙上时钟的LWW根本问题是：</p>
+<ul>
+<li>写入可能会奇怪地丢失：明明后续发生的写操作却没法覆盖另一个较早的值，原因是后写节点的时钟太慢了。</li>
+<li>LWW无法区分快速发生的连续写操作（上面例子中客户端A写入后才发生了客户端B的增量操作）和并发写入（每个写操作都不依赖于其他写）。需要额外的因果关系跟踪机制（例如版本向量）来防止因果冲突。</li>
+<li>由于时钟精度的限制，两个节点可能各自独立产生了完全相同的时间戳。为解决这样的冲突，需要一个额外的仲裁值（可以简单地引入一个大的随机数），但该方法还是无法区分因果关系。</li>
+</ul>
+<p>“最新”的定义如果取决于墙上时钟就会引入偏差。即使采用了NTP同步时钟，依然可能会出现在时间戳100毫秒时（根据发送者的时钟） 发送某个数据包，却在时间戳99毫秒（根据接收者时钟）到达。</p>
+<p>NTP时钟同步能否做到极高的精度从而避免这种错误的顺序问题呢？很难做到。因为除了石英漂移等误差来源之外，NTP同步精度本身要受限于所在的网络延迟。</p>
+<p><font color=red>对于排序来讲，基于递增计数器是更可靠的方式。逻辑时钟并不测量一天的某个时间点或时间间隔，而是事件的相对顺序（事件发生的相对前后关系）。与之对应的，墙上时钟和单调时钟都属于物理时钟。</font></p>
+<h5 id="时钟的置信区间"><a href="#时钟的置信区间" class="headerlink" title="时钟的置信区间"></a>时钟的置信区间</h5><p>我们不应该将时钟读数视为一个精确的时间点，而<font color=red>更应该视为带有置信区间的时间范围</font>。例如，系统可能有95%的置信度认为目前时间介于10.3~10.5秒之间。</p>
+<p>可以根据具体的时间源推算出时钟误差的上限。如果节点上装有GPS接收器或原子时钟，那它的误差范围通常可查询制造商的手册。如果节点是从服务器获取时间，则不确定性取决于上次服务器同步以来的石英漂移范围，加上NTP服务器的不确定性，再加上与服务器之间的网络往返时间。可惜大多数系统并不提供这种误差查询接口。</p>
+<p>Google Spanner中的TrueTime API，会明确报告本地时钟的置信区间。查询当前时间会得到一个范围<code>[不早于, 不晚于]</code>。可明确知道实际时间在其范围之内。该间隔的范围主要取决于本地石英钟最后与高精时钟源同步后经历的时间长短。</p>
+<h5 id="全局快照的同步时钟"><a href="#全局快照的同步时钟" class="headerlink" title="全局快照的同步时钟"></a>全局快照的同步时钟</h5><p>“快照隔离与可重复读”中，我们介绍了快照隔离，可以在数据库的某个一致状态上不加锁、不违背读写隔离性的前提下高效支持只读事务。</p>
+<p>常见的快照隔离实现中需要单调递增事务ID。如果写入发生在快照之后（即写入有比快照更大的事务ID），那该写入对于快照不可见。在单节点数据库上，一个简单的计数器足以生成事务ID 。</p>
+<p>但当<font color=red>数据库分布在多台机器上（可能跨越多个数据中心）时，需要复杂的协调以产生全局的、单调递增的事务ID（跨所有分区）。</font>事务ID要求必须反映因果关系：事务B如果要读取事务A写入的值，则B的事务ID必须大于A的事务ID ，否则快照将不一致。考虑到大量、频繁的小数据包，在分布式系统中创建事务ID通常会引入瓶颈。</p>
+<p>能否使用同步后的墙上时钟作为事务ID呢？如果能够获得足够可靠的同步时钟，自然它可以符合事务ID属性要求。然而问题还是时钟精度的不确定性。</p>
+<p>Google Spanner采用以下思路来实现跨数据中心的快照隔离。它根据TrueTime API返回的时钟置信区间，并基于以下观察结果：如果有两个置信区间：A &#x3D; [A<sub>ealiest</sub>, A<sub>latest</sub>] 和 B &#x3D; [B<sub>ealiest</sub>, B<sub>latest</sub>]，并且这两个区间没有重叠，即 A<sub>ealiest</sub> &lt; A<sub>latest</sub> &lt; B<sub>ealiest</sub> &lt; B<sub>latest</sub>. 可以断定B一定发生在A之后，只有发生了重叠， A和B发生顺序才无法明确。</p>
+<p>为确保事务时间戳反映因果关系，<font color=red>Spanner在提交读写事务之前故意等待置信区间的长度。目的是确保所有读事务要足够晚才发生，避免与先前的事务的置信区间产生重叠。</font>而为了尽量缩短潜在的等待时间， Spanner需要使时钟的误差范围尽可能小。为此，Google在每个数据中心都部署了一个GPS接收器或原子钟，保证所有时钟同步约7ms之内完成。</p>
+<p>借助时钟同步处理分布式事务语义是个有趣和活跃的研究领域。但除Google外，目前主流数据库中还没有更多的实现。</p>
+<h4 id="进程暂停"><a href="#进程暂停" class="headerlink" title="进程暂停"></a>进程暂停</h4><p>另一个分布式系统中危险使用时钟的例子：假设数据库每个分区只有一个主节点，只有主节点可接受写入。其他节点该如何确信主节点没有被宣告失效，可以安全地写入呢？</p>
+<p>一种思路是主节点从其他节点获得一个<font color=red>租约</font>，类似一个带有超时的锁。某一时间只有一个节点可以拿到租约，某节点获得租约之后，在租约到期之前，它就是这段时间内的主节点。为维持主节点的身份，节点必须在到期之前定期去更新租约。如果节点发生了故障， 则续约失败，这样另一个节点到期之后就可以接管。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">    request = getIncomingRequest();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Ensure that the lease always has at least 10 seconds remaining</span></span><br><span class="line">    <span class="keyword">if</span> (lease.expiryTimeMillis - System.currentTimeMillis() &lt; <span class="number">10000</span>) &#123;</span><br><span class="line">        lease = lease.renew();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (lease.isValid()) &#123;</span><br><span class="line">        process(request);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这代码有什么问题么？首先，它<font color=red>依赖于同步的时钟</font>：租约到期时间由另一台机器设置（ 例如另一台机器的当前时间加上30秒得到到期时间），并和本地时钟进行比较。如果时钟之间有超过几秒的差异，这段代码会出现些奇怪的事情。其次，即使改为<font color=red>仅使用本地单调时钟，还有另一个问题</font>：代码假定时间检查点<code>System.currentTimeMillis</code>与请求处理<code>process(request)</code>间隔很短，通常代码运行足够快，所以设置10秒的缓冲区来确保在请求处理过程中租约不会过期。</p>
+<p>但是，如果<font color=red>程序执行中出现了某些意外的暂停呢</font>？例如，假设线程在<code>lease.isValid</code>消耗了整15秒。那当开始处理请求时，租约已经过期，另一个节点已经接管了主节点。可惜我们无法有效通知线程暂停了这么长时间了。</p>
+<p>那么，一个线程可能会暂停这么长时间么？这是可能的，<font color=red>发生这种情况的原因有很多种：</font></p>
+<ul>
+<li>许多编程语言（如Java虚拟机）都有垃圾收集器，有时运行期间会暂停所有正在运行的线程。这些GC暂停甚至有时会持续数分钟。</li>
+<li>在虚拟化环境，可能会暂停虚拟机（暂定所有进程并把内存状态保存到磁盘）然后继续（从内存中加载数据然后继续执行）。暂停可能发生在进程运行的任一时刻，并可能持续很长时间。该功能通常用于实时迁移，即把虚拟机从一个主机迁移到另一个主机而不需要重启。</li>
+<li>运行在终端用户设备（如笔记本电脑）时，执行也可能发生暂停， 例如用户关闭了笔记本电脑或休眠。</li>
+<li><font color=red>操作系统执行线程上下文切换时</font>，或者虚拟机管理程序切换到另一个虚机时，正在运行的线程可能会在代码的任意位置被暂停。</li>
+<li>如果应用程序执行同步磁盘操作， 则线程可能暂停并等待磁盘IO完成。</li>
+<li>如果操作系统配置了基于磁盘的内存交换分区，内存访问可能触发缺页中断，进而要从磁盘中加载内存页。IO进行时（通常比较慢）线程为暂停。极端情况下，操作系统可能会花大量时间在页面换入换出上，而实际工作完成很少（所谓的颠簸）。为避免此类问题，<font color=red>通常在服务器上禁用分页（ 宁愿杀死一些进程来释放内存而不是反复抖动）。</font></li>
+<li>发送SIGSTOP信号可暂停UNIX进程，例如在shell中按下Ctrl+Z。这个信号会立即停止进程避免其拿到更多的CPU周期，直到接下来收到信号SIGCONT之后才从停止的地方继续运行。</li>
+</ul>
+<p>所有上述情况都可能随时抢占一个正在运行的线程，然后在之后的某个时间点再恢复线程的执行，而线程自身却对此一无所知。总之，<font color=red>不能假定任何有关时间的事情，记住上下文切换和并行性可能随时可以发生。</font></p>
+<p>分布式系统中的一个节点必须假定，执行过程中的任何时刻都可能被暂停相当长一段时间。暂停期间，整个集群的其他部分都在照常运行，可能会一致将暂停的节点宣告为故障节点。最终，暂停的节点可能会回来继续运行，除非再次检查时钟，否则<font color=red>它对刚刚过去的暂停毫无意识。</font></p>
+<h5 id="响应时间保证"><a href="#响应时间保证" class="headerlink" title="响应时间保证"></a>响应时间保证</h5><p>如上所述，许多编程语言和操作系统中，线程和进程可能会暂停相当长时间。<font color=red>仔细调教系统可以做到避免很多这种暂停。</font></p>
+<p>某些软件如果在指定时间内无响应会导致严重后果，比如飞机，汽车和其他需要对输入传感器快速做出响应的组件等。对于这些系统，软件有一个必须做出响应的上限：如果无法满足，会导致系统级故障，这就是所谓的<font color=red>硬实时系统。</font></p>
+<p>提供实时保证需要来自<font color=red>软件栈的多个层面的支持</font>：首先是一个实时操作系统(RTOS)，保证进程在给定间隔内完成CPU时间片的调度分配；其次，库函数必须考虑最坏的执行时间；然后，动态内存分配要受限或完全被禁止（如果存在实时垃圾收集器，确保GC不能处理太多任务）；最终还要大量充分的测试和验证，以确保满足要求。</p>
+<h5 id="调整垃圾回收的影响"><a href="#调整垃圾回收的影响" class="headerlink" title="调整垃圾回收的影响"></a>调整垃圾回收的影响</h5><p>语言绑定的垃圾回收机制可以跟踪对象的分配情况以及剩余的空闲内存，因而可以在运行时灵活控制垃圾回收。现在一个较新的想法是把GC暂停视为节点的一个计划内的临时离线。<font color=red>节点启动垃圾回收时，通知其他节点来接管客户端的请求</font>。此外，系统可提前为前端应用发出预警，应用会等待当前请求完成，但停止向该节点发送新的请求，这样垃圾回收可在无干扰的情况下更加高效运行。目前一些对延迟敏感的系统（如金融交易系统）已采用了该方法。</p>
+<p>该方法的一个变种是，只对短期对象（可快速回收）执行垃圾回收，然后在其变成长期存活对象之前，采取定期重启的策略，从而避免对长期存活对象执行全面回收。每次选择一个节点重新启动，在重启之前，重新平衡节点之间的流量，思路<br>与滚动升级类似。</p>
+<p>这些措施虽然不能完全避免垃圾回收导致的进程暂停，但可以有效地减少对应用层的影响。</p>
+<h3 id="知识，真相与谎言"><a href="#知识，真相与谎言" class="headerlink" title="知识，真相与谎言"></a>知识，真相与谎言</h3><p>在分布式系统中，我们可以做一些基本假设，并<font color=red>基于这些假设设计真实系统</font>。基于特定假设，我们能够设计出能够被证明正确性的算法。这也意味着即使底层模型仅提供了少数几个保证，也可以在系统软件层面实现可靠的行为保证。</p>
+<h4 id="真相由多数决定"><a href="#真相由多数决定" class="headerlink" title="真相由多数决定"></a>真相由多数决定</h4><p><font color=red>节点不能根据自己的信息来判断自身的状态</font>。由于节点可能随时会失效，可能会暂停假死，甚至最终无法恢复，因此，分布式系统不能完全依赖于单个节点。目前，大部分分布式算法会基于一个法定人数（quorum），即让所有节点进行投票：<font color=red>任何决策都需要达到法定人数才能生效，以避免对单节点的依赖。</font></p>
+<p>这其中包括有关宣告节点失效的决定。如果有quorum数量的节点声明另一个节点失效，即使该节点仍感觉活得很自在，那它也必须接受失效的裁定，所有个体节点必须遵循quorum投票的决议然后离线。</p>
+<p><font color=red>最常见的quorum票数是取系统节点半数以上</font>（也有其他类型的quorum个数）。如果某些节点故障，quorum机制可以使系统继续工作（比如三个节点的系统，可容忍一个节点失效）。由于系统只可能存在一个quorum集合， 绝不会有两个quorum集合同时做出相互冲突的决定，因此系统的决议是可靠的。</p>
+<h4 id="主节点与锁"><a href="#主节点与锁" class="headerlink" title="主节点与锁"></a>主节点与锁</h4><p>有很多情况需要在系统范围内只能有一个实例。例如：</p>
+<ul>
+<li>只允许一个节点作为数据库分区的主节点，以防止出现脑裂。</li>
+<li>只允许一个事务或客户端持有特定资源的锁，以防止同时写入从而导致数据破坏。</li>
+<li>只允许一个用户来使用特定的用户名，从而确保用户名可以唯一标识用户。</li>
+</ul>
+<p>分布式系统中，即使某个节点自认为它是“唯一的那个”，但不一定获得了系统quorum票数的同意！该节点可能以前确实是主节点，但其他节点可能在此期间已宣布其失效，该节点已被降级而系统选出了另一个主节点。当多数节点声明节点已失效，而该原主节点还继续充当“唯一的那个”，如果系统设计不周就会导致负面后果。该节点会按照自认为正确的信息向其他节点发送消息，其他节点如果还选择相信它，那么系统就会出现错误的行为。</p>
+<h4 id="Fencing令牌"><a href="#Fencing令牌" class="headerlink" title="Fencing令牌"></a>Fencing令牌</h4><p>当使用锁和租约机制来保护资源的并发访问时，必须确保过期的“唯一的那个”节点不能影响其他正常部分。实现这一目标，可以采用一种相当简单的技术：fencing令牌，如图8-5 所示。</p>
+<img src="/img/08分布式系统的挑战/ch08-fig05.png" alt="Untitled" style="zoom: 50%;" />
+
+<p>假设每次锁服务在授予锁或租约时，还会同时返回一个fencing令牌，该令牌（数字）每授予一次就会递增。然后，要求客户端每次向存储系统发送写请求时，都必须包含所持有的Fencing令牌。</p>
+<p>图8-5中，客户端1获得锁租约的同时得到了令牌号33，随后陷入了一个长时间的暂停直到租约到期。这时客户端2已经获得了锁租约和令牌号34，然后发送写请求（以及令牌号34）到存储服务。接下来客户端1恢复过来，以令牌号33尝试写入，<font color=red>存储服务器由于记录了最近已经完成了更高令牌号，因此拒绝令牌号33 的写请求。</font></p>
+<p><font color=red>这种机制要求资源本身必须主动检查所持令牌信息，如果发现已经处理过更高令牌的请求，要拒绝持有低令牌的所有写请求。</font>如果资源不支持额外的令牌检查，可以采取一些临时技巧来绕过去（例如，对于访问文件存储服务的情况，可以将令牌信息内嵌在文件名中）。总之，为避免在锁保护之外发生请求处理，需要进行额外的检查机制。</p>
+<h4 id="拜占庭故障"><a href="#拜占庭故障" class="headerlink" title="拜占庭故障"></a>拜占庭故障</h4><p>如果节点存在“撒谎”的情况（即故意发送错误的或破坏性的响应），例如，节点明明没有收到某条消息，但却对外声称收到了。这种行为称为拜占庭故障，在这样不信任的环境中需要达成共识的问题也被称为<font color=red>拜占庭将军问题。</font></p>
+<p>如果某个系统中即使发生部分节点故障，甚至不遵从协议，或者恶意攻击、干扰网络，但仍可继续正常运行，那称之为<font color=red>拜占庭式容错系统</font>。这些担忧在<font color=red>某些特定场景是合理的</font>。例如：</p>
+<ul>
+<li>航空航天领域，计算机内存或CPU寄存器中的数据可能会被辐射而发生故障，导致以不可预知的方式响应其他节点。飞行控制系统必须做到容忍拜占庭故障。</li>
+<li>像比特币和其他区块链一样的点对点网络就是让互不信任的当事方就某项交易达成一致，且不依赖于集中的机制。</li>
+</ul>
+<p>本书中讨论的大部分系统，都可以假设不存在拜占庭故障。因为，在数据中心里，所有的节点都是受相同组织控制的（因此大概率是可信的），并且辐射水平足够低，因此内存受辐射损坏的概率也微乎其微。此外，让系统能够进行拜占庭容错的协议复杂度都非常高。因此，<font color=red>绝大多数服务端的数据系统中，使用拜占庭容错的解决方案都是不现实的。</font> </p>
+<p>Web应用程序确实可能会接收来自任意客户端（如浏览器）的请求，其中可能带有恶意行为。因此需要输入验证、安全监测和输出转义等步骤，例如防止SQL注入和跨域攻击。但通常不使用拜占庭容错协议，而是全权让服务器决定什么是可接受的客户端行为，什么是不允许的。<font color=red>只有在没有这种中央决策机制的点对点网络中，拜占庭容错才更为必要。</font></p>
+<p>另外，软件中的bug可被认为是拜占庭式故障，但如果将相同的软件部署到所有节点上，那即使拜占庭式的容错算法也无法解决问题。大多数拜占庭容错算法要求系统超过三分之二的节点功能正常。</p>
+<p>通常如果攻击者可以入侵一个节点，则很可能会攻陷几乎所有节点（由于运行相同的软件）。因此，传统的安全措施如认证、访问控制、加密、防火墙等，仍是防范攻击的主要保护机制。</p>
+<h5 id="弱的谎言形式"><a href="#弱的谎言形式" class="headerlink" title="弱的谎言形式"></a>弱的谎言形式</h5><p>尽管可以假设节点通常是诚实的，但依然<font color=red>推荐增加必要的机制来防范一些不那么恶意的“谎言”。</font>例如由于硬件问题造成的无效消息、软件bug和配置错误。这种保护机制显然并不是完整的拜占庭式容错，但它们更为简单，可帮助提高软件系统的可靠性和健壮性。例如：</p>
+<ul>
+<li>由于硬件或操作系统、驱动程序、路由器等方面的错误，导致网络数据包有时出现损坏。通常可借助TCP&#x2F;UDP中内置的数据包校验和来发现这类问题。必要时也可在应用层添加校验和。</li>
+<li>对公众开放的应用必须仔细检查用户的所有输入，位于防火墙后面的内部服务可能不用太严格的检查，但依然推荐执行基本的安全检查。</li>
+<li>NTP客户端最好配置多个时间服务器。同步时间时，连接到多个时间服务器，收到回应之后评估时间偏差，使得多数服务器就一定的时间范围达成一致。只要大多数服务器都正常，某个错误的服务器就可以被检测出来。</li>
+</ul>
+<h4 id="理论系统模型与现实"><a href="#理论系统模型与现实" class="headerlink" title="理论系统模型与现实"></a>理论系统模型与现实</h4><p>分布式系统算法的实现不能过分依赖特定的硬件和软件配置，这就要求我们需要<font color=red>对预期的系统错误进行形式化描述</font>。我们通过定义一些系统模型来形式化描述算法的前提条件。</p>
+<p> 对于时间的假设，有三种系统模型很常用： </p>
+<ul>
+<li>同步模型：<font color=red>该模型假定有上界的网络延迟，有上界的进程暂停和有上界的时钟误差。</font>注意，这不意味着完全同步的时钟或者网络延迟为零。它只意味着你清楚地了解网络延迟、暂停和时钟漂移不会超过某个固定的上限。大多数实际系统的实际模型并非同步模型，因为无限延迟和暂停确实可能发生。</li>
+<li>部分同步摸型：该模型意味着系统在大多数情况下像一个同步系统一样运行，但有时候会超出网络延迟，进程暂停和时钟漂移的预期上界。这是一个比较现实的模型：大多数情况下，网络和进程比较稳定，但是我们必须考虑到任何关于时限的假设都有可能被打破 ，而一旦发生，网络延迟，暂停和时钟偏差可能会变得非常大。</li>
+<li>异步模型：该模型中，一个算法不会对时间做任何假设，甚至里面根本没有时钟（也就没有超时机制）。某些算法可以支持纯异步模型，但并不常见。</li>
+</ul>
+<p>除了时间之外，我们还要考虑节点失效。有以下三种最常见的节点失效系统模型：</p>
+<ul>
+<li>崩溃中止模型：该模型中，算法假设一个节点只能以一种方式发生故障，即遭遇系统崩溃。这意味着节点可能在任何时候突然停止响应，且该节点以后永远消失，无法恢复。</li>
+<li>崩溃恢复模型：节点可能在任何时候发生崩溃，且可能会在一段（未知的）时间后恢复并再次响应。该模型中，节点上的非易失性存储的数据会在崩溃后得以保存，而内存中状态可能会丢失。</li>
+<li>拜占庭（任意）故障模型：节点可能发生任何事情，包括试图作弊和欺骗其他节点。</li>
+</ul>
+<p>对真实系统的建模，<font color=red>最普遍的组合是崩溃恢复模型结合部分同步模型</font>。接下来上层的分布式算法如何应对这样的模型呢？</p>
+<h5 id="算法的正确性"><a href="#算法的正确性" class="headerlink" title="算法的正确性"></a>算法的正确性</h5><p>为定义算法的正确性，我们可以描述它的属性信息。例如，排序算法的输出具有以下特性：输出列表中的任何两个不同的元素，左边的元素小于右边的元素。这就是一个对列表进行排序的正确性描述。</p>
+<p>类似的思路，我们可以通过<font color=red>描述目标分布式算法的相关属性来定义其正确性</font>。例如，对于锁服务的fencing令牌生成算法，要求算法具有以下属性：</p>
+<ul>
+<li>唯一性：两个令牌请求不能获得相同的值。</li>
+<li>单调递增： 设请求 x 获取到令牌 tx，请求 y 获取到令牌 ty，且 x 在 y 之前完成，则 tx &lt; ty。</li>
+<li>可用性：请求令牌的节点如果不发生崩溃则最终一定会收到响应。</li>
+</ul>
+<p>如果针对某个系统模型的算法在各种情况下都能满足定义好的属性要求，就称这个算法是正确的。<font color=red>必须约定好系统模型，比如考虑极端情况，所有节点全部崩溃，或所有的网络延迟突然变得无限长，那所有的算法都不可能完成其预期功能。</font></p>
+<h5 id="安全与活性"><a href="#安全与活性" class="headerlink" title="安全与活性"></a>安全与活性</h5><p>为进一步加深理解，有必要区分两种不同的属性：<font color=red>安全性和活性</font>。上面的例子中，唯一性和单调递增属于安全属性，而可用性则属于活性。</p>
+<p>如果违反了安全属性，我们可以明确指向发生的特定的时间点（例如，唯一性如果被违反，我们可以定位到具体哪个操作产生了重复令牌）。且一旦违反安全性，违规行为无法撤销，破坏已实际发生。</p>
+<p>活性则相反：可能无法明确某个具体的时间点（例如一个节点发送了一个请求，但还没有收到响应），但总是希望在未来某个时间点可以满足要求（即收到回复）。</p>
+<p>区分安全性和活性的一个好处是可以帮助简化处理一些具有挑战性的系统模型。通常对于分布式算法，要求在所有可能的系统模型下，都必须符合安全性。即使所有节点发生崩溃，或整个网络中断，算法需确保不会返回错误结果。</p>
+<p>而对于活性，则存在一些必要条件。例如可以说，只有在多数节点没有崩溃，以及网络最终可以恢复的前提下，我们才能保证最终可以收到响应。部分同步模型的定义即要求任何网络中断只会持续一段有限的时间，然后得到修复，系统最终返回到同步的一致状态。</p>
+<h5 id="将系统模型映射到现实世界"><a href="#将系统模型映射到现实世界" class="headerlink" title="将系统模型映射到现实世界"></a>将系统模型映射到现实世界</h5><p>安全性、活性以及所建立的系统模型对于评测分布式算法的正确性意义重大。然而，系统模型只是对现实情况的简化抽象，实践中各种因素混杂在一起会提出更严峻的挑战。例如，在崩溃恢复模型中，算法通常假设保存在持久性介质的数据可以安然无恙。但如果硬盘上的数据发生损坏，会发生什么后果呢？</p>
+<p>算法的理论描述可以简单地宣称某些事情绝不会发生，例如在非拜占庭系统中，我们就会明确假定一些可能和不可能发生的错误。不过，<font color=red>真正实现时最好还是有一些必要的代码来简单处理一些几乎不可能发生的事情，即使只是去输出一些提醒信息，以方便操作人员来清理最后的烂摊子。这些错误处理也很好地体现了计算机科学和软件工程之间的差异。</font></p>
+<p>这绝对不是说抽象的系统模型没有价值，恰恰相反，它把实际系统中的复杂性提炼成一个更容易理解、更具可控性的抽象错误集合，可以有效帮助我们理解问题</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/" rel="tag"># 数据库</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/04/19/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/07%E4%BA%8B%E5%8A%A1/" rel="prev" title="DDIA笔记-07事务">
+      <i class="fa fa-chevron-left"></i> DDIA笔记-07事务
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%85%E9%9A%9C%E4%B8%8E%E9%83%A8%E5%88%86%E5%A4%B1%E6%95%88"><span class="nav-number">1.</span> <span class="nav-text">故障与部分失效</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BA%91%E8%AE%A1%E7%AE%97%E5%92%8C%E8%B6%85%E7%AE%97"><span class="nav-number">1.1.</span> <span class="nav-text">云计算和超算</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8D%E5%8F%AF%E9%9D%A0%E7%9A%84%E7%BD%91%E7%BB%9C"><span class="nav-number">2.</span> <span class="nav-text">不可靠的网络</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%A3%80%E6%B5%8B%E6%95%85%E9%9A%9C"><span class="nav-number">2.1.</span> <span class="nav-text">检测故障</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%B6%85%E6%97%B6%E4%B8%8E%E6%97%A0%E9%99%90%E6%9C%9F%E7%9A%84%E5%BB%B6%E8%BF%9F"><span class="nav-number">2.2.</span> <span class="nav-text">超时与无限期的延迟</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%90%8C%E6%AD%A5%E4%B8%8E%E5%BC%82%E6%AD%A5%E7%BD%91%E7%BB%9C"><span class="nav-number">2.3.</span> <span class="nav-text">同步与异步网络</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8D%E5%8F%AF%E9%9D%A0%E7%9A%84%E6%97%B6%E9%92%9F"><span class="nav-number">3.</span> <span class="nav-text">不可靠的时钟</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8D%95%E8%B0%83%E6%97%B6%E9%92%9F%E4%B8%8E%E5%A2%99%E4%B8%8A%E6%97%B6%E9%92%9F"><span class="nav-number">3.1.</span> <span class="nav-text">单调时钟与墙上时钟</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%A2%99%E4%B8%8A%E6%97%B6%E9%92%9F"><span class="nav-number">3.1.1.</span> <span class="nav-text">墙上时钟</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8D%95%E8%B0%83%E6%97%B6%E9%92%9F"><span class="nav-number">3.1.2.</span> <span class="nav-text">单调时钟</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%97%B6%E9%92%9F%E5%90%8C%E6%AD%A5%E4%B8%8E%E5%87%86%E7%A1%AE%E6%80%A7"><span class="nav-number">3.2.</span> <span class="nav-text">时钟同步与准确性</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BE%9D%E8%B5%96%E5%90%8C%E6%AD%A5%E7%9A%84%E6%97%B6%E9%92%9F"><span class="nav-number">3.3.</span> <span class="nav-text">依赖同步的时钟</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%97%B6%E9%97%B4%E6%88%B3%E4%B8%8E%E4%BA%8B%E4%BB%B6%E9%A1%BA%E5%BA%8F"><span class="nav-number">3.3.1.</span> <span class="nav-text">时间戳与事件顺序</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%97%B6%E9%92%9F%E7%9A%84%E7%BD%AE%E4%BF%A1%E5%8C%BA%E9%97%B4"><span class="nav-number">3.3.2.</span> <span class="nav-text">时钟的置信区间</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%85%A8%E5%B1%80%E5%BF%AB%E7%85%A7%E7%9A%84%E5%90%8C%E6%AD%A5%E6%97%B6%E9%92%9F"><span class="nav-number">3.3.3.</span> <span class="nav-text">全局快照的同步时钟</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%9B%E7%A8%8B%E6%9A%82%E5%81%9C"><span class="nav-number">3.4.</span> <span class="nav-text">进程暂停</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%93%8D%E5%BA%94%E6%97%B6%E9%97%B4%E4%BF%9D%E8%AF%81"><span class="nav-number">3.4.1.</span> <span class="nav-text">响应时间保证</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%B0%83%E6%95%B4%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E7%9A%84%E5%BD%B1%E5%93%8D"><span class="nav-number">3.4.2.</span> <span class="nav-text">调整垃圾回收的影响</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%9F%A5%E8%AF%86%EF%BC%8C%E7%9C%9F%E7%9B%B8%E4%B8%8E%E8%B0%8E%E8%A8%80"><span class="nav-number">4.</span> <span class="nav-text">知识，真相与谎言</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%9C%9F%E7%9B%B8%E7%94%B1%E5%A4%9A%E6%95%B0%E5%86%B3%E5%AE%9A"><span class="nav-number">4.1.</span> <span class="nav-text">真相由多数决定</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%B8%BB%E8%8A%82%E7%82%B9%E4%B8%8E%E9%94%81"><span class="nav-number">4.2.</span> <span class="nav-text">主节点与锁</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Fencing%E4%BB%A4%E7%89%8C"><span class="nav-number">4.3.</span> <span class="nav-text">Fencing令牌</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%8B%9C%E5%8D%A0%E5%BA%AD%E6%95%85%E9%9A%9C"><span class="nav-number">4.4.</span> <span class="nav-text">拜占庭故障</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%BC%B1%E7%9A%84%E8%B0%8E%E8%A8%80%E5%BD%A2%E5%BC%8F"><span class="nav-number">4.4.1.</span> <span class="nav-text">弱的谎言形式</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%90%86%E8%AE%BA%E7%B3%BB%E7%BB%9F%E6%A8%A1%E5%9E%8B%E4%B8%8E%E7%8E%B0%E5%AE%9E"><span class="nav-number">4.5.</span> <span class="nav-text">理论系统模型与现实</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%AE%97%E6%B3%95%E7%9A%84%E6%AD%A3%E7%A1%AE%E6%80%A7"><span class="nav-number">4.5.1.</span> <span class="nav-text">算法的正确性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%AE%89%E5%85%A8%E4%B8%8E%E6%B4%BB%E6%80%A7"><span class="nav-number">4.5.2.</span> <span class="nav-text">安全与活性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%B0%86%E7%B3%BB%E7%BB%9F%E6%A8%A1%E5%9E%8B%E6%98%A0%E5%B0%84%E5%88%B0%E7%8E%B0%E5%AE%9E%E4%B8%96%E7%95%8C"><span class="nav-number">4.5.3.</span> <span class="nav-text">将系统模型映射到现实世界</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">55</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

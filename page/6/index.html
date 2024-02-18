@@ -180,6 +180,111 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/" class="post-title-link" itemprop="url">etcd_raft源码解析-01概述</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-08-31 00:00:00" itemprop="dateCreated datePublished" datetime="2021-08-31T00:00:00+08:00">2021-08-31</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:15" itemprop="dateModified" datetime="2022-06-28T09:39:15+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><em>本文以及接下来的一系列文章主要就是分析etcd&#x2F;raft的代码。本文的主要内容，主要来自于etcd&#x2F;raft&#x2F;README.md，以及知乎上的<a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/54846720">《etcd raft 设计与实现》</a>一文。</em></p>
+<h3 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h3><p><code>etcd/raft</code>库是Raft算法的开源实现。该Raft库稳定且完备，目前已广泛应用到各种开源软件中，比如cockroachdb、dgraph、etcd、tikv等等。</p>
+<p>大部分Raft实现都具有大而全的设计，其中囊括了存储，消息序列化，网络传输等等基础组件。而<code>etcd/raft</code>库采用简约的设计原则，只实现了Raft算法的核心部分，而像网络&#x2F;磁盘IO这种的实现留给了库的使用者实现。因此使用该库时，必须自己实现Raft节点间消息交互的传输层，以及持久化Raft日志和状态的存储层。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2021/04/02/%E5%88%86%E5%B8%83%E5%BC%8F/%E4%B8%80%E8%87%B4%E6%80%A7/jepsen/04sequential/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -659,7 +764,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">54</span>
+          <span class="site-state-item-count">55</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

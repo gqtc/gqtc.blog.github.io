@@ -180,6 +180,110 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-11成员变更1-confchange包</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-02-15 00:00:00" itemprop="dateCreated datePublished" datetime="2022-02-15T00:00:00+08:00">2022-02-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:39:40" itemprop="dateModified" datetime="2022-06-28T09:39:40+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>confchang</code>包中包含两个文件：<code>confchange.go</code>和<code>restore.go</code>。<code>confchange.go</code>主要实现了配置变更的具体操作；<code>restore.go</code>主要实现了节点崩溃时或者收到<code>snapshot</code>时恢复配置状态相关的一系列动作；</p>
+<p>本文介绍的是配置变更的基础模块，都是<code>confchange.go</code>中的实现逻辑。配置变更的流程细节请参考《配置变更2-流程》一同食用。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2022/02/15/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/11%E6%88%90%E5%91%98%E5%8F%98%E6%9B%B41-confchange%E5%8C%85/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2022/02/12/%E5%88%86%E5%B8%83%E5%BC%8F/raft/raft%E8%AE%BA%E6%96%87/16%E4%B8%8EClient%E7%9A%84%E4%BA%A4%E4%BA%92/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1121,110 +1225,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2[%E8%BD%AC%E8%BD%BD]%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/panda.gif">
-      <meta itemprop="name" content="gqtc">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="gqtc's blog">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/" class="post-title-link" itemprop="url">【转载】单节点变更的问题和工程实践</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2021-12-08 00:00:00" itemprop="dateCreated datePublished" datetime="2021-12-08T00:00:00+08:00">2021-12-08</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-06-29 13:51:36" itemprop="dateModified" datetime="2022-06-29T13:51:36+08:00">2022-06-29</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
-                </span>
-                  ，
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/" itemprop="url" rel="index"><span itemprop="name">转载</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="fa fa-comment-o"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="单步成员变更的问题"><a href="#单步成员变更的问题" class="headerlink" title="单步成员变更的问题"></a>单步成员变更的问题</h3><h4 id="正确性问题"><a href="#正确性问题" class="headerlink" title="正确性问题"></a><font color=red>正确性问题</font></h4><p>Raft单步变更过程中如果发生Leader切换会出现正确性问题，可能导致已经提交的日志又被覆盖。Raft作者（Diego Ongaro）早在2015年就发现了这个问题，并且在Raft-dev详细的说明了这个问题：<a href="https://link.zhihu.com/?target=https://groups.google.com/g/raft-dev/c/t4xj6dJTP6E%22%20%5Ct%20%22_blank">https://groups.google.com/g/raft-dev/c/t4xj6dJTP6E</a>。</p>
-<p>下面是一个Raft单步变更出问题的例子, 初始成员配置是a b c d这4节点，节点u和v要加入集群, 如果中间出现Leader切换, 就会丢失已提交的日志：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2021/12/08/%E5%88%86%E5%B8%83%E5%BC%8F/raft/%E8%BD%AC%E8%BD%BD/14-2%5B%E8%BD%AC%E8%BD%BD%5D%E5%8D%95%E8%8A%82%E7%82%B9%E5%8F%98%E6%9B%B4%E7%9A%84%E9%97%AE%E9%A2%98%E5%92%8C%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1296,7 +1296,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">54</span>
+          <span class="site-state-item-count">55</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
