@@ -26,7 +26,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://example.com/img/08分布式系统的挑战/ch08-fig05.png">
 <meta property="article:published_time" content="2023-05-19T16:00:00.000Z">
-<meta property="article:modified_time" content="2024-02-18T08:45:36.327Z">
+<meta property="article:modified_time" content="2024-02-18T08:45:49.638Z">
 <meta property="article:author" content="gqtc">
 <meta property="article:tag" content="分布式">
 <meta property="article:tag" content="一致性">
@@ -220,7 +220,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2024-02-18 16:45:36" itemprop="dateModified" datetime="2024-02-18T16:45:36+08:00">2024-02-18</time>
+                <time title="修改时间：2024-02-18 16:45:49" itemprop="dateModified" datetime="2024-02-18T16:45:49+08:00">2024-02-18</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -447,7 +447,8 @@
 <p>而对于活性，则存在一些必要条件。例如可以说，只有在多数节点没有崩溃，以及网络最终可以恢复的前提下，我们才能保证最终可以收到响应。部分同步模型的定义即要求任何网络中断只会持续一段有限的时间，然后得到修复，系统最终返回到同步的一致状态。</p>
 <h5 id="将系统模型映射到现实世界"><a href="#将系统模型映射到现实世界" class="headerlink" title="将系统模型映射到现实世界"></a>将系统模型映射到现实世界</h5><p>安全性、活性以及所建立的系统模型对于评测分布式算法的正确性意义重大。然而，系统模型只是对现实情况的简化抽象，实践中各种因素混杂在一起会提出更严峻的挑战。例如，在崩溃恢复模型中，算法通常假设保存在持久性介质的数据可以安然无恙。但如果硬盘上的数据发生损坏，会发生什么后果呢？</p>
 <p>算法的理论描述可以简单地宣称某些事情绝不会发生，例如在非拜占庭系统中，我们就会明确假定一些可能和不可能发生的错误。不过，<font color=red>真正实现时最好还是有一些必要的代码来简单处理一些几乎不可能发生的事情，即使只是去输出一些提醒信息，以方便操作人员来清理最后的烂摊子。这些错误处理也很好地体现了计算机科学和软件工程之间的差异。</font></p>
-<p>这绝对不是说抽象的系统模型没有价值，恰恰相反，它把实际系统中的复杂性提炼成一个更容易理解、更具可控性的抽象错误集合，可以有效帮助我们理解问题</p>
+<p>这绝对不是说抽象的系统模型没有价值，恰恰相反，它把实际系统中的复杂性提炼成一个更容易理解、更具可控性的抽象错误集合，可以有效帮助我们理解问题之本质，然后设计系统性方法来最终解决问题。如果我们可以确定在给定的系统模型中，算法总能满足属性要求，那么我们可以证明算法就是正确的。</p>
+<p>证明算法正确却并不意味着真实系统上的某个具体实现一定是正确的。理论分析并不能覆盖现实系统隐藏的每一个问题细节，例如某些边界条件一旦触发，会有负面影响，但这些边界条件归根结底一定是违背了模型的某个前提假设。我们可以说，<font color=red>理论性分析与实证性检验对最终的成功同等重要。</font></p>
 
     </div>
 
@@ -471,7 +472,10 @@
     <a href="/2023/04/19/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/07%E4%BA%8B%E5%8A%A1/" rel="prev" title="DDIA笔记-07事务">
       <i class="fa fa-chevron-left"></i> DDIA笔记-07事务
     </a></div>
-      <div class="post-nav-item"></div>
+      <div class="post-nav-item">
+    <a href="/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/" rel="next" title="DDIA笔记-09一致性与共识(上)">
+      DDIA笔记-09一致性与共识(上) <i class="fa fa-chevron-right"></i>
+    </a></div>
     </div>
       </footer>
     
@@ -547,7 +551,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">55</span>
+          <span class="site-state-item-count">57</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

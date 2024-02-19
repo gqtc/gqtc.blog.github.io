@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="就像人为抽象出来的事务机制可以屏蔽系统内部很多复杂问题一样，共识是分布式系统最重要的抽象之一。可线性化是最强的一致性保证，基本想法是让一个系统看起来好像只有一个数据副本，且所有操作都是原子的。或者说是：一旦写入了某值，则写之后的读操作一定可以读到该值，并且后续的读取也必须全部返回新值。要注意区分可线性化与事务隔离中的可串行化的区别。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DDIA笔记-09一致性与共识(上)">
+<meta property="og:url" content="http://example.com/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="就像人为抽象出来的事务机制可以屏蔽系统内部很多复杂问题一样，共识是分布式系统最重要的抽象之一。可线性化是最强的一致性保证，基本想法是让一个系统看起来好像只有一个数据副本，且所有操作都是原子的。或者说是：一旦写入了某值，则写之后的读操作一定可以读到该值，并且后续的读取也必须全部返回新值。要注意区分可线性化与事务隔离中的可串行化的区别。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230917161640703.png">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230917162513602.png">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230917162743096.png">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230917170523634.png">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230917172130319.png">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230920082332504.png">
+<meta property="article:published_time" content="2023-06-14T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-19T07:43:29.532Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta property="article:tag" content="数据库">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/09一致性与共识/image-20230917161640703.png">
+
+<link rel="canonical" href="http://example.com/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>DDIA笔记-09一致性与共识(上) | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          DDIA笔记-09一致性与共识(上)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-06-15 00:00:00" itemprop="dateCreated datePublished" datetime="2023-06-15T00:00:00+08:00">2023-06-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-02-19 15:43:29" itemprop="dateModified" datetime="2024-02-19T15:43:29+08:00">2024-02-19</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/" itemprop="url" rel="index"><span itemprop="name">数据密集型应用系统设计读书笔记</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p> 就像人为抽象出来的事务机制可以屏蔽系统内部很多复杂问题一样，共识是分布式系统最重要的抽象之一。可线性化是最强的一致性保证，基本想法是<font color=red>让一个系统看起来好像只有一个数据副本，且所有操作都是原子的</font>。或者说是：一旦写入了某值，则写之后的读操作一定可以读到该值，并且后续的读取也必须全部返回新值。要注意区分可线性化与事务隔离中的可串行化的区别。</p>
+<span id="more"></span>
+
+<p>可线性化虽然是最强的一致性保证，但是它也有代价。即可线性化会带来性能问题（CPU中的多级缓存）和可用性问题（CAP理论）。</p>
+<p>顺序是一个非常重要的基本概念。排序、可线性化与共识之间存在着某种深刻的联系。在可线性化的系统中，存在全序操作关系，这意味着对于任何两个操作，我们总是可以指出哪个操作在先。使用Lamport时间戳，可以保证操作间的的全序关系。但是这还不够，只有收集了所有的请求信息后，才能清楚这些请求间的全序关系。需要全序关系广播，才能真正的实现可线性化。</p>
+<p><font color=red>线性化的原子比较-设置（或自增） 寄存器与全序关系广播二者都等价于共识问题</font>。也就是说，如果你能解决其中的一个问题，那么就可以把方案用于解决其他问题。</p>
+<hr>
+<p>如前所述，分布式系统存在太多可能出错的场景。处理故障最简单的办法就是让整个服务停下来，向用户提示出错信息。若无法接受服务中止，就需要<font color=red>更容错的解决方案</font>，即使某些内部组件故障，整个系统依然可以对外提供服务。</p>
+<p>本章讨论<font color=red>构建容错式分布式系统的相关算法和协议</font>。会假设第8章中所有故障都可能发生，包括数据包丢失、顺序紊乱、重复发送或延迟；时钟偏差；节点暂停甚至崩溃。为构建容错系统，最好<font color=red>先建立一套通用的抽象机制和与之对应的技术保证</font>，就像抽象的事务机制可以屏蔽系统内部很多复杂问题，使应用层轻松无忧。</p>
+<p>沿着这个思路，<font color=red>尝试建立可以让分布式应用忽略内部各种问题的抽象机制</font>。例如，分布式系统最重要的抽象之一就是<font color=red>共识</font>：所有节点就某项提议达成一致。解决了共识问题，就可以服务于应用层很多的需求。例如主从复制数据库，若主节点失效，需切换到另一节点，此时数据库节点可以用共识算法选举新主节点。正确实现共识算法可避免脑裂问题。</p>
+<p>我们需要了解系统能力的<font color=red>边界。什么情况下系统可以容忍故障并继续工作，而其他情况却无法保证</font>。在理论证明和具体实现两方面，业界都有非常深入的研究。本章总体介绍各种系统边界情况。</p>
+<h3 id="一致性保证"><a href="#一致性保证" class="headerlink" title="一致性保证"></a>一致性保证</h3><p>同一时刻查询数据库的两个节点，可能会看到不同的数据。主要是因为<font color=red>写请求会在不同的时间到达不同节点</font>。无论数据库采用何种复制方法（包括主从复制，多主节点复制或无主节点复制），都无法完全避免这种不一致。</p>
+<p>大多数多副本的数据库都至少提供了最终一致性，但这是很弱的保证，它无法告知系统何时收敛。在收敛之前，读请求可能返回任何值甚至读失败。例如，若更新后立即读取，读取可能会路由到不同的副本，系统不保证一定读到刚写入的值。</p>
+<p>本章将探索更强的一致性模型。不过这也意味着更多的<font color=red>代价，例如性能降低或容错性差</font>。但更强的保证也使上层应用逻辑更简单，更不易出错。</p>
+<h3 id="可线性化"><a href="#可线性化" class="headerlink" title="可线性化"></a>可线性化</h3><p>如果数据库能够对外提供<font color=red>只有单个副本的假象</font>，让每个客户端都拥有相同的数据视图，而不必担心复制滞后。这就是<font color=red>可线性化</font>（也称为原子一致性，强一致性等）的思想。线性化的确切定义稍后再详细探讨。其基本想法是<font color=red>让一个系统看起来好像只有一个数据副本，且所有操作都是原子的</font>。有了这个保证，应用程序就不需要关心系统内部的多个副本。</p>
+<p>可线性化系统中，一旦某客户端成功提交写请求，所有客户端的后续读请求一定都能看到刚写入的值。即保证不会读到过期值。</p>
+<p>举个不是线性化的例子：Alice和Bob在同一房间里各自看自己的手机，等待世界杯结果。在宣布了最终比分之后，Alice刷新了页面马上看到获胜者，然后告诉Bob。Bob马上在自己手机上刷新页面，但他的请求发向了某个落后的数据副本，结果却显示比赛还在进行之中。现在的情况是，Bob读到过期的结果，这就违背了线性化规则。</p>
+<h4 id="如何达到线性化？"><a href="#如何达到线性化？" class="headerlink" title="如何达到线性化？"></a>如何达到线性化？</h4><img src="/img/09一致性与共识/image-20230917161640703.png" alt="image-20230917161640703" style="zoom:67%;" />
+
+<p>图9-2展示了3个客户端在线性化数据库中同时读写主键x。x可以是键值存储中的键，关系数据库中的行或文档数据库中的文档。客户端不清楚数据库具体何时处理请求，只知道它是发送之后、响应之前的某个时间点。该例子中，针对x只有读写操作。初值为0。</p>
+<p>客户端C提交写请求将其置为1。客户端A的第一个读操作在写入开始之前已完成，因此返回旧值0。客户端A的最后一次读操作是在写操作完成之后才开始的，如果数据库是可线性化的，它肯定会返回新值1。</p>
+<p>与写操作有时间重叠的任何读操作可能返回0或1，因为读写间存在并发，无法确切知道读取时，写入是否已经生效。这<font color=red>还没有精确描述线性化</font>：与写并发的读操作可能返回旧值或新值，为使系统可线性化，需要添加一个重要的约束，如图9-3所示。</p>
+<img src="/img/09一致性与共识/image-20230917162513602.png" alt="image-20230917162513602" style="zoom:67%;" />
+
+<p>在一个可线性化的系统中，在写操作的开始与结束之间必定存在某个时间点，x的值发生了从0到1的跳变。<font color=red>如果某个客户端读到了新值1，即使写操作尚未提交，所有后续的读取也必须全部返回新值。</font>上图中的箭头表示时序依赖关系。客户端A首先读到新值1，A读取返回之后，B开始读，由于B的读取在A的读取之后发生，因此即使C的写入仍在进行之中，也必须返回1。</p>
+<p>可进一步细化时序图来可视化每步操作具体在哪个时间点生效，如图9-4所示，其中增加了cas，即原子比较和设置操作。</p>
+<img src="/img/09一致性与共识/image-20230917162743096.png" alt="image-20230917162743096" style="zoom:67%;" />
+
+<p>图9-4中的每个操作都有一条竖线，表示可能的执行时间点。可线性化要求，如果连接这些标记的坚线，它们必须总是按时间箭头（从左到右）向前移动，而不能向后移动。这个要求确保了之前所讨论的就近性保证：一旦新值被写入或读取，所有后续的读都看到的是最新的值，直到再次被覆盖。</p>
+<p>图中有一些有趣的细节值得仔细分析：</p>
+<ul>
+<li>客户端B先发送读x的请求，接下来客户端D发送请求将x置为0，接着客户端A又发送请求将x置为1，而最终返回给B的值为1。它意味着数据库执行的顺序是：首先处理D的写入0，然后是A的写入1，最后是B的读取。虽然这不是请求发送的顺序，但<font color=red>考虑到请求并发及网络延迟等情况，这是一个合法的可接受的处理顺序</font>。</li>
+<li><font color=red>模型没有假定事务间的隔离</font>，即另一个并发客户端可能随时会修改值。例如，C首先读取到1，然后读到2，原因是两次读取之间值被客户端B修改了。</li>
+<li>客户B的最后一次读取（阴影的方框）不满足线性化。该操作与C的cas操作同时发生，后者将x从2更新为4。在没有其他请求时，B读取可以返回2。但在B读取开始之前，客户端A已经读取了新值4 ，所以不允许B读到比A 更老的值。</li>
+</ul>
+<p>以上就是线性化背后的直觉含义。正式的定义请参考文献《Linearizability: A Correctness Condition for Concurrent Objects”》。</p>
+<h5 id="可线性化与可串行化"><a href="#可线性化与可串行化" class="headerlink" title="可线性化与可串行化"></a>可线性化与可串行化</h5><p>可线性化很容易与可串行化发生混淆，<font color=red>它们完全不同</font>，需仔细区分：</p>
+<ul>
+<li>可串行化：是事务的隔离属性，其中每个事务可以读写多个对象（行，文档，记录等）。它用来确保事务执行的结果与串行执行（每次执行一个事务）的结果完全相同，<font color=red>即使串行执行的顺序可能与事务实际执行顺序不同</font>。</li>
+<li>可线性化：<font color=red>可线性化是读写单个对象的最新值保证。它并不要求将操作组合到事务中，因此无法避免写倾斜等问题。</font></li>
+</ul>
+<p>数据库可同时支持可串行化与线性化，这种组合又被称为严格的可串行化或强单副本可串行化。基于两阶段加锁或实际以串行执行都是典型的可线性化。</p>
+<p>但是，<font color=red>可串行化的快照隔离则不是线性化的</font>：按照设计，它可以从一致性快照中读取，以避免读写间的竞争。一致性快照里面不包括快照点创建时刻之后的写入数据，因此从快照读肯定不满足线性化。</p>
+<h4 id="依赖线性化的场景"><a href="#依赖线性化的场景" class="headerlink" title="依赖线性化的场景"></a>依赖线性化的场景</h4><p>有些场景下，线性化对于保证系统正确工作至关重要。</p>
+<h5 id="加锁与主节点选举"><a href="#加锁与主节点选举" class="headerlink" title="加锁与主节点选举"></a>加锁与主节点选举</h5><p>主从复制的系统需确保有且只有一个主节点，否则会脑裂。选举新主节点常见的方法是使用锁：每个节点都试图获得锁，只有一个可以成功成为主节点。不管锁具体如何实现，它必须满足可线性化：所有节点必须就某节点拥有锁达成一致，否则就有问题。提供协调者服务的系统如ZooKeeper和etcd等通常用来实现分布式锁和主节点选举。它们都使用了支持容错的共识算法确保可线性化。</p>
+<h5 id="约束与唯一性保证"><a href="#约束与唯一性保证" class="headerlink" title="约束与唯一性保证"></a>约束与唯一性保证</h5><p>唯一性约束在数据库中很常见。例如，用户名或电子邮件地址必须唯一标识一个用户。如果要在写入数据时强制执行这些约束（例如，如果两个人试图同时创建具有相同名称的用户或文件，其中一个须返回错误），则也需要线性化。</p>
+<p>这种情况本质上与加锁非常类似：用户注册等同于试图对用户名进行加锁操作。该操作也类似于原子比较和设置：如果当前用户名尚未被使用，就设置用户名与客户ID进行关联。</p>
+<h5 id="跨通道的时间依赖"><a href="#跨通道的时间依赖" class="headerlink" title="跨通道的时间依赖"></a>跨通道的时间依赖</h5><p>之前的例子中，如果Alice没有高呼比分，Bob可能就不会知道他的查询结果是过期的。或许他几秒之后再刷新页面，能看到最终比分。线性化违例之所以被注意到，是因为<font color=red>系统中存在其他的通信渠道（Alice对Bob发出声音）</font>。计算机系统中也有类似的例子。比如用户上传照片到网站，一个后台进程将照片调整为更低分辨率以方便更快下载。该网站架构和数据流如图9-5所示。</p>
+<img src="/img/09一致性与共识/image-20230917170523634.png" alt="image-20230917170523634" style="zoom:67%;" />
+
+<p>这里需要通知图像调整模块调整哪些图片，系统采用了消息队列将此命令从Web服务器发送到调整器。照片会先写入文件存储服务，写入完成后，把调整的命令放入队列。</p>
+<p>如果文件存储服务是可线性化的，那么系统可以正常工作。否则，这里就会引入竞争条件：消息队列（步骤3和步骤4 ）可能比存储服务的执行更快。这种情况下，当调整模块在读取图像（步骤5）时，可能会看到图像的某个旧版本，或者根本读不到任何内容。</p>
+<p>之所以出现该问题是因为Web服务器和调整模块之间存在两个不同的通信通道：文件存储器和消息队列。如果没有线性化的就近性保证，这两个通道之间存在竞争条件。</p>
+<h4 id="实现线性化系统"><a href="#实现线性化系统" class="headerlink" title="实现线性化系统"></a>实现线性化系统</h4><p>线性化本质上意味着<font color=red>“表现得好像只有一个数据副本，且其上的所有操作都是原子的“</font>。所以最简单的方案自然是只用一个数据副本。但该方法无法容错：如果仅有的副本所在节点故障，会导致数据丢失，或至少在重启之前都无法访问。<font color=red>系统容错最常见的方法就是采用复制机制。</font></p>
+<h5 id="主从复制（部分支持可线性化）"><a href="#主从复制（部分支持可线性化）" class="headerlink" title="主从复制（部分支持可线性化）"></a>主从复制（部分支持可线性化）</h5><p>主从复制系统中，只有主节点承担数据写入，从节点则在各自节点上维护数据的备份副本。在主节点或同步更新的从节点上读取，则可满足线性化。但并非每个主从复制的具体数据库实例都是可线性化的，主要是因为它们可能<font color=red>采用了快照隔离的设计</font>。</p>
+<p>在主节点上读取的前提是确定知道哪个是主节点。某节点可能自认为是主节点，但事实并非如此，若该假的主节点对外提供服务，就会违反线性化。如果使用了异步复制，故障切换过程中甚至可能会丢失一些己提交的写入，结果是同时违反持久性和线性化。</p>
+<h5 id="共识算法（可线性化）"><a href="#共识算法（可线性化）" class="headerlink" title="共识算法（可线性化）"></a>共识算法（可线性化）</h5><p>共识算法与主从复制机制相似。不过共识协议通常内置一些措施来防止脑裂和过期的副本。正是由于这些专门的设计，<font color=red>共识算法可以安全地实现线性化存储</font>，这些系统包括ZooKeeper和etcd等。</p>
+<h5 id="多主复制（不可线性化）"><a href="#多主复制（不可线性化）" class="headerlink" title="多主复制（不可线性化）"></a>多主复制（不可线性化）</h5><p>具有多主节点复制的系统通常无法线性化的，主要由于它们同时在多个节点上执行并发写入，并将数据异步复制到其他节点。因此它们可能会产生冲突的写入，需要额外的解决方案。</p>
+<h5 id="无主复制（可能不可线性化）"><a href="#无主复制（可能不可线性化）" class="headerlink" title="无主复制（可能不可线性化）"></a>无主复制（可能不可线性化）</h5><p>无主节点复制的系统（即Dynamo风格），有些人认为只要配置读取和写入满足 <code>w + r &gt; n</code> 就可以获得“强一致性”。但这完全取决于具体的quorum的配置，以及如何定义强一致性，它可能并不保证线性化。</p>
+<p>例如基于墙上时钟的“最后写入获胜”冲突解决方法几乎肯定是非线性化，因为这种时间戳无法保证与实际事件顺序一致。不规范的quorum也会破坏线性化。甚至即使是严格的quorum ，正如之后即将介绍的，也会发生违背线性化的情况。</p>
+<h5 id="线性化与quorum"><a href="#线性化与quorum" class="headerlink" title="线性化与quorum"></a>线性化与quorum</h5><p>直觉上，对于Dynamo风格的复制模型，如果读写遵从了严格quorum，应该是可线性化的。然而如果遭遇不确定的网络延迟，就会出现竞争条件，如图9-6所示。</p>
+<img src="/img/09一致性与共识/image-20230917172130319.png" alt="image-20230917172130319" style="zoom:67%;" />
+
+<p>图中x的初始值为0，写客户端向所有三个副本（n&#x3D;3, w&#x3D;3）发送写请求将x更新为1。与此同时，客户端A从两个节点（r &#x3D; 2）读取数据，然后在其中一个节点上看到新值1。然后客户端B从两个节点的读取，两者在都返回了旧值0。它虽然满足了仲裁条件<code>w + r &gt; n</code>，但这不是线性化的：B的请求在A的请求完成之后才开始，A返回了新值，但B却得到了旧值。</p>
+<p>有趣的是，可以使Dynamo风格的复制系统以牺牲性能为代价来满足线性化：读操作在返回结果给应用之前，必须同步执行读修复；而写操作在发送结果之前，必须读取quorum节点以获取最新值。但这种方式只能实现线性化读写操作，无法支持线性化的“比较和设置”操作，后者需要共识算法的支持。</p>
+<p>总而言之，<font color=red>最安全的假定是类似Dynamo风格的无主复制系统无法保证线性化。</font></p>
+<h4 id="线性化的代价"><a href="#线性化的代价" class="headerlink" title="线性化的代价"></a>线性化的代价</h4><p>主从复制系统，所有写请求和线性化读取都必须发送给主节点。因此，那些连接到非主节点所在数据中心的客户端，读写请求必须通过数据中心之间的网络，同步发送到主节点所在的数据中心。</p>
+<p>这样的主从复制系统，数据中心间的网络一旦中断，连接到从数据中心的客户端无法再联系上主节点，也就无法完成任何写入和线性化读取。从节点可以提供读服务，但内容可能是过期的（非线性化保证）。只能等数据中心间的网络恢复后才能继续正常工作。</p>
+<h5 id="CAP理论"><a href="#CAP理论" class="headerlink" title="CAP理论"></a>CAP理论</h5><p>不仅是主从复制有上面的问题，无论如何实现，任何可线性化的数据库都有该问题。只要有不可靠的网络，都会发生违背线性化的风险。因此有下面的权衡。</p>
+<p><font color=red>如果应用要求线性化，但由于网络方面的问题，某些副本与其他副本断开连接之后无法继续处理请求，就必须等待网络修复，或者直接返回错误。</font>无论那种方式，结果都是服务不可用。如果不要求线性化，断开连接之后，每个副本可独立处理请求。此时，服务可用，但结果行为不符合线性化。</p>
+<p>因此，<font color=red>不要求线性化的应用更能容忍网络故障</font>。这种思路通常被称为CAP定理。CAP最初是作为一个经验法则而提出的，并没有准确的定义，目的也只是帮助大家深入探讨数据库设计的权衡之道。</p>
+<p>正式定义的<font color=red>CAP定理范围很窄，它只考虑了一种一致性模型（即线性化）和一种故障（网络分区，节点仍处于活动状态但相互断开）</font>，没有考虑网络延迟、节点失败或其他情况。因此尽管CAP在历史上有重大影响力，但对于具体的系统设计来说，它可能没有太大的实际价值。</p>
+<h5 id="可线性化与网络延迟"><a href="#可线性化与网络延迟" class="headerlink" title="可线性化与网络延迟"></a>可线性化与网络延迟</h5><p>虽然线性化是很有用的保证，但实际上很少有系统真正满足线性化。例如，<font color=red>现代多核CPU上的内存甚至就是非线性化</font>：某个CPU核上的线程修改一个内存地址，紧接着另一个核上的线程读取，系统无法保证可以读到刚写入的值，除非使用内存屏障指令。</p>
+<p>原因是每个CPU核都有自己独立的cache和寄存器。内存访问首先进入cache系统，所有修改默认会异步地刷新到主存。由于访问cache比访问主存要快得多，所以这样的异步刷新特性对于现代CPU的性能至关重要。但这就导致出现了多个数据副本（一个在主存，另外几个在不同级别的cache中），而副本更新是异步方式，无法保证线性化。</p>
+<p>为什么需要牺牲可线性化？首先，<font color=red>CAP理论不适用于当今的多核内存一致性模型，在计算机内部，我们通常假设通信是可靠的。之所以放弃线性化的原因就是性能，而不是为了容错。</font>许多分布式数据库也是类似，它们选择不支持线性化是<font color=red>为了提高性能，而不是为了保住容错性</font>。无论是否发生了网络故障，线性化对性能的影响都是巨大的。</p>
+<p>是否能找到一个更有效的线性化实现方案呢？目前看来答案是否定的。Attiya和Welchl证明如果想要满足线性化，那读、写请求的响应时间至少要与网络中延迟成正比。考虑到多数计算机网络高度不确定的网络延迟，线性化读写的性能势必非常差。</p>
+<p>虽然没有足够快的线性化算法，但<font color=red>弱一致性模型的性能则快得多</font>，这种取舍对于延迟敏感的系统非常重要。</p>
+<h3 id="顺序保证"><a href="#顺序保证" class="headerlink" title="顺序保证"></a>顺序保证</h3><p>顺序是一个非常重要的基本概念。排序、可线性化与共识之间存在着某种深刻的联系。</p>
+<h4 id="顺序与因果关系"><a href="#顺序与因果关系" class="headerlink" title="顺序与因果关系"></a>顺序与因果关系</h4><p>之所以反复出现“顺序”问题，其中的一个原因是它有助于保持因果关系。因果关系对发生的事件施加了某种排序：发送消息先于收到消息；问题出现在答案之前；或者一件事情会导致另一件事情；一个节点根据读取的数据做出决定，然后写入结果，诸如此类。这些因果关系的依赖链条定义了系统中的<font color=red>因果顺序，即某件事应该发生另一件事情之前。</font></p>
+<p>如果系统服从因果关系所规定的顺序，则称之为<font color=red>因果一致性。例如，快照隔离提供了因果一致性</font>：从数据库中读数据时，如果查询到了某些数据， 就一定能读到其之前的数据（在该数据还没有被删除的情况下）。</p>
+<h5 id="因果顺序并非全序"><a href="#因果顺序并非全序" class="headerlink" title="因果顺序并非全序"></a>因果顺序并非全序</h5><p><font color=red>全序关系支持任两个元素间的比较</font>。比如自然数符合全序关系，而数学中的集合就不是全序的，而是偏序（partially ordered）：某些情况下一个集合比另一个大（集合间有包含关系）；但一些情况下，两个集合没有可比关系。 </p>
+<p>全序和偏序的差异也会体现在不同的数据库一致性模型中：</p>
+<ul>
+<li>可线性化：<font color=red>在可线性化的系统中，存在全序操作关系</font>。系统的行为就好像只有一个数据副本，且每个操作都是原子的，这意味着对于任何两个操作，我们总是可以指出哪个操作在先。</li>
+<li>因果关系：如果两个操作都没有发生在对方之前，那这两个操作是并发关系。<font color=red>因果性定义了一种偏序（partial order）关系，而非全序关系</font>：有些操作存在因果，因此可比；而另一些操作则是并发的，即不可比。</li>
+</ul>
+<p>根据上述解释，在线性一致性的数据存储服务中，不存在并发操作：因为必然存在一个时间线能将所有操作排序。同一时刻可能会有多个请求到来，但线性化的存储服务可保证：所有请求都会在单个副本上、一个单向向前的时间线上的某个时间点被原子处理。  </p>
+<h5 id="可线性化强于因果一致性"><a href="#可线性化强于因果一致性" class="headerlink" title="可线性化强于因果一致性"></a>可线性化强于因果一致性</h5><p>可线性化一定意味着因果关系：任何可线性化的系统都将正确地保证因果关系。该特点让系统易于使用。但代价是，<font color=red>提供线性一致性非常伤性能和可用性。在网络有显著延迟时（如全球部署的系统），该副作用尤其明显。</font>因此，很多系统会舍弃线性一致性以换取更好的性能，当然，代价是更难用了。</p>
+<p>好消息是线性化并非保证因果关系的唯一途径。事实上，因果一致性可以认为是，不会因网络延迟而显著影响性能，又能对网络故障提供容错的最强一致性模型。许多看似需要线性化的系统实际上真正需要的是因果一致性，后者的实现可以高效很多。</p>
+<h5 id="捕获因果依赖关系"><a href="#捕获因果依赖关系" class="headerlink" title="捕获因果依赖关系"></a>捕获因果依赖关系</h5><p>此处不会深入探讨非线性化系统是如何保证因果一致性的细节，而只是简单地介绍一些关键思想。</p>
+<p>为保持因果关系，需知道哪个操作发生在前。这里只需偏序关系，并发操作会以任意顺序执行，但<font color=red>若一个操作发生在另一操作之前，则每个副本都应按照相同的顺序处理。因此，当某个副本在处理一个请求时，必须确保所有因果在前的请求都已完成处理。</font></p>
+<h4 id="序列号排序"><a href="#序列号排序" class="headerlink" title="序列号排序"></a>序列号排序</h4><p>跟踪所有的因果关系不切实际。有一个更好的方法：<font color=red>可以使用序列号或时间戳来排序事件</font>。时间戳可以只是一个<font color=red>逻辑时钟</font>，例如采用算法产生一个数字序列用以识别操作，通常是递增的计数器。</p>
+<p>这样的序列号保证了全序关系。每个操作都有唯一的序列号，总是可以比较确定哪个更大（即操作发生在后）。进一步，可以保证产生序列号的方式满足因果关系：如果操作A发生在B之前，则A的序列号比B小。并发的（无法比较先后）操作获取到的序列号顺序不确定。序列号本质上是一种全序，通过这种方式可以追踪因果关系，但也施加了一个比因果关系更为严格的全序。 </p>
+<p>主从复制数据库中，复制日志定义了与因果关系一致的写操作全序关系。主节点可以简单地为每个操作递增某个计数器，从而为复制日志中的每个操作赋值一个单调递增的序列号。从节点按照复制日志出现的顺序来应用写操作，那结果一定满足因果一致性（虽然从节点的数据可能会滞后于主节点）。</p>
+<h5 id="非因果序列发生器"><a href="#非因果序列发生器" class="headerlink" title="非因果序列发生器"></a>非因果序列发生器</h5><p>如果系统不存在这样唯一的主节点（多主或无主数据库），如何产生序列号就不那么简单了。实践中可以采用以下方法：</p>
+<ul>
+<li>每个节点独立产生自己的一组序列号。例如有两个节点，一个节点只生成奇数，另一个节点只生成偶数。还可以在序列号中保留一些位用于嵌入节点的唯一标识符，确保不同的节点永远不会生成相同的序列号。</li>
+<li>可以预先分配序列号的区间范围。例如，节点A负责区间1-1000的序列号，B负责1001-2000。然后每个节点独立地从区间中分配序列号， 当序列号出现紧张时就分配更多的区间。</li>
+</ul>
+<p>上述的思路都可行，它们为每个操作生成一个唯一的、近似增加的序列号。不过，它们也都存在一个问题：<font color=red>产生的序列号与因果关系并不严格一致。所有这些序列号发生器都无法保证正确捕获跨节点操作的顺序</font>，因而存在因果关系方面的问题：</p>
+<ul>
+<li>每个节点可能有不同的处理速度，如每秒请求数。因此，某个节点产生偶数而另一个产生奇数，偶数的计数器产生速度可能落后于奇数的计数器。这样就无法准确知道哪个操作在先。</li>
+<li>对于区间分配器，一个操作可能被赋予从1001-2000之间的某个序列号，而后发生的操作则路由到另一个节点，拿到了某个1-1000之间的序列号，导致与因果序不一致。</li>
+</ul>
+<h5 id="Lamport时间戳"><a href="#Lamport时间戳" class="headerlink" title="Lamport时间戳"></a>Lamport时间戳</h5><p>有一个简单的方法可以产生与因果关系一致的序列号，即兰伯特时间戳（Lamport timestamp），由Leslie Lamport在1978年的《Time, Clocks, and the Ordering of Events in a Distributed System》中提出。</p>
+<img src="/img/09一致性与共识/image-20230920082332504.png" alt="image-20230920082332504" style="zoom:67%;" />
+
+<p>图9-8给出了Lamport时间戳的示例。每个节点都有唯一的标识符，且每个节点都有一个计数器来记录各自已处理的请求数。<font color=red>Lamport时间戳是一个值对（计数器，节点ID）</font>。因此可确保每个时间戳都唯一。Lamport时间戳与物理墙上时钟没有直接关系，它可以保证全序：<font color=red>两个Lamport时间戳可以进行比较</font>，计数器较大那个时间戳大；计数器值相同时，则节点ID越大，时间戳越大。</p>
+<p>目前为止，该思路与上一节所描述的奇数／偶数计数器并无本质不同。但是Lamport时间戳的核心亮点在于：<font color=red>每个节点及每个客户端都跟踪见到的最大计数器值，并在每个请求中附带该最大计数器值。</font>当节点收到某个请求（或回复）时，如果发现请求内嵌的最大计数器值大于节点自身的计数器值，则立即把自己的计数器修改为该最大值。</p>
+<p>如图所示， 客户端 A 收到节点 2 的 counter &#x3D; 5 的回复后，会使用该值向节点 1 发送请求。节点 1 本来的 counter 值是 1，在收到该请求后，会立即前移为 5。尔后，下一个请求操作到来会将其增加为 6。</p>
+<p><em>上图中的max表示客户端保存的最大序列号，而节点收到请求后，会将序列号加1，然后返回给客户端。</em></p>
+<p>只要把最大计数器值嵌入到每一个请求中，该方案可以确保Lamport时间戳与因果关系一致，而请求的因果依赖性一定会保证后发生的请求得到更大的时间戳。</p>
+<h5 id="时间戳排序依然不够"><a href="#时间戳排序依然不够" class="headerlink" title="时间戳排序依然不够"></a>时间戳排序依然不够</h5><p>虽然Lamport时间戳定义了与因果序一致的全序关系，但<font color=red>还不足以解决实际分布式系统中许多常见的问题</font>。例如，一个账户系统需要确保用户名唯一。两个用户同时尝试使用相同用户名创建账户时，确保其中一个成功，另一个必须失败。</p>
+<p>乍看之下，似乎全序关系（例如使用Lamport时间戳）应该可解决问题：若有这样并发的操作，则选择时间戳较低的作为获胜者（先申请用户名的请求）。但这种方法有一个前提条件：<font color=red>需收集系统中所有的用户创建请求</font>，然后才可以比较它们的时间戳。然而，当节点刚收到用户的创建请求时，节点不知道是否有另一节点在同时创建相同用户名（以及那个请求所附带的时间戳）。</p>
+<p>为获得上述两点信息，系统必须检查每个节点，询问它们在做什么。如果万一某节点故障或由于网络问题而无法连接，那该方法就无法正常运转。显然这不是我们所期望的容错系统。</p>
+<p>问题的关键是，<font color=red>只有收集了所有的请求信息后，才能清楚这些请求间的全序关系</font>。如果另一个节点执行了某些操作，但你无法知道那是什么，就无法构造出最终的请求序列。</p>
+<p>总之，为实现像用户名唯一性约束这样的目标，仅对操作进行全序排列还不够，还需知道这些操作是否发生、何时确定等。假如在创建用户名时，<font color=red>已经确定知道了没有其他节点正在执行相同用户名的创建</font>，就可以安全返回创建成功。要想知道什么时候全序关系已经确定就需要“全序关系广播”。</p>
+<h4 id="全序关系广播"><a href="#全序关系广播" class="headerlink" title="全序关系广播"></a>全序关系广播</h4><p>分布式系统中，让所有节点就全序关系达成一致面临巨大挑战。前面一节讨论了按时间戳或序列号排序，发现它不如主从复制那么直接有效（如果使用时间戳排序来实现唯一性约束，会丧失容错性）。而主从复制首先需确定某个节点作为主节点，然后在主节点上顺序执行操作。接下来的主要挑战在于，如何扩展系统的吞吐量使之突破单一主节点的限制，以及如何处理主节点失效时的故障切换。在分布式系统研究文献中，这些问题被称为<font color=red>全序关系广播</font>或者原子广播。</p>
+<p>全序关系广播通常指节点之间交换消息的某种协议。下面是一个非正式的定义，它要求满足两个基本安全属性：</p>
+<ul>
+<li><font color=red>可靠发送</font>：没有消息丢失，如果消息发送到了某一个节点，则它一定要发送到所有节点。</li>
+<li><font color=red>严格有序</font>：消息总是以相同的顺序发送给每个节点。</li>
+</ul>
+<p><font color=red>即使节点或网络出现了故障，全序关系广播算法的正确实现也必须保证上述两条</font>。当然，网络中断时消息发送会失败，但算法需继续重试，直到网络修复，消息发送成功（且必须以正确的顺序发送）。</p>
+<h5 id="使用全序关系广播"><a href="#使用全序关系广播" class="headerlink" title="使用全序关系广播"></a>使用全序关系广播</h5><p><font color=red>像ZooKeeper或etcd这样的共识服务实际上就实现了全序关系序广播。</font>这也暗示了全序关系广播与共识之间有着密切联系。</p>
+<p>全序关系广播一个要点是<font color=red>顺序在发送消息时已经确定</font>，如果消息发送成功，节点不允许追溯地将某条消息插入到先前的某个位置上。这一点使得全序关系广播比基于时间戳排序要求更强。</p>
+<p><font color=red>理解全序关系广播的另一种方式是将其视为日志（如复制日志，事务日志或预写日志）。</font>传递消息就像追加方式更新日志。由于所有节点必须以相同的顺序发送消息，因此所有节点都可以读取日志并看到相同的消息序列。</p>
+<h5 id="采用全序关系广播实现线性化存储"><a href="#采用全序关系广播实现线性化存储" class="headerlink" title="采用全序关系广播实现线性化存储"></a>采用全序关系广播实现线性化存储</h5><p>如图9-4所示，在一个可线性化的系统中有全序操作集合。这是否意味着可线性化与全序关系广播是完全相同呢？不完全是，但两者之间有着密切的联系。</p>
+<p>全序关系广播是基于异步模型：保证消息以固定的顺序可靠地发送，但是不保证消息何时发送成功（因此某个接收者可能明显落后于其他接收者）。而可线性化则强调就近性：读取时保证能够看到最新的写入值。</p>
+<p><font color=red>有了全序关系广播，就可以在其上构建线性化的存储系统。</font>例如，确保用户名唯一标识一个用户。设想一下，对于每一个可能的用户名，都可以有一个带有原子比较-设置操作的线性化寄存器。每个寄存器初始为空（表示尚未使用）。当创建一个用户名时，对该用户名的寄存器执行比较设置操作：仅当寄存器值为空时，将其设置为新的用户账号。如果多个用户试图同时获取相同的用户名，则只有一个原子比较-设置操作成功。可通过全序关系广播以追加日志的方式实现线性化的原子比较-设置操作，步骤如下：</p>
+<ol>
+<li>在日志中追加一条消息，并指明想要的用户名。</li>
+<li>读取日志，将其广播给所有节点，并等待回复。</li>
+<li>检查是否有任何消息声称该用户名已被占用。如果第一条这样的回复来自于当前节点，那么就成功获得该用户名，可以提交该获取声明并返回给客户端。反之，如果声称占用的第一条回复消息来自其他节点，则中止操作。</li>
+</ol>
+<p>由于日志条目以相同顺序发送到所有节点，而如果存在多个并发写入，则所有节点将首先决定哪个请求在先。选择第一个写请求作为获胜者，并中止其他请求。类似的方法还可以用来在日志之上实现可串行化的多对象事务。</p>
+<p>虽然此过程可确保线性化写入，但它无法保证线性化读取，即从异步日志更新的存储中读取数据时，可能是旧值。具体来说，这里只提供了顺序一致性，有时也称为时间线一致性，它弱于线性化保证。为了同时满足线性化读取，有以下几个方案：</p>
+<ul>
+<li>采用追加的方式把读请求排序、广播，然后各个节点获取该日志，当本节点收到消息时才执行真正的读操作。消息在日志中的位置已经决定了读取发生的时间点。etcd的quorum读取和这个思路有相似之处。</li>
+<li>如果可以以线性化的方式获取当前最新日志中消息的位置，则查询位置，等待直到该位置之前的所有条目都已经发送给你，接下来再执行读取。这与ZooKeeper的sync操作思路相同。</li>
+<li>从同步更新的副本上进行读取，这样确保总是读取最新值。这种技术可以用于链式复制。</li>
+</ul>
+<h5 id="采用线性化存储实现全序关系广播"><a href="#采用线性化存储实现全序关系广播" class="headerlink" title="采用线性化存储实现全序关系广播"></a>采用线性化存储实现全序关系广播</h5><p>前面一节介绍了如何基于全序关系广播来构建线性化的原子比较-设置操作。也可以反过来，假定已有了线性化的存储，在其上构建全序关系广播。</p>
+<p>最简单的方式是假设有一个线性化的寄存器来存储一个计数，然后使其支持原子自增-读取操作或原子比较-设置操作。算法思路很简单：对于每个要通过全序关系广播的消息，原子递增并读取该线性化的计数，然后将其作为序列号附加到消息中。接下来，将消息广播到所有节点（如果发生丢失，则重新发送），而接受者也严格按照序列化来发送回复消息。</p>
+<p>注意，与Lamport时间戳不同，通过递增线性化寄存器获得的数字不会存在任何间隙。因此，如果节点完成了消息4的发送，且接收到了序列化6的消息，那么在它对消息6回复之前必须等待消息5。Lamport时间戳则不是这样，而这也是区别全序关系广播与基于时间戳排序的关键。</p>
+<p>使用原子自增操作来创建线性化整数有多难呢？答案还是那样，如果不存在失效，就非常容易，甚至可以把它保存在某个节点的内存变量中。难点在于处理节点的网络中断，以及节点失效时如何恢复该值。事实上，如果对线性化的序列号发生器深思熟虑之后所得到的最终结果，往往毫无意外地指向了共识算法。</p>
+<p>这并非巧合，可以证明，<font color=red>线性化的原子比较-设置（或自增） 寄存器与全序关系广播二者都等价于共识问题</font>。也就是说，如果你能解决其中的一个问题，那么就可以把方案用于解决其他问题。这样的结论是多么的深刻和震撼！</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/" rel="tag"># 数据库</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/05/20/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/08%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%8C%91%E6%88%98/" rel="prev" title="DDIA-08分布式系统的挑战">
+      <i class="fa fa-chevron-left"></i> DDIA-08分布式系统的挑战
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2023/07/01/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8B)/" rel="next" title="DDIA笔记-09一致性与共识(下)">
+      DDIA笔记-09一致性与共识(下) <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E8%87%B4%E6%80%A7%E4%BF%9D%E8%AF%81"><span class="nav-number">1.</span> <span class="nav-text">一致性保证</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96"><span class="nav-number">2.</span> <span class="nav-text">可线性化</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A6%82%E4%BD%95%E8%BE%BE%E5%88%B0%E7%BA%BF%E6%80%A7%E5%8C%96%EF%BC%9F"><span class="nav-number">2.1.</span> <span class="nav-text">如何达到线性化？</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%E4%B8%8E%E5%8F%AF%E4%B8%B2%E8%A1%8C%E5%8C%96"><span class="nav-number">2.1.1.</span> <span class="nav-text">可线性化与可串行化</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BE%9D%E8%B5%96%E7%BA%BF%E6%80%A7%E5%8C%96%E7%9A%84%E5%9C%BA%E6%99%AF"><span class="nav-number">2.2.</span> <span class="nav-text">依赖线性化的场景</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8A%A0%E9%94%81%E4%B8%8E%E4%B8%BB%E8%8A%82%E7%82%B9%E9%80%89%E4%B8%BE"><span class="nav-number">2.2.1.</span> <span class="nav-text">加锁与主节点选举</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%BA%A6%E6%9D%9F%E4%B8%8E%E5%94%AF%E4%B8%80%E6%80%A7%E4%BF%9D%E8%AF%81"><span class="nav-number">2.2.2.</span> <span class="nav-text">约束与唯一性保证</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%B7%A8%E9%80%9A%E9%81%93%E7%9A%84%E6%97%B6%E9%97%B4%E4%BE%9D%E8%B5%96"><span class="nav-number">2.2.3.</span> <span class="nav-text">跨通道的时间依赖</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%AE%9E%E7%8E%B0%E7%BA%BF%E6%80%A7%E5%8C%96%E7%B3%BB%E7%BB%9F"><span class="nav-number">2.3.</span> <span class="nav-text">实现线性化系统</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6%EF%BC%88%E9%83%A8%E5%88%86%E6%94%AF%E6%8C%81%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%EF%BC%89"><span class="nav-number">2.3.1.</span> <span class="nav-text">主从复制（部分支持可线性化）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%85%B1%E8%AF%86%E7%AE%97%E6%B3%95%EF%BC%88%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%EF%BC%89"><span class="nav-number">2.3.2.</span> <span class="nav-text">共识算法（可线性化）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%A4%9A%E4%B8%BB%E5%A4%8D%E5%88%B6%EF%BC%88%E4%B8%8D%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%EF%BC%89"><span class="nav-number">2.3.3.</span> <span class="nav-text">多主复制（不可线性化）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%97%A0%E4%B8%BB%E5%A4%8D%E5%88%B6%EF%BC%88%E5%8F%AF%E8%83%BD%E4%B8%8D%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%EF%BC%89"><span class="nav-number">2.3.4.</span> <span class="nav-text">无主复制（可能不可线性化）</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%BA%BF%E6%80%A7%E5%8C%96%E4%B8%8Equorum"><span class="nav-number">2.3.5.</span> <span class="nav-text">线性化与quorum</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%BA%BF%E6%80%A7%E5%8C%96%E7%9A%84%E4%BB%A3%E4%BB%B7"><span class="nav-number">2.4.</span> <span class="nav-text">线性化的代价</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#CAP%E7%90%86%E8%AE%BA"><span class="nav-number">2.4.1.</span> <span class="nav-text">CAP理论</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%E4%B8%8E%E7%BD%91%E7%BB%9C%E5%BB%B6%E8%BF%9F"><span class="nav-number">2.4.2.</span> <span class="nav-text">可线性化与网络延迟</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%A1%BA%E5%BA%8F%E4%BF%9D%E8%AF%81"><span class="nav-number">3.</span> <span class="nav-text">顺序保证</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%A1%BA%E5%BA%8F%E4%B8%8E%E5%9B%A0%E6%9E%9C%E5%85%B3%E7%B3%BB"><span class="nav-number">3.1.</span> <span class="nav-text">顺序与因果关系</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%9B%A0%E6%9E%9C%E9%A1%BA%E5%BA%8F%E5%B9%B6%E9%9D%9E%E5%85%A8%E5%BA%8F"><span class="nav-number">3.1.1.</span> <span class="nav-text">因果顺序并非全序</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8F%AF%E7%BA%BF%E6%80%A7%E5%8C%96%E5%BC%BA%E4%BA%8E%E5%9B%A0%E6%9E%9C%E4%B8%80%E8%87%B4%E6%80%A7"><span class="nav-number">3.1.2.</span> <span class="nav-text">可线性化强于因果一致性</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8D%95%E8%8E%B7%E5%9B%A0%E6%9E%9C%E4%BE%9D%E8%B5%96%E5%85%B3%E7%B3%BB"><span class="nav-number">3.1.3.</span> <span class="nav-text">捕获因果依赖关系</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%BA%8F%E5%88%97%E5%8F%B7%E6%8E%92%E5%BA%8F"><span class="nav-number">3.2.</span> <span class="nav-text">序列号排序</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E9%9D%9E%E5%9B%A0%E6%9E%9C%E5%BA%8F%E5%88%97%E5%8F%91%E7%94%9F%E5%99%A8"><span class="nav-number">3.2.1.</span> <span class="nav-text">非因果序列发生器</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Lamport%E6%97%B6%E9%97%B4%E6%88%B3"><span class="nav-number">3.2.2.</span> <span class="nav-text">Lamport时间戳</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%97%B6%E9%97%B4%E6%88%B3%E6%8E%92%E5%BA%8F%E4%BE%9D%E7%84%B6%E4%B8%8D%E5%A4%9F"><span class="nav-number">3.2.3.</span> <span class="nav-text">时间戳排序依然不够</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%85%A8%E5%BA%8F%E5%85%B3%E7%B3%BB%E5%B9%BF%E6%92%AD"><span class="nav-number">3.3.</span> <span class="nav-text">全序关系广播</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8%E5%85%A8%E5%BA%8F%E5%85%B3%E7%B3%BB%E5%B9%BF%E6%92%AD"><span class="nav-number">3.3.1.</span> <span class="nav-text">使用全序关系广播</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E9%87%87%E7%94%A8%E5%85%A8%E5%BA%8F%E5%85%B3%E7%B3%BB%E5%B9%BF%E6%92%AD%E5%AE%9E%E7%8E%B0%E7%BA%BF%E6%80%A7%E5%8C%96%E5%AD%98%E5%82%A8"><span class="nav-number">3.3.2.</span> <span class="nav-text">采用全序关系广播实现线性化存储</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E9%87%87%E7%94%A8%E7%BA%BF%E6%80%A7%E5%8C%96%E5%AD%98%E5%82%A8%E5%AE%9E%E7%8E%B0%E5%85%A8%E5%BA%8F%E5%85%B3%E7%B3%BB%E5%B9%BF%E6%92%AD"><span class="nav-number">3.3.3.</span> <span class="nav-text">采用线性化存储实现全序关系广播</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">57</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

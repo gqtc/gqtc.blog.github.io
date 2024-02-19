@@ -180,6 +180,226 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-03tracker包</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-09-21 00:00:00" itemprop="dateCreated datePublished" datetime="2021-09-21T00:00:00+08:00">2021-09-21</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:40:06" itemprop="dateModified" datetime="2022-06-28T09:40:06+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>tracker</code>包主要实现了节点日志追加和节点配置相关的底层逻辑。其中主要实现了三个数据结构：</p>
+<ul>
+<li><code>Inflights</code>结构：实现节点日志追加的流量控制；</li>
+<li><code>Progress</code>结构：记录节点追加日志的“进度”；</li>
+<li><code>ProgressTracker</code>结构：实现配置变更和日志追加的主要数据结构；</li>
+</ul>
+<hr>
+<h3 id="Inflights结构"><a href="#Inflights结构" class="headerlink" title="Inflights结构"></a>Inflights结构</h3><p><code>tracker</code>包中的<code>Inflights</code>结构用于<code>Leader</code>对某个<code>Follower</code>发起的<code>pb.MsgApp</code>（日志追加消息）做流量控制。其中记录了所有已发出，但未收到回复的日志条目索引信息，该结构主要针对的是<code>Progress</code>处于<code>StateReplicate</code>状态的节点。</p>
+<ul>
+<li><code>Leader</code>在发送<code>pb.MsgApp</code>消息之前，必须调用<code>Inflights.Full</code>方法，判断是否可以继续发送消息；</li>
+<li>发送<code>pb.MsgApp</code>消息时必须调用<code>Inflights.Add</code>方法记录最后一条日志条目的Index；收到<code>pb.MsgAppResp</code>响应消息后调用<code>Inflights.FreeLE</code>接口更新记录信息。
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2021/09/21/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/03tracker%E5%8C%85/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/" class="post-title-link" itemprop="url">etcd_raft源码解析-02quorum包</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-09-02 00:00:00" itemprop="dateCreated datePublished" datetime="2021-09-02T00:00:00+08:00">2021-09-02</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-06-28 09:40:02" itemprop="dateModified" datetime="2022-06-28T09:40:02+08:00">2022-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/" itemprop="url" rel="index"><span itemprop="name">raft</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd-raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" itemprop="url" rel="index"><span itemprop="name">etcd_raft源码解析</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>quorum</code>包中包含三个文件：<code>majority.go, quorum.go joint.go</code>。该包主要实现了基于当前配置的节点集合计算出集群最大<code>CommitIndex</code>和投票结果的功能：</p>
+<ul>
+<li><code>majority.go</code>：定义了<code>MajorityConfig</code>类型及其方法，它实际上是个<code>节点ID</code>形成的<code>set</code>，并在此基础上实现了<code>CommittedIndex</code>（计算<code>Majority</code>节点的最大提交索引）和<code>VoteResult</code>（计算<code>Majority</code>节点的投票结果）方法；</li>
+<li><code>quorum.go</code>：定义了<code>AckedIndexer</code>接口，该接口唯一的方法<code>AckedIndex</code>就是提供<code>节点ID</code>到日志<code>Index</code>的转换功能；</li>
+<li><code>joint.go</code>：在<code>MajorityConfig</code>的基础上定义了<code>JointConfig</code>类型，即联合共识（Joint Consensus）节点变更算法中<code>Cold,new</code>的配置。并在此基础上实现了<code>CommittedIndex</code>和<code>VoteResult</code>方法；
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2021/09/02/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/02quorum%E5%8C%85/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2021/08/31/%E5%88%86%E5%B8%83%E5%BC%8F/raft/etcd_raft%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/01%E6%A6%82%E8%BF%B0/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -764,7 +984,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">55</span>
+          <span class="site-state-item-count">57</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

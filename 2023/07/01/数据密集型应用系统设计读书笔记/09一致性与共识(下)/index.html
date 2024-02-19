@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="icon" type="image/png" sizes="16x16" href="/function%20()%20%7B%0A%20%20%20%20%20%20for%20(var%20_len2%20=%20arguments.length,%20args%20=%20new%20Array(_len2),%20_key2%20=%200;%20_key2%20%3C%20_len2;%20_key2++)%20%7B%0A%20%20%20%20%20%20%20%20args%5B_key2%5D%20=%20arguments%5B_key2%5D;%0A%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20return%20obj%5Bval%5D.apply(obj,%20args);%0A%20%20%20%20%7D">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"right","width":160,"display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"flat"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文首先以两阶段提交为例，说明了多个节点如何达成一致–保证事务原子性，所有节点都提交或都中止。但是2PC中的协调者本身如果出现问题，则整个系统就陷入停滞。所以协调者就成了这个系统的单点故障，即该系统没有容错。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DDIA笔记-09一致性与共识(下)">
+<meta property="og:url" content="http://example.com/2023/07/01/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8B)/index.html">
+<meta property="og:site_name" content="gqtc&#39;s blog">
+<meta property="og:description" content="本文首先以两阶段提交为例，说明了多个节点如何达成一致–保证事务原子性，所有节点都提交或都中止。但是2PC中的协调者本身如果出现问题，则整个系统就陷入停滞。所以协调者就成了这个系统的单点故障，即该系统没有容错。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/img/09一致性与共识/image-20230922122105856.png">
+<meta property="og:image" content="http://example.com/img/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86/image-20230924190255902.png">
+<meta property="article:published_time" content="2023-06-30T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-19T07:43:52.421Z">
+<meta property="article:author" content="gqtc">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="一致性">
+<meta property="article:tag" content="数据库">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/img/09一致性与共识/image-20230922122105856.png">
+
+<link rel="canonical" href="http://example.com/2023/07/01/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8B)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>DDIA笔记-09一致性与共识(下) | gqtc's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">gqtc's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/07/01/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8B)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/panda.gif">
+      <meta itemprop="name" content="gqtc">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="gqtc's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          DDIA笔记-09一致性与共识(下)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-07-01 00:00:00" itemprop="dateCreated datePublished" datetime="2023-07-01T00:00:00+08:00">2023-07-01</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-02-19 15:43:52" itemprop="dateModified" datetime="2024-02-19T15:43:52+08:00">2024-02-19</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/" itemprop="url" rel="index"><span itemprop="name">数据密集型应用系统设计读书笔记</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="fa fa-comment-o"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2023/07/01/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8B)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2023/07/01/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8B)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文首先以两阶段提交为例，说明了多个节点如何达成一致–保证事务原子性，所有节点都提交或都中止。但是2PC中的协调者本身如果出现问题，则整个系统就陷入停滞。所以协调者就成了这个系统的单点故障，即该系统没有容错。</p>
+<span id="more"></span>
+
+<p>为了避免这种单点故障，就需要设计支持容错的共识算法。目前主流的共识算法都是用全序广播来实现。全序广播很像主从复制，两者的区别就在于容错，即如何决定谁是主节点。主从复制一般是由管理员决定谁是主节点，而全序广播则可以自动选举主节点。</p>
+<p>共识算法也有其局限性，包括：性能问题；不可靠网络下的系统可用性问题；动态添加删除节点带来的复杂性；</p>
+<hr>
+<h3 id="分布式事务与共识"><a href="#分布式事务与共识" class="headerlink" title="分布式事务与共识"></a>分布式事务与共识</h3><p>共识问题是分布式计算中最重要也是最基本的问题之一。表面上看，目标只是让几个节点就某件事情达成一致。这似乎很简单。不幸的是，许多失败的系统正是由于低估了这个问题所导致的。</p>
+<p>有很多重要的场景都需要集群节点达成某种一致，例如<font color=red>原子事务提交</font>：对于支持跨节点或跨分区事务的数据库，某个事务可能在一些节点上执行成功，但其他节点却不幸发生了失败。为维护事务的原子性，所有节点必须对事务的结果达成一致：要么全部成功提交（假定没有出错），要么中止（如果出现了错误）。这个共识的例子被称为原子提交问题。</p>
+<h4 id="原子提交与两阶段提交"><a href="#原子提交与两阶段提交" class="headerlink" title="原子提交与两阶段提交"></a>原子提交与两阶段提交</h4><p>事务的原子性可以防止失败的事务破坏系统，避免形成部分成功夹杂着部分失败。</p>
+<h5 id="从单节点到分布式的原子提交"><a href="#从单节点到分布式的原子提交" class="headerlink" title="从单节点到分布式的原子提交"></a>从单节点到分布式的原子提交</h5><p>在单个数据库节点上执行的事务，<font color=red>原子性通常由存储引擎来负责</font>。当客户端请求数据库节点提交事务时，数据库首先使事务的写入持久化（通常保存在预写日志中），事务结束时在硬盘上追加一个特殊的提交记录到日志上。 如果过程中间发生了崩溃，节点重启后，事务可以从日志中恢复：崩溃之前若提交记录已写入磁盘，则认为事务已安全提交；否则，回滚该事务的所有写入。</p>
+<p>因此，单节点上，事务提交（或中止）的关键点在于磁盘完成日志记录的时刻：完成日志记录写之前发生了崩溃，则事务需要中止；在日志写入完成之后，即使发生崩溃，事务也会安全提交。<font color=red>这就是在单一设备上上实现原子提交的核心思路。</font></p>
+<p>如果一个事务涉及多个节点，向所有节点简单地发送一个提交请求，然后各个节点独立执行事务提交是绝对不够的。这样做很容易发生部分节点提交成功，而其他节点失败的情况，违反了原子性保证。因此，<font color=red>如果有部分节点提交了事务，则所有节点也必须跟着提交事务。</font></p>
+<h5 id="两阶段提交"><a href="#两阶段提交" class="headerlink" title="两阶段提交"></a>两阶段提交</h5><p>两阶段提交（two-phase commit, 2PC）是一种在多节点间实现事务原子提交的算法，可确保所有节点要么全提交，要么全中止。它是分布式数据库中的经典算法之一。2PC在某些数据库内部使用，或以XA事务形式（如Java Transaction API）的形式提供给应用程序。2PC的基本流程如图9-9所示。不同于单节点上的请求提交，2PC中的提交／中止过程分为两个阶段（因此得名2PC） 。</p>
+<img src="/img/09一致性与共识/image-20230922122105856.png" alt="image-20230922122105856" style="zoom:67%;" />
+
+<p>2PC引入了单节点事务所没有的一个新组件：协调者（也称事务管理器）。通常2PC事务从应用程序在多个数据库节点上执行数据读／写开始。这些数据库节点称为事务中的参与者。当应用程序准备提交事务时，协调者开始阶段1：发送一个准备请求到所有节点，询问他们是否可以提交。协调者然后跟踪参与者的回应：如果所有参与者回答“是”，表示他们已准备好提交，协调者接下来在阶段2会发出提交请求，提交开始实际执行。如果有任何参与者回复“否”，则协调者在阶段2向所有节点发送放弃请求。</p>
+<p>更详细地过程：</p>
+<ol>
+<li>应用程序启动一个分布式事务时，它首先向协调者请求事务ID。该ID全局唯一。</li>
+<li>应用程序在每个参与节点上执行单节点事务，并将全局唯一事务ID附加到事务上。此时读写都是在单节点内完成。如果这个阶段出现问题（例如节点崩溃或请求超时），则协调者和其他参与者都可以安全中止。</li>
+<li>当应用程序准备提交时，协调者向所有参与者发送准备请求，并附带全局事务ID。如果准备请求有任何一个发生失败或者超时，则协调者会通知所有参与者放弃事务。</li>
+<li>参与者收到准备请求之后，确保在任何情况下都可以提交事务，<font color=red>包括安全地将事务数据写入磁盘</font>（不能以任何借口稍后拒绝提交，包括系统崩溃，电源故障或磁盘空间不足等），并检查是否存在冲突或约束违规。<font color=red>一旦向协调者回答“是”，节点就承诺会提交事务。换句话说，尽管还没有真正提交，但参与者已表态此后没有放弃事务的权利。</font></li>
+<li>协调者收到所有准备请求的答复后，就是否提交（或放弃）事务做出明确的决定（即只有所有参与者都投赞成票时才会提交）。<font color=red>协调者把最后的决定写入到磁盘的事务日志中，防止稍后系统崩溃</font>，并可以恢复之前的决定。这个时刻称为<font color=red>提交点</font>。</li>
+<li>协调者的决定写入磁盘之后，接下来向所有参与者发送提交（或放弃）请求。如果此请求出现失败或超时，则协调者须一直重试，直到成功为止。此时，所有节点不允许有任何反悔，如果有参与者在此期间故障，其恢复后，也必须继续执行。这是因为之前参与者都投票选择了“是” ，对于做出的承诺同样没有反悔的余地。</li>
+</ol>
+<p>由此可见，该协议有两个<font color=red>关键的“不归路”</font>：首先，参与者投票“是”时，它做出了肯定提交的承诺（尽管还取决于其他参与者的投票，协调者才能做出最后决策）。其次，协调者做出了提交（或者放弃）的决定，也是不可撤销。正是这两个承诺确保了2PC的原子性（而单节点原子提交其实是将两个事件合二为一，写入事务日志即提交） 。</p>
+<h5 id="协调者发生故障"><a href="#协调者发生故障" class="headerlink" title="协调者发生故障"></a>协调者发生故障</h5><p>如果参与者或者网络在2PC期间发生失败，例如在第一阶段，任何一个准备请求发生了失败或者超时，那么协调者就会决定中止交易；或在第二阶段发生提交（或中止）请求失败，则协调者将无限期重试。但如果协调者本身发生了故障呢？</p>
+<p>如果协调者在发送准备请求之前就已失败，则参与者可以安全地中止交易。但<font color=red>一旦参与者收到了准备请求并做了投票“是”，则参与者不能单方面放弃，它必须等待协调者的决定。</font>如果在决定到达之前，出现协调者崩溃或网络故障，则参与者只能无奈等待。</p>
+<p><img src="/img/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86/image-20230924190255902.png" alt="image-20230924190255902"></p>
+<p>情况如图9-10所示。该例子中，协调者实际上做出了提交决定，数据库2已经收到了提交请求。但协调者在将提交请求发送到数据库1之前发生了崩溃，因此数据库1不知道路提交还是中止。超时机制也无法解决问题：如果超时后数据库1决定单方面中止，最终将与完成提交的数据库2产生不一致。同理，参与者也不能单方面决定提交。</p>
+<p><font color=red>没有协调者的消息，参与者无法知道下一步的行动</font>（是提交还是放弃）。理论上，参与者之间可以互相通信，通过了解每个参与者的投票情况并最终达成一致，不过这已经不是2PC协议的范畴了。</p>
+<p><font color=red>2PC能顺利完成的唯一方法是等待协调者恢复</font>。这就是为什么协调者必须在向参与者发送提交或中止请求之前要将决定写入磁盘的事务日志：协调者恢复后，通过读取事务日志来确定所有未决的事务状态。如果在协调者日志中没有完成提交记录就会中止。</p>
+<h5 id="三阶段提交"><a href="#三阶段提交" class="headerlink" title="三阶段提交"></a>三阶段提交</h5><p>两阶段提交也被称为阻塞式原子提交协议，因为2PC可能在等待协调者恢复时卡住。理论上，可以使其改进为非阻塞式从而避免这种情况。但是，实践中要想做到这一点并不容易。</p>
+<p>作为2PC的替代方案，目前也有三阶段提交算法。然而，<font color=red>3PC假定有界的网络延迟和节点在规定时间内响应</font>。考虑到目前大多数具有无限网络延迟和进程暂停的实际情况，它无法保证原子性。因此，尽管已经意识到上述协调者的问题，但还在普遍使用2PC。</p>
+<h4 id="实践中的分布式事务"><a href="#实践中的分布式事务" class="headerlink" title="实践中的分布式事务"></a>实践中的分布式事务</h4><p>分布式事务声誉混杂，尤其是通过2PC实现的事务。一方面，它们被看作提供了其他方案难以企及的重要的安全保证；另一方面，由于操作上的缺陷、性能问题、承诺不可靠等问题而遭受诟病。目前许多云服务提供商由于运维等问题决定不支持分布式事务。</p>
+<p>分布式事务的某些实现存在严重的性能问题。两阶段提交性能下降的主要原因是为了防崩溃恢复而做的磁盘IO（fsync）以及额外的网络往返开销。</p>
+<p>但是，我们不应该就这么直接地抛弃分布式事务，而应更加审慎的对待，从中获取一些重要的经验教训。首先，我们还是要明确“分布式事务”的确切含义。目前由两种截然不同的分布式事务概念：</p>
+<ul>
+<li>数据库内部的分布式事务：某些分布式数据库支持跨数据库节点的内部事务。所有参与节点运行相同的数据库软件。</li>
+<li>异构分布式事务：存在两种或两种以上不同的参与者实现技术。例如来自不同供应商的数据库，甚至是非数据库系统（如消息中间件）。即使是完全不同的系统，跨系统的分布式事务业必须确保原子提交。</li>
+</ul>
+<p>数据库内部事务由于不必考虑与其他系统的兼容，因此可以使用任何形式的内部协议并采取有针对性的优化。因此，<font color=red>数据库内部的分布式事务往往可行且工作不错</font>，但异构环境的事务则充满了挑战。</p>
+<h5 id="XA事务"><a href="#XA事务" class="headerlink" title="XA事务"></a>XA事务</h5><p>X&#x2F;Open XA(eXtended Architecture, XA)是<font color=red>异构环境下实施2PC的一个工业标准</font>。很多传统关系数据库和消息队列都支持XA。XA并不是一个网络协议，而是一个与事务协调者进行通信的C API。当然，它也支持其他语言的API绑定。</p>
+<p>Open Group 组织针对 XA 定义了分布式事务处理模型，也被称为 DTP 模型。包括三个组件，</p>
+<ul>
+<li>AP(Application Program)：应用程序，通过定义组成事务的特定操作来定义事务边界。</li>
+<li>RM(Resouces Manager)：资源管理器，管理共享资源的服务，对应两阶段提交协议中的参与者，如数据库或消息队列服务。</li>
+<li>TM(Transaction Manager)：事务管理器，管理全局事务，协调事务的提交或者回滚，并协调故障恢复。</li>
+</ul>
+<p>XA假定应用程序通过网络驱动或客户端的库函数与参与者（包括数据库、消息服务）节点进行通信。事务协调者需实现XA API。虽然标准并没有详细要求该如何实现。实际上，<font color=red>协调者通常与产生事务的应用程序运行在相同的进程中。</font>这些API会跟踪事务中所有的参与者，协调节点进行准备（通过回调）工作，然后负责收集参与者的投票，并在本地磁盘的日志文件里记录事务最终的决定。</p>
+<p>如果应用进程崩溃，或所在的节点出现故障，协调者就需做相应的处理。此时，所有完成了准备阶段但尚未提交的参与者就会陷入停顿。由于事务日志保存在应用服务器的本地磁盘上，该节点必须先重启，然后协调者通过XA API读取日志、进而恢复事务的决定。完成这些之后，协调者才能继续使用数据库驱动XA回调来要求所有参与者执行提交（或中止）。数据库服务器无法直接与协调者进行通信，而须通过相应的API接口。</p>
+<h5 id="从协调者故障中恢复"><a href="#从协调者故障中恢复" class="headerlink" title="从协调者故障中恢复"></a>从协调者故障中恢复</h5><p>理论上，如果协调者崩溃之后重新启动，它应该可以从日志中恢复那些停顿的事务。然而，在实践中，孤立的不确定事务确实会发生。例如由于软件bug导致交易日志丢失或者损坏，最终协调者还是出现了恢复失败。那些悬而未决的事务无法自动解决，而是永远留在那里，而且还持有锁并阻止其他事务。</p>
+<p>即使重启那些处于停顿状态的数据库节点也无法解决该问题，这是由于2PC的正确实现要求，即使发生了重启，也要继续保持重启之前事务的加锁（否则就会违背原子性保证）。所以，这的确非常棘手。</p>
+<p>唯一的出路只能是让管理员手动决定究竟是执行提交还是回退。管理员必须仔细检查每个有问题的参与者，确定是否有节点已经事实完成了提交（或中止），然后要将相同的结果一一应用于所有的参与者上。这种方案可能需要大量的手工操作，而且很可能处在关键生产环境的中断间隙，背负着巨大的压力和时间限制。</p>
+<p>许多XA的实现都支持某种紧急避险措施称之为启发式决策：这样参与者节点可以在紧急情况下单方面做出决定，放弃或者继续那些停顿的事务，而不需要等到协调者发出指令。需要说明的是，这里的启发式其实是可能破坏原子性的委婉说法，它的确违背了两阶段提交所做出的承诺。因此，这种启发式决策只是为了应急，不能作为常规手段来使用。</p>
+<h5 id="分布式事务的限制"><a href="#分布式事务的限制" class="headerlink" title="分布式事务的限制"></a>分布式事务的限制</h5><p>XA事务解决了多个参与者之间如何达成一致这样一个非常现实而重要的问题，但正如上面所看到的，它也引入了不少操作方面的限制。特别是，核心的事务协调者本身就是一种数据库（存储事务的投票结果），因此需要和其他重要的数据库一样格外小心：如果协调者不支持数据复制，而是在单节点上运行，那么它就是整个系统的单点故障。现实情况是，许多协调者的实现默认情况下并非高可用，或只支持最基本的复制。</p>
+<p>很多服务器端应用都倾向于无状态模式（因为更受HTTP的青睐），而所有的持久状态都保存在数据库中，这样应用服务器可以轻松地添加或删除实例。但当协调者就是应用服务器的一部分时，部署方式就发生了根本的变化。突然间，协调者的日志成为可靠系统的重要组成部分，它要求与数据库本身一样重要。这样的应用服务器已经不再是无状态。</p>
+<p>由于XA需要与各种数据系统保持兼容，它最终其实是多系统可兼容的最低标准。例如，它无法深入检测不同系统间的死锁条件（因为这就需要另一个标准化协议，使多个系统交换事务等待的锁信息），而且不适用于SSI，后者要求一个复杂的协议来识别不同系统间的写冲突。</p>
+<p>对于数据库内部的分布式事务（不是XA），限制则少很多，例如SSI的分布式版本是可行的。然而，2PC要成功提交事务还是存在潜在的限制，它要求必须所有参与者都投票赞成，如果有任何部分发生故障，整个事务只能失败。所以分布式事务有扩大事务失败的风险，这与我们构建容错系统的目标有些背道而驰。</p>
+<h4 id="支持容错的共识"><a href="#支持容错的共识" class="headerlink" title="支持容错的共识"></a>支持容错的共识</h4><p>通俗理解，共识是让几个节点就某项提议达成一致。共识问题通常形式化描述如下：一个或多个节点可以提议某些值，由共识算法来决定最终值。对于预约座位的例子，当多个顾客同时试图购买最后一个座位时，处理顾客请求的每个节点可以提议它所服务的顾客ID，最后的决定则是关于由哪个顾客获得座位。</p>
+<p>在这个描述中，共识算法必须满足以下性质：</p>
+<ul>
+<li>协商一致性：所有的节点都接受相同的决议。</li>
+<li>诚实性：所有节点不能反悔， 即对一项提议不能有两次决定。</li>
+<li>合法性：如果决定了值v，则一定是由某个节点所提议的。</li>
+<li>可终止性：任何没有宕机的节点，最终都会给出对某个值的决策。</li>
+</ul>
+<p>协商一致性和诚实性属性定义了共识的核心思想：<font color=red>决定一致的结果，一旦决定，就不能改变。</font></p>
+<p>如果不关心容错，满足前三个属性很容易：强行指定某个节点为“独裁者”，由它做出所有的决定。但如果该节点失败，系统就无法继续做出任何决定。其实这就是在两阶段提交时所看到的：如果协调者失败了，那些处于不确定状态的参与者就无从知道下一步该做什么。</p>
+<p><font color=red>可终止性则引入了容错的思想</font>。它重点强调共识算法不能原地空转，必须取得实质性进展。即使某些节点出现了故障，其他节点也必须最终做出决定。可终止性属于一种活性，而另外三种则属于安全性方面的属性。2PC不符合可终止性要求。</p>
+<p>当然，若所有的节点都崩溃了，无论何种算法都不可能继续做出决定。算法能容忍的失败次数和规模都有一定的限制。可以证明任何共识算法都需要至少大部分节点正确运行才能确保终止性。而这个多数就可以安全地构成quorum。</p>
+<p>因此，<font color=red>可终止性的前提是，发生崩溃或不可用的节点数必须小于半数节点。</font>大多数共识算法的实现在大多数节点都宕机或网络出现大范围故障时仍能保持安全性——一致性，诚实性和合法性。所以大规模的失效可能会导致系统无法处理请求，但不会破坏系统做出无效决定。</p>
+<p>大多数共识算法系统不存在拜占庭式错误。研究表明，<font color=red>只要发生拜占庭故障的节点数小于三分之一，也可以达成共识。</font></p>
+<h5 id="共识算法与全序广播"><a href="#共识算法与全序广播" class="headerlink" title="共识算法与全序广播"></a>共识算法与全序广播</h5><p>最著名的容错式共识算法包括VSR，Paxos，Raft和Zab。这些算法有诸多相似之处，又不完全相同。除非你决定要自己实现一套这样的共识系统（<font color=red>这可能是非常不明智的做法，很可能失败</font>），否则只需了解它们共同的设计思想就足够了。</p>
+<p>这些算法大部分其实并不是直接使用上述的形式化模型（提议并决定某个值，同时满足上面4个属性）。相反，他们是决定了一系列值，然后采用全序关系广播算法。</p>
+<p>全序关系广播的要点是，消息按照相同的顺序发送到所有节点，有且只有一次。如果仔细想想，这其实相当于进行了多轮的共识过程：在每一轮，节点提出他们接下来想要发送的消息，然后决定下一个消息的全局顺序。所以，全序关系广播相当于持续的多轮共识（每一轮共识的决定对应于一条消息）。</p>
+<ul>
+<li>由于协商一致性，所有节点决定以相同的顺序发送相同的消息。</li>
+<li>由于诚实性，消息不能重复。</li>
+<li>由于合法性，消息不会被破坏，也不是凭空捏造的。</li>
+<li>由于可终止性，消息不会丢失。</li>
+</ul>
+<p>VSR、Raft和Zab都直接采取了全序关系广播，这比重复性的一轮共识只解决一个提议更加高效。而Paxos则有对应的优化版本称之为Multi-Paxos。</p>
+<h5 id="主从复制与共识"><a href="#主从复制与共识" class="headerlink" title="主从复制与共识"></a>主从复制与共识</h5><p>第5章讨论了主从复制，所有的写入操作都由主节点负责，并以相同的顺序发送到从节点来保持副本更新。<font color=red>这不就是基本的全序关系广播么？那在主从复制时我们怎么没有考虑共识问题呢？答案取决于如何选择主节点。</font>如果主节点由运营人员手动选择配置，那基本上就是一个独裁性质的“共识算法”：只允许一个节点接受写入（并决定复制日志中的写入顺序），如果该节点故障，系统将无法写入，直到操作人员再手动配置新的节点成为主节点。这样的方案也能在实践中很好地发挥作用，但需人为干预才能取得进展，<font color=red>不满足共识的可终止性</font>。</p>
+<p>一些数据库支持自动选举主节点和故障切换，通过选举把某个从节点者提升为新的主节点。<font color=red>这样更接近容错式全序关系广播，从而达成共识。</font></p>
+<p>但还有一个问题：所有节点都需要同意主节点，因此，需要共识算法选出一位主节点。但如果这里描述的共识算法实际上是全序关系广播，且全序关系广播很像主从复制，但主从复制现在又需要选举主节点等。看起来要选举一个新的主节点，我们首先需要有一个主节点。要解决共识，必须先处理共识。怎么摆脱这样一个奇怪的循环？</p>
+<h5 id="Epoch和Quorum"><a href="#Epoch和Quorum" class="headerlink" title="Epoch和Quorum"></a>Epoch和Quorum</h5><p>目前讨论的所有共识协议，他们都采用了一种弱化的保证：协议定义了一个世代编号epoch number，并<font color=red>保证每个世代里，主节点是唯一确定的</font>。如果发现当前主节点失效，节点就开始一轮投票选举新的主节点。选举会赋予一个单调递增的epoch号。如果出现了两个不同的主节点对应于不同epoch号码，则具有更高epoch号码的主节点将获胜。</p>
+<p>主节点做出任何决定之前，它必须首先检查是否存在比它更高的epoch号码，否则就会产生冲突的决定。主节点如何知道它是否已被其他节点所取代了呢？节点不能依靠自己所掌握的信息来决策，它必须从quorum节点中收集投票。主节点如果要做出某个决定，须将提议发送给其他所有节点，等待quorum节点的响应。</p>
+<p>quorum通常（但不总是）由多数节点组成。并且，只有当没有发现更高epoch主节点存在时，节点才会对当前的提议（带有epoch号码）进行投票。</p>
+<p>因此，这里实际存在两轮不同的投票：<font color=red>首先是投票决定谁是主节点，然后是对主节点的提议进行投票</font>。其中的关键点是，参与两轮的quorum必有重叠：如果某个提议通过，那么其中参与投票的节点中必须至少有一个也参加了最近一次的主节点选举。换言之，如果在针对提议的投票中没有出现更高epoch号，那么可以得出这样的结论：<font color=red>因为没有发生更高epoch的主节点选举，当前的主节点地位没有改变，所以可以安全地就提议进行投票</font>。</p>
+<p>投票过程看起来很像两阶段提交（2PC）。最大的<font color=red>区别</font>是， 2PC的协调者并不是依靠选举产生；另外容错共识算法只需要收到多数节点的投票结果即可通过决议，而2PC则要求每个参与者都必须做出“是”才能最终通过。此外，共识算法还定义了恢复过程，出现故障之后，通过该过程节点可以选举出新的主节点然后进入一致的状态，确保总是能够满足安全属性。所有这些差异之处都是确保共识算法正确性和容错性的关键。</p>
+<h5 id="共识的局限性"><a href="#共识的局限性" class="headerlink" title="共识的局限性"></a>共识的局限性</h5><p>共识算法对于分布式系统来说绝对是一个巨大的突破，它为一切不确定的系统带来了明确的安全属性（一致性，诚实性和合法性），此外它还可以支持容错（只要大多数节点还在工作和服务可达）。共识可以提供全序关系广播，以容错的方式实现线性化的原子操作。</p>
+<p>不过，好处都是有代价的。这包括：在达成一致性决议之前，节点投票的过程是一个同步复制过程。如第5章“同步与异步复制”所述，数据库通常配置为异步复制，存在某些已提交的数据在故障切换时丢失的风险，即使这样，很多系统还是采用异步复制（而非同步复制），原因正是为了更好的性能。</p>
+<p>共识体系需要严格的多数节点才能运行。这意</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/" rel="tag"># 分布式</a>
+              <a href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7/" rel="tag"># 一致性</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/" rel="tag"># 数据库</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/06/15/%E6%95%B0%E6%8D%AE%E5%AF%86%E9%9B%86%E5%9E%8B%E5%BA%94%E7%94%A8%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/09%E4%B8%80%E8%87%B4%E6%80%A7%E4%B8%8E%E5%85%B1%E8%AF%86(%E4%B8%8A)/" rel="prev" title="DDIA笔记-09一致性与共识(上)">
+      <i class="fa fa-chevron-left"></i> DDIA笔记-09一致性与共识(上)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E4%B8%8E%E5%85%B1%E8%AF%86"><span class="nav-number">1.</span> <span class="nav-text">分布式事务与共识</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8E%9F%E5%AD%90%E6%8F%90%E4%BA%A4%E4%B8%8E%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4"><span class="nav-number">1.1.</span> <span class="nav-text">原子提交与两阶段提交</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BB%8E%E5%8D%95%E8%8A%82%E7%82%B9%E5%88%B0%E5%88%86%E5%B8%83%E5%BC%8F%E7%9A%84%E5%8E%9F%E5%AD%90%E6%8F%90%E4%BA%A4"><span class="nav-number">1.1.1.</span> <span class="nav-text">从单节点到分布式的原子提交</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4"><span class="nav-number">1.1.2.</span> <span class="nav-text">两阶段提交</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%8D%8F%E8%B0%83%E8%80%85%E5%8F%91%E7%94%9F%E6%95%85%E9%9A%9C"><span class="nav-number">1.1.3.</span> <span class="nav-text">协调者发生故障</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%89%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4"><span class="nav-number">1.1.4.</span> <span class="nav-text">三阶段提交</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E4%B8%AD%E7%9A%84%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1"><span class="nav-number">1.2.</span> <span class="nav-text">实践中的分布式事务</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#XA%E4%BA%8B%E5%8A%A1"><span class="nav-number">1.2.1.</span> <span class="nav-text">XA事务</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%BB%8E%E5%8D%8F%E8%B0%83%E8%80%85%E6%95%85%E9%9A%9C%E4%B8%AD%E6%81%A2%E5%A4%8D"><span class="nav-number">1.2.2.</span> <span class="nav-text">从协调者故障中恢复</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E7%9A%84%E9%99%90%E5%88%B6"><span class="nav-number">1.2.3.</span> <span class="nav-text">分布式事务的限制</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%94%AF%E6%8C%81%E5%AE%B9%E9%94%99%E7%9A%84%E5%85%B1%E8%AF%86"><span class="nav-number">1.3.</span> <span class="nav-text">支持容错的共识</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%85%B1%E8%AF%86%E7%AE%97%E6%B3%95%E4%B8%8E%E5%85%A8%E5%BA%8F%E5%B9%BF%E6%92%AD"><span class="nav-number">1.3.1.</span> <span class="nav-text">共识算法与全序广播</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6%E4%B8%8E%E5%85%B1%E8%AF%86"><span class="nav-number">1.3.2.</span> <span class="nav-text">主从复制与共识</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Epoch%E5%92%8CQuorum"><span class="nav-number">1.3.3.</span> <span class="nav-text">Epoch和Quorum</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%85%B1%E8%AF%86%E7%9A%84%E5%B1%80%E9%99%90%E6%80%A7"><span class="nav-number">1.3.4.</span> <span class="nav-text">共识的局限性</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="gqtc"
+      src="/images/panda.gif">
+  <p class="site-author-name" itemprop="name">gqtc</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">57</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">gqtc</span>
+</div>
+<!--
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://pisces.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Pisces</a> 强力驱动
+  </div>
+-->
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'DOtutT1RryAIysn71vbzynQy-gzGzoHsz',
+      appKey     : 'KxMi4qDudMqAUjo5HbMTp5Ht',
+      placeholder: "Just go go",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
